@@ -1,4 +1,5 @@
 use core::fmt::Write;
+use core::mem;
 use embassy_time::Instant;
 use heapless::String;
 
@@ -13,6 +14,7 @@ pub struct PerformanceCounter {
     old_text: String<256>,
     only_fps: bool,
     start_time_us: u64,
+    last_measurement_time_us: u64,
 }
 
 impl Default for PerformanceCounter {
@@ -23,12 +25,14 @@ impl Default for PerformanceCounter {
 
 impl PerformanceCounter {
     pub fn new() -> Self {
+        let now = now_us();
         Self {
             frame_count: 0,
             text: String::new(),
             old_text: String::new(),
             only_fps: false,
-            start_time_us: now_us(),
+            start_time_us: now,
+            last_measurement_time_us: now,
         }
     }
 
@@ -44,17 +48,21 @@ impl PerformanceCounter {
         self.frame_count += 1;
         self.text.clear();
         self.start_time_us = now_us();
+        self.last_measurement_time_us = self.start_time_us;
     }
 
     pub fn add_measurement(&mut self, label: &str) {
         if self.only_fps {
             return;
         }
-        let _ = write!(self.text, "{}: {}\n", label, 1); // Dummy duration
+        let now = now_us();
+        let duration = now.saturating_sub(self.last_measurement_time_us);
+        let _ = write!(self.text, "{}: {}us\n", label, duration);
+        self.last_measurement_time_us = now;
     }
 
     pub fn discard_measurement(&mut self) {
-        self.old_text = self.text.clone();
+        mem::swap(&mut self.old_text, &mut self.text);
     }
 
     pub fn print(&mut self) {
@@ -64,10 +72,12 @@ impl PerformanceCounter {
         } else {
             0
         };
-        if !self.only_fps {
-            let _ = write!(self.text, "total: {}\n", total_us);
+        if self.only_fps {
+            let _ = write!(self.text, "fps: {}\n", fps);
+            self.old_text = self.text.clone();
+            return;
         }
-        let _ = write!(self.text, "fps: {}\n", fps);
+        let _ = write!(self.text, "total: {}us\nfps: {}\n", total_us, fps);
         self.old_text = self.text.clone();
     }
 

@@ -4,6 +4,14 @@ use embedded_graphics_core::prelude::Point;
 
 use crate::DrawPrimitive;
 
+fn is_backfacing(a: Point, b: Point, c: Point) -> bool {
+    let dx1 = b.x - a.x;
+    let dy1 = b.y - a.y;
+    let dx2 = c.x - a.x;
+    let dy2 = c.y - a.y;
+    dx1 * dy2 - dy1 * dx2 <= 0
+}
+
 #[inline]
 pub fn draw<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
     primitive: DrawPrimitive,
@@ -29,11 +37,13 @@ pub fn draw<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
             vertices.as_mut_slice().sort_unstable_by(|a, b| a.y.cmp(&b.y));
 
             // backface culling: skip triangle if it's not front-facing
-            let dx1 = vertices[1].x - vertices[0].x;
-            let dy1 = vertices[1].y - vertices[0].y;
-            let dx2 = vertices[2].x - vertices[0].x;
-            let dy2 = vertices[2].y - vertices[0].y;
-            if dx1 * dy2 - dy1 * dx2 <= 0 {
+            let [a, b, c] = [
+                Point::new(vertices[0].x, vertices[0].y),
+                Point::new(vertices[1].x, vertices[1].y),
+                Point::new(vertices[2].x, vertices[2].y),
+            ];
+
+            if is_backfacing(a, b, c) {
                 return;
             }
 
@@ -53,6 +63,34 @@ pub fn draw<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
     }
 }
 
+struct Interpolator {
+    x: i32,
+    dx: i32,
+    dy: i32,
+    error: i32,
+}
+
+impl Interpolator {
+    fn new(p_start: Point, p_end: Point) -> Self {
+        Self {
+            x: p_start.x,
+            dx: p_end.x - p_start.x,
+            dy: p_end.y - p_start.y,
+            error: 0,
+        }
+    }
+
+    fn next(&mut self) -> i32 {
+        self.x += self.dx / self.dy;
+        self.error += self.dx % self.dy;
+        if self.error >= self.dy {
+            self.x += 1;
+            self.error -= self.dy;
+        }
+        self.x
+    }
+}
+
 fn fill_triangle<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
     p1: Point,
     p2: Point,
@@ -67,35 +105,41 @@ fn fill_triangle<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb56
         return;
     }
 
-    let interpolate_x = |y: i32, p_start: Point, p_end: Point| -> i32 {
-        let dy = p_end.y - p_start.y;
-        let dx = p_end.x - p_start.x;
-        if dy == 0 {
-            p_start.x
-        } else {
-            p_start.x + dx * (y - p_start.y) / dy
-        }
-    };
+    let bounds = fb.bounding_box();
+    let min_x = bounds.top_left.x;
+    let max_x = bounds.bottom_right().unwrap().x;
 
     // Top part (p1 to p2)
     if p2.y - p1.y > 0 {
+        let mut a = Interpolator::new(p1, p2);
+        let mut b = Interpolator::new(p1, p3);
+
         for y in p1.y..p2.y {
-            let ax = interpolate_x(y, p1, p2);
-            let bx = interpolate_x(y, p1, p3);
+            let ax = a.next();
+            let bx = b.next();
             let (start_x, end_x) = if ax < bx { (ax, bx) } else { (bx, ax) };
-            let pixels = (start_x..=end_x).map(|x| embedded_graphics_core::Pixel(Point::new(x, y), color));
-            fb.draw_iter(pixels).unwrap();
+            let start_x = start_x.clamp(min_x, max_x);
+            let end_x = end_x.clamp(min_x, max_x);
+            for x in start_x..=end_x {
+                fb.draw_iter(core::iter::once(embedded_graphics_core::Pixel(Point::new(x, y), color))).unwrap();
+            }
         }
     }
 
     // Bottom part (p2 to p3)
     if p3.y - p2.y > 0 {
+        let mut a = Interpolator::new(p2, p3);
+        let mut b = Interpolator::new(p1, p3);
+
         for y in p2.y..=p3.y {
-            let ax = interpolate_x(y, p2, p3);
-            let bx = interpolate_x(y, p1, p3);
+            let ax = a.next();
+            let bx = b.next();
             let (start_x, end_x) = if ax < bx { (ax, bx) } else { (bx, ax) };
-            let pixels = (start_x..=end_x).map(|x| embedded_graphics_core::Pixel(Point::new(x, y), color));
-            fb.draw_iter(pixels).unwrap();
+            let start_x = start_x.clamp(min_x, max_x);
+            let end_x = end_x.clamp(min_x, max_x);
+            for x in start_x..=end_x {
+                fb.draw_iter(core::iter::once(embedded_graphics_core::Pixel(Point::new(x, y), color))).unwrap();
+            }
         }
     }
 }

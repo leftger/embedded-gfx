@@ -25,3 +25,8 @@ nalgebra = {version = "0.34.0", default-features = false, features = [ "libm" ] 
 line_drawing = "1.0.1"
 heapless = "0.8"
 embassy-time = { version = "0.4.0", package = "embassy-time", default-features = false }
+
+[lib]
+name = "embedded_gfx"
+path = "src/lib.rs"
+test = false

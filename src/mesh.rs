@@ -1,5 +1,5 @@
 use embedded_graphics_core::pixelcolor::{Rgb565, WebColors};
-use heapless::{Vec, FnvIndexSet};
+use heapless::{FnvIndexSet, Vec};
 use log::error;
 use nalgebra::{Point3, Similarity3, UnitQuaternion, Vector3};
 
@@ -167,7 +167,6 @@ impl K3dMesh<'_> {
         self.model_matrix
     }
 }
-
 
 impl<'a> Default for K3dMesh<'a> {
     fn default() -> Self {

@@ -4,6 +4,7 @@ use embedded_graphics_core::prelude::Point;
 
 use crate::DrawPrimitive;
 
+#[inline(always)]
 fn is_backfacing(a: Point, b: Point, c: Point) -> bool {
     let dx1 = b.x - a.x;
     let dy1 = b.y - a.y;
@@ -34,7 +35,9 @@ pub fn draw<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
         }
         DrawPrimitive::ColoredTriangle(mut vertices, color) => {
             // sort vertices by y using sort_unstable_by
-            vertices.as_mut_slice().sort_unstable_by(|a, b| a.y.cmp(&b.y));
+            vertices
+                .as_mut_slice()
+                .sort_unstable_by(|a, b| a.y.cmp(&b.y));
 
             // backface culling: skip triangle if it's not front-facing
             let [a, b, c] = [
@@ -53,7 +56,10 @@ pub fn draw<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
                 Point::new(vertices[2].x, vertices[2].y),
             ];
 
-            let screen_rect = embedded_graphics_core::primitives::Rectangle::new(Point::new(0, 0), fb.bounding_box().size);
+            let screen_rect = embedded_graphics_core::primitives::Rectangle::new(
+                Point::new(0, 0),
+                fb.bounding_box().size,
+            );
             if !screen_rect.contains(p1) && !screen_rect.contains(p2) && !screen_rect.contains(p3) {
                 return;
             }
@@ -91,6 +97,7 @@ impl Interpolator {
     }
 }
 
+#[inline(always)]
 fn fill_triangle<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
     p1: Point,
     p2: Point,
@@ -109,6 +116,13 @@ fn fill_triangle<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb56
     let min_x = bounds.top_left.x;
     let max_x = bounds.bottom_right().unwrap().x;
 
+    const MAX_ROW_WIDTH: usize = 240;
+    let mut pixel_row: [embedded_graphics_core::Pixel<embedded_graphics_core::pixelcolor::Rgb565>;
+        MAX_ROW_WIDTH] = [embedded_graphics_core::Pixel(
+        Point::new(0, 0),
+        embedded_graphics_core::pixelcolor::RgbColor::BLACK,
+    ); MAX_ROW_WIDTH];
+
     // Top part (p1 to p2)
     if p2.y - p1.y > 0 {
         let mut a = Interpolator::new(p1, p2);
@@ -120,9 +134,15 @@ fn fill_triangle<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb56
             let (start_x, end_x) = if ax < bx { (ax, bx) } else { (bx, ax) };
             let start_x = start_x.clamp(min_x, max_x);
             let end_x = end_x.clamp(min_x, max_x);
+
+            let mut i = 0;
             for x in start_x..=end_x {
-                fb.draw_iter(core::iter::once(embedded_graphics_core::Pixel(Point::new(x, y), color))).unwrap();
+                pixel_row[i] = embedded_graphics_core::Pixel(Point::new(x, y), color);
+                i += 1;
             }
+
+            fb.draw_iter(pixel_row[..(end_x - start_x + 1) as usize].iter().copied())
+                .unwrap();
         }
     }
 
@@ -137,9 +157,15 @@ fn fill_triangle<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb56
             let (start_x, end_x) = if ax < bx { (ax, bx) } else { (bx, ax) };
             let start_x = start_x.clamp(min_x, max_x);
             let end_x = end_x.clamp(min_x, max_x);
+
+            let mut i = 0;
             for x in start_x..=end_x {
-                fb.draw_iter(core::iter::once(embedded_graphics_core::Pixel(Point::new(x, y), color))).unwrap();
+                pixel_row[i] = embedded_graphics_core::Pixel(Point::new(x, y), color);
+                i += 1;
             }
+
+            fb.draw_iter(pixel_row[..(end_x - start_x + 1) as usize].iter().copied())
+                .unwrap();
         }
     }
 }

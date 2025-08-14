@@ -24,7 +24,12 @@ fn write_vertices(vertices: &[stl_io::Vertex]) -> String {
 fn write_faces(faces: &[stl_io::Triangle]) -> String {
     let mut out = String::new();
     for t in faces {
-        write!(&mut out, "[{},{},{}],", t.vertices[0], t.vertices[1], t.vertices[2]).unwrap();
+        write!(
+            &mut out,
+            "[{},{},{}],",
+            t.vertices[0], t.vertices[1], t.vertices[2]
+        )
+        .unwrap();
     }
     out
 }
@@ -40,7 +45,10 @@ fn write_normals(faces: &[stl_io::Triangle]) -> String {
 
 fn write_lines(faces: &[stl_io::Triangle]) -> String {
     let lines = embedded_gfx::mesh::Geometry::lines_from_faces(
-        &faces.iter().map(|f| [f.vertices[0], f.vertices[1], f.vertices[2]]).collect::<Vec<_>>(),
+        &faces
+            .iter()
+            .map(|f| [f.vertices[0], f.vertices[1], f.vertices[2]])
+            .collect::<Vec<_>>(),
     );
     let mut out = String::new();
     for l in lines {

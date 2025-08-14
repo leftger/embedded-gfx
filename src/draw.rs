@@ -1,7 +1,6 @@
 use core::fmt::Debug;
 use embedded_graphics_core::draw_target::DrawTarget;
 use embedded_graphics_core::prelude::Point;
-use heapless::Vec;
 
 use crate::DrawPrimitive;
 
@@ -26,44 +25,35 @@ pub fn draw<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
             fb.draw_iter([embedded_graphics_core::Pixel(p, c)]).unwrap();
         }
         DrawPrimitive::ColoredTriangle(mut vertices, color) => {
-            // sort vertices by y using bubble sort (since there are exactly 3 elements)
-            if vertices[0].y > vertices[1].y {
-                vertices.swap(0, 1);
-            }
-            if vertices[0].y > vertices[2].y {
-                vertices.swap(0, 2);
-            }
-            if vertices[1].y > vertices[2].y {
-                vertices.swap(1, 2);
+            // sort vertices by y using sort_unstable_by
+            vertices.as_mut_slice().sort_unstable_by(|a, b| a.y.cmp(&b.y));
+
+            // backface culling: skip triangle if it's not front-facing
+            let dx1 = vertices[1].x - vertices[0].x;
+            let dy1 = vertices[1].y - vertices[0].y;
+            let dx2 = vertices[2].x - vertices[0].x;
+            let dy2 = vertices[2].y - vertices[0].y;
+            if dx1 * dy2 - dy1 * dx2 <= 0 {
+                return;
             }
 
-            let mut buf: Vec<_, 3> = Vec::new();
-            for p in vertices.iter() {
-                buf.push(embedded_graphics_core::geometry::Point::new(p.x, p.y))
-                    .unwrap();
-            }
-            let [p1, p2, p3] = buf.into_array().unwrap();
+            let [p1, p2, p3] = [
+                Point::new(vertices[0].x, vertices[0].y),
+                Point::new(vertices[1].x, vertices[1].y),
+                Point::new(vertices[2].x, vertices[2].y),
+            ];
 
-            if p2.y == p3.y {
-                fill_bottom_flat_triangle(p1, p2, p3, color, fb);
-            } else if p1.y == p2.y {
-                fill_top_flat_triangle(p1, p2, p3, color, fb);
-            } else {
-                let p4 = Point::new(
-                    (p1.x as f32
-                        + ((p2.y - p1.y) as f32 / (p3.y - p1.y) as f32) * (p3.x - p1.x) as f32)
-                        as i32,
-                    p2.y,
-                );
-
-                fill_bottom_flat_triangle(p1, p2, p4, color, fb);
-                fill_top_flat_triangle(p2, p4, p3, color, fb);
+            let screen_rect = embedded_graphics_core::primitives::Rectangle::new(Point::new(0, 0), fb.bounding_box().size);
+            if !screen_rect.contains(p1) && !screen_rect.contains(p2) && !screen_rect.contains(p3) {
+                return;
             }
+
+            fill_triangle(p1, p2, p3, color, fb);
         }
     }
 }
 
-fn fill_bottom_flat_triangle<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
+fn fill_triangle<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
     p1: Point,
     p2: Point,
     p3: Point,
@@ -72,66 +62,40 @@ fn fill_bottom_flat_triangle<D: DrawTarget<Color = embedded_graphics_core::pixel
 ) where
     <D as DrawTarget>::Error: Debug,
 {
-    let invslope1 = (p2.x - p1.x) as f32 / (p2.y - p1.y) as f32;
-    let invslope2 = (p3.x - p1.x) as f32 / (p3.y - p1.y) as f32;
-
-    let mut curx1 = p1.x as f32;
-    let mut curx2 = p1.x as f32;
-
-    for scanline_y in p1.y..=p2.y {
-        draw_horizontal_line(
-            Point::new(curx1 as i32, scanline_y),
-            Point::new(curx2 as i32, scanline_y),
-            color,
-            fb,
-        );
-
-        curx1 += invslope1;
-        curx2 += invslope2;
+    let area = (p2.x - p1.x) * (p3.y - p1.y) - (p2.y - p1.y) * (p3.x - p1.x);
+    if area <= 0 {
+        return;
     }
-}
 
-fn fill_top_flat_triangle<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
-    p1: Point,
-    p2: Point,
-    p3: Point,
-    color: embedded_graphics_core::pixelcolor::Rgb565,
-    fb: &mut D,
-) where
-    <D as DrawTarget>::Error: Debug,
-{
-    let invslope1 = (p3.x - p1.x) as f32 / (p3.y - p1.y) as f32;
-    let invslope2 = (p3.x - p2.x) as f32 / (p3.y - p2.y) as f32;
+    let interpolate_x = |y: i32, p_start: Point, p_end: Point| -> i32 {
+        let dy = p_end.y - p_start.y;
+        let dx = p_end.x - p_start.x;
+        if dy == 0 {
+            p_start.x
+        } else {
+            p_start.x + dx * (y - p_start.y) / dy
+        }
+    };
 
-    let mut curx1 = p3.x as f32;
-    let mut curx2 = p3.x as f32;
-
-    for scanline_y in (p1.y..=p3.y).rev() {
-        draw_horizontal_line(
-            Point::new(curx1 as i32, scanline_y),
-            Point::new(curx2 as i32, scanline_y),
-            color,
-            fb,
-        );
-
-        curx1 -= invslope1;
-        curx2 -= invslope2;
+    // Top part (p1 to p2)
+    if p2.y - p1.y > 0 {
+        for y in p1.y..p2.y {
+            let ax = interpolate_x(y, p1, p2);
+            let bx = interpolate_x(y, p1, p3);
+            let (start_x, end_x) = if ax < bx { (ax, bx) } else { (bx, ax) };
+            let pixels = (start_x..=end_x).map(|x| embedded_graphics_core::Pixel(Point::new(x, y), color));
+            fb.draw_iter(pixels).unwrap();
+        }
     }
-}
 
-fn draw_horizontal_line<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
-    p1: Point,
-    p2: Point,
-    color: embedded_graphics_core::pixelcolor::Rgb565,
-    fb: &mut D,
-) where
-    <D as DrawTarget>::Error: Debug,
-{
-    let start = p1.x.min(p2.x);
-    let end = p1.x.max(p2.x);
-
-    for x in start..=end {
-        fb.draw_iter([embedded_graphics_core::Pixel(Point::new(x, p1.y), color)])
-            .unwrap();
+    // Bottom part (p2 to p3)
+    if p3.y - p2.y > 0 {
+        for y in p2.y..=p3.y {
+            let ax = interpolate_x(y, p2, p3);
+            let bx = interpolate_x(y, p1, p3);
+            let (start_x, end_x) = if ax < bx { (ax, bx) } else { (bx, ax) };
+            let pixels = (start_x..=end_x).map(|x| embedded_graphics_core::Pixel(Point::new(x, y), color));
+            fb.draw_iter(pixels).unwrap();
+        }
     }
 }

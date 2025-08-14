@@ -51,9 +51,16 @@ impl K3dengine {
 
         let point = Point3::from_homogeneous(point)?;
 
+        let x = ((1.0 + point.x) * 0.5 * self.width as f32) as i32;
+        let y = ((1.0 - point.y) * 0.5 * self.height as f32) as i32;
+
+        if x < 0 || x >= self.width as i32 || y < 0 || y >= self.height as i32 {
+            return None;
+        }
+
         Some(Point3::new(
-            ((1.0 + point.x) * 0.5 * self.width as f32) as i32,
-            ((1.0 - point.y) * 0.5 * self.height as f32) as i32,
+            x,
+            y,
             (point.z * (self.camera.far - self.camera.near) + self.camera.near) as i32,
         ))
     }

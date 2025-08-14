@@ -53,7 +53,7 @@ dependencies = [
 [[package]]
 name = "embassy-time"
 version = "0.4.0"
-source = "git+https://github.com/embassy-rs/embassy#86973d2186a960f45290d959c905e611f2b56580"
+source = "git+https://github.com/embassy-rs/embassy#113fece2aa2ce322a4b02302ffa32fcff217f6ea"
 dependencies = [
  "cfg-if",
  "critical-section",
@@ -68,7 +68,7 @@ dependencies = [
 [[package]]
 name = "embassy-time-driver"
 version = "0.2.0"
-source = "git+https://github.com/embassy-rs/embassy#86973d2186a960f45290d959c905e611f2b56580"
+source = "git+https://github.com/embassy-rs/embassy#113fece2aa2ce322a4b02302ffa32fcff217f6ea"
 dependencies = [
  "document-features",
 ]

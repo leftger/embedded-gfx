@@ -1,3 +1,16 @@
+#[cfg(feature = "row_width_320")]
+const MAX_ROW_WIDTH: usize = 320;
+#[cfg(feature = "row_width_240")]
+const MAX_ROW_WIDTH: usize = 240;
+#[cfg(feature = "row_width_160")]
+const MAX_ROW_WIDTH: usize = 160;
+#[cfg(not(any(
+    feature = "row_width_320",
+    feature = "row_width_240",
+    feature = "row_width_160"
+)))]
+const MAX_ROW_WIDTH: usize = 100;
+
 use core::fmt::Debug;
 use embedded_graphics_core::draw_target::DrawTarget;
 use embedded_graphics_core::prelude::Point;
@@ -60,7 +73,9 @@ pub fn draw<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
                 Point::new(0, 0),
                 fb.bounding_box().size,
             );
-            if !screen_rect.contains(p1) && !screen_rect.contains(p2) && !screen_rect.contains(p3) {
+            let triangle_bounds =
+                embedded_graphics_core::primitives::Rectangle::with_corners(p1, p1.max(p2).max(p3));
+            if screen_rect.intersection(&triangle_bounds).is_zero_sized() {
                 return;
             }
 
@@ -116,7 +131,6 @@ fn fill_triangle<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb56
     let min_x = bounds.top_left.x;
     let max_x = bounds.bottom_right().unwrap().x;
 
-    const MAX_ROW_WIDTH: usize = 240;
     let mut pixel_row: [embedded_graphics_core::Pixel<embedded_graphics_core::pixelcolor::Rgb565>;
         MAX_ROW_WIDTH] = [embedded_graphics_core::Pixel(
         Point::new(0, 0),

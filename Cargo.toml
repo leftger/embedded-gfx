@@ -30,3 +30,9 @@ embassy-time = { git = "https://github.com/embassy-rs/embassy", package = "embas
 name = "embedded_gfx"
 path = "src/lib.rs"
 test = false
+
+[features]
+default = ["row_width_240"]
+row_width_160 = []
+row_width_240 = []
+row_width_320 = []

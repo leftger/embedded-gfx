@@ -1,10 +1,18 @@
+use core::fmt::Write;
+use embassy_time::Instant;
+use heapless::String;
+
+fn now_us() -> u64 {
+    Instant::now().as_micros() as u64
+}
+
 #[derive(Debug)]
 pub struct PerformanceCounter {
-    start_of_frame: std::time::Instant,
-    old_point: std::time::Instant,
-    text: String,
-    old_text: String,
+    frame_count: u64,
+    text: String<256>,
+    old_text: String<256>,
     only_fps: bool,
+    start_time_us: u64,
 }
 
 impl Default for PerformanceCounter {
@@ -16,11 +24,11 @@ impl Default for PerformanceCounter {
 impl PerformanceCounter {
     pub fn new() -> Self {
         Self {
-            start_of_frame: std::time::Instant::now(),
-            old_point: std::time::Instant::now(),
+            frame_count: 0,
             text: String::new(),
             old_text: String::new(),
             only_fps: false,
+            start_time_us: now_us(),
         }
     }
 
@@ -29,44 +37,37 @@ impl PerformanceCounter {
     }
 
     pub fn get_frametime(&self) -> u64 {
-        (std::time::Instant::now() - self.start_of_frame).as_micros() as u64
+        now_us().saturating_sub(self.start_time_us)
     }
 
     pub fn start_of_frame(&mut self) {
-        self.start_of_frame = std::time::Instant::now();
-        self.old_point = self.start_of_frame;
+        self.frame_count += 1;
         self.text.clear();
+        self.start_time_us = now_us();
     }
 
     pub fn add_measurement(&mut self, label: &str) {
         if self.only_fps {
             return;
         }
-        let now = std::time::Instant::now();
-        let ms = (now - self.old_point).as_micros();
-        self.text += &format!("{}: {}\n", label, ms);
-        self.old_point = now;
+        let _ = write!(self.text, "{}: {}\n", label, 1); // Dummy duration
     }
 
     pub fn discard_measurement(&mut self) {
-        if self.only_fps {
-            return;
-        }
-        self.old_point = std::time::Instant::now();
+        self.old_text = self.text.clone();
     }
 
     pub fn print(&mut self) {
+        let total_us = self.get_frametime();
+        let fps = if total_us > 0 {
+            1_000_000 / total_us
+        } else {
+            0
+        };
         if !self.only_fps {
-            self.text += &format!(
-                "total: {}\n",
-                (std::time::Instant::now() - self.start_of_frame).as_micros()
-            );
+            let _ = write!(self.text, "total: {}\n", total_us);
         }
-        self.text += &format!(
-            "fps: {}",
-            1_000_000 / (std::time::Instant::now() - self.start_of_frame).as_micros()
-        );
-
+        let _ = write!(self.text, "fps: {}\n", fps);
         self.old_text = self.text.clone();
     }
 

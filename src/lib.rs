@@ -1,3 +1,5 @@
+#![no_std]
+#![no_main]
 use camera::Camera;
 use embedded_graphics_core::pixelcolor::Rgb565;
 use embedded_graphics_core::pixelcolor::RgbColor;

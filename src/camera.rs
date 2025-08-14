@@ -1,4 +1,4 @@
-use std::f32::consts;
+use core::f32::consts;
 
 use nalgebra::{Isometry3, Perspective3, Point3, Vector3};
 

@@ -2,9 +2,9 @@ workspace = { members = ["load_stl"] }
 [package]
 name = "embedded-gfx"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/Kezii/embedded-gfx"
+repository = "https://github.com/leftger/embedded-gfx"
 readme = "./README.md"
 description = "3D graphics rendering for embedded systems"
 keywords = [
@@ -20,6 +20,8 @@ categories = [
 
 [dependencies]
 embedded-graphics-core = "0.4.0"
-log = "0.4.20"
-nalgebra = {version = "0.32.3", default-features = false, features = [ "libm" ] }
-line_drawing = "1.0.0"
+log = "0.4.27"
+nalgebra = {version = "0.34.0", default-features = false, features = [ "libm" ] }
+line_drawing = "1.0.1"
+heapless = "0.8"
+embassy-time = { version = "0.4.0", package = "embassy-time", default-features = false }

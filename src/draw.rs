@@ -1,5 +1,7 @@
+use core::fmt::Debug;
 use embedded_graphics_core::draw_target::DrawTarget;
 use embedded_graphics_core::prelude::Point;
+use heapless::Vec;
 
 use crate::DrawPrimitive;
 
@@ -8,7 +10,7 @@ pub fn draw<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
     primitive: DrawPrimitive,
     fb: &mut D,
 ) where
-    <D as DrawTarget>::Error: std::fmt::Debug,
+    <D as DrawTarget>::Error: Debug,
 {
     match primitive {
         DrawPrimitive::Line([p1, p2], color) => {
@@ -24,15 +26,23 @@ pub fn draw<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
             fb.draw_iter([embedded_graphics_core::Pixel(p, c)]).unwrap();
         }
         DrawPrimitive::ColoredTriangle(mut vertices, color) => {
-            //sort vertices by y
-            vertices.sort_by(|a, b| a.y.cmp(&b.y));
+            // sort vertices by y using bubble sort (since there are exactly 3 elements)
+            if vertices[0].y > vertices[1].y {
+                vertices.swap(0, 1);
+            }
+            if vertices[0].y > vertices[2].y {
+                vertices.swap(0, 2);
+            }
+            if vertices[1].y > vertices[2].y {
+                vertices.swap(1, 2);
+            }
 
-            let [p1, p2, p3] = vertices
-                .iter()
-                .map(|p| embedded_graphics_core::geometry::Point::new(p.x, p.y))
-                .collect::<Vec<embedded_graphics_core::geometry::Point>>()
-                .try_into()
-                .unwrap();
+            let mut buf: Vec<_, 3> = Vec::new();
+            for p in vertices.iter() {
+                buf.push(embedded_graphics_core::geometry::Point::new(p.x, p.y))
+                    .unwrap();
+            }
+            let [p1, p2, p3] = buf.into_array().unwrap();
 
             if p2.y == p3.y {
                 fill_bottom_flat_triangle(p1, p2, p3, color, fb);
@@ -60,7 +70,7 @@ fn fill_bottom_flat_triangle<D: DrawTarget<Color = embedded_graphics_core::pixel
     color: embedded_graphics_core::pixelcolor::Rgb565,
     fb: &mut D,
 ) where
-    <D as DrawTarget>::Error: std::fmt::Debug,
+    <D as DrawTarget>::Error: Debug,
 {
     let invslope1 = (p2.x - p1.x) as f32 / (p2.y - p1.y) as f32;
     let invslope2 = (p3.x - p1.x) as f32 / (p3.y - p1.y) as f32;
@@ -88,7 +98,7 @@ fn fill_top_flat_triangle<D: DrawTarget<Color = embedded_graphics_core::pixelcol
     color: embedded_graphics_core::pixelcolor::Rgb565,
     fb: &mut D,
 ) where
-    <D as DrawTarget>::Error: std::fmt::Debug,
+    <D as DrawTarget>::Error: Debug,
 {
     let invslope1 = (p3.x - p1.x) as f32 / (p3.y - p1.y) as f32;
     let invslope2 = (p3.x - p2.x) as f32 / (p3.y - p2.y) as f32;
@@ -115,7 +125,7 @@ fn draw_horizontal_line<D: DrawTarget<Color = embedded_graphics_core::pixelcolor
     color: embedded_graphics_core::pixelcolor::Rgb565,
     fb: &mut D,
 ) where
-    <D as DrawTarget>::Error: std::fmt::Debug,
+    <D as DrawTarget>::Error: Debug,
 {
     let start = p1.x.min(p2.x);
     let end = p1.x.max(p2.x);

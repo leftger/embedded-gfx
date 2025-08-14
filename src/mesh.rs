@@ -1,4 +1,5 @@
 use embedded_graphics_core::pixelcolor::{Rgb565, WebColors};
+use heapless::Vec;
 use log::error;
 use nalgebra::{Point3, Similarity3, UnitQuaternion, Vector3};
 
@@ -50,8 +51,8 @@ impl Geometry<'_> {
         true
     }
 
-    pub fn lines_from_faces(faces: &[[usize; 3]]) -> Vec<(usize, usize)> {
-        let mut lines = Vec::new();
+    pub fn lines_from_faces(faces: &[[usize; 3]]) -> Vec<(usize, usize), 512> {
+        let mut lines: Vec<(usize, usize), 512> = Vec::new();
         for face in faces {
             for line in &[(face[0], face[1]), (face[1], face[2]), (face[2], face[0])] {
                 let (a, b) = if line.0 < line.1 {
@@ -59,12 +60,11 @@ impl Geometry<'_> {
                 } else {
                     (line.1, line.0)
                 };
-                if !lines.contains(&(a, b)) {
-                    lines.push((a, b));
+                if !lines.iter().any(|&(x, y)| x == a && y == b) {
+                    lines.push((a, b)).ok();
                 }
             }
         }
-
         lines
     }
 }

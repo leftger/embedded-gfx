@@ -1,5 +1,5 @@
 use embedded_graphics_core::pixelcolor::{Rgb565, WebColors};
-use heapless::Vec;
+use heapless::{FnvIndexSet, Vec};
 use log::error;
 use nalgebra::{Point3, Similarity3, UnitQuaternion, Vector3};
 
@@ -51,21 +51,15 @@ impl Geometry<'_> {
         true
     }
 
-    pub fn lines_from_faces(faces: &[[usize; 3]]) -> Vec<(usize, usize), 512> {
-        let mut lines: Vec<(usize, usize), 512> = Vec::new();
+    pub fn lines_from_faces(faces: &[[usize; 3]]) -> Vec<(usize, usize), 1024> {
+        let mut set: FnvIndexSet<(usize, usize), 1024> = FnvIndexSet::new();
         for face in faces {
-            for line in &[(face[0], face[1]), (face[1], face[2]), (face[2], face[0])] {
-                let (a, b) = if line.0 < line.1 {
-                    (line.0, line.1)
-                } else {
-                    (line.1, line.0)
-                };
-                if !lines.iter().any(|&(x, y)| x == a && y == b) {
-                    lines.push((a, b)).ok();
-                }
+            for &(i1, i2) in &[(face[0], face[1]), (face[1], face[2]), (face[2], face[0])] {
+                let edge = if i1 < i2 { (i1, i2) } else { (i2, i1) };
+                let _ = set.insert(edge);
             }
         }
-        lines
+        set.iter().copied().collect()
     }
 }
 
@@ -124,7 +118,7 @@ impl K3dMesh<'_> {
         );
 
         self.similarity = view;
-        self.update_model_matrix();
+        self.model_matrix = self.similarity.to_homogeneous();
     }
 
     pub fn set_scale(&mut self, s: f32) {

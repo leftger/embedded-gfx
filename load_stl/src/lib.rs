@@ -44,15 +44,21 @@ fn write_normals(faces: &[stl_io::Triangle]) -> String {
 }
 
 fn write_lines(faces: &[stl_io::Triangle]) -> String {
-    let lines = embedded_gfx::mesh::Geometry::lines_from_faces(
-        &faces
-            .iter()
-            .map(|f| [f.vertices[0], f.vertices[1], f.vertices[2]])
-            .collect::<Vec<_>>(),
-    );
+    use std::collections::HashSet;
+    let mut edge_set = HashSet::new();
+
+    for t in faces {
+        let v = t.vertices;
+        let edges = [(v[0], v[1]), (v[1], v[2]), (v[2], v[0])];
+        for (a, b) in edges {
+            let (min, max) = if a < b { (a, b) } else { (b, a) };
+            edge_set.insert((min, max));
+        }
+    }
+
     let mut out = String::new();
-    for l in lines {
-        write!(&mut out, "[{},{}],", l.0, l.1).unwrap();
+    for (a, b) in edge_set {
+        write!(&mut out, "[{},{}],", a, b).unwrap();
     }
     out
 }

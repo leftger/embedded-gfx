@@ -20,7 +20,11 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y libsdl2-dev
-    - name: check
-      run: cargo check --verbose
-    - name: Run tests
-      run: cargo test --verbose
+    - name: Check library
+      run: cargo check --lib --verbose
+    - name: Run library tests
+      run: cargo test --lib --verbose
+    - name: Check with std feature
+      run: cargo check --lib --features std --verbose
+    - name: Check with all features
+      run: cargo check --lib --all-features --verbose

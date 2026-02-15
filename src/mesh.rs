@@ -1,5 +1,6 @@
 use embedded_graphics_core::pixelcolor::{Rgb565, WebColors};
 use heapless::Vec;
+use heapless::index_set::FnvIndexSet;
 use log::error;
 use nalgebra::{Point3, Similarity3, UnitQuaternion, Vector3};
 
@@ -75,26 +76,20 @@ impl Geometry<'_> {
     /// A heapless Vec containing unique edge pairs. If capacity is exceeded, returns
     /// partial results with an error logged.
     pub fn lines_from_faces<const N: usize>(faces: &[[usize; 3]]) -> Vec<(usize, usize), N> {
-        let mut lines: Vec<(usize, usize), N> = Vec::new();
+        let mut set: FnvIndexSet<(usize, usize), N> = FnvIndexSet::new();
         for face in faces {
-            for line in &[(face[0], face[1]), (face[1], face[2]), (face[2], face[0])] {
-                let (a, b) = if line.0 < line.1 {
-                    (line.0, line.1)
-                } else {
-                    (line.1, line.0)
-                };
-                if !lines.iter().any(|&(x, y)| x == a && y == b) {
-                    if lines.push((a, b)).is_err() {
-                        error!(
-                            "lines_from_faces: heapless Vec capacity exceeded (max {}). Some edges will not be rendered.",
-                            N
-                        );
-                        return lines;
-                    }
+            for &(i1, i2) in &[(face[0], face[1]), (face[1], face[2]), (face[2], face[0])] {
+                let edge = if i1 < i2 { (i1, i2) } else { (i2, i1) };
+                if set.insert(edge).is_err() {
+                    error!(
+                        "lines_from_faces: heapless Vec capacity exceeded (max {}). Some edges will not be rendered.",
+                        N
+                    );
+                    break;
                 }
             }
         }
-        lines
+        set.iter().copied().collect()
     }
 }
 
@@ -230,7 +225,7 @@ impl<'a> K3dMesh<'a> {
         );
 
         self.similarity = view;
-        self.update_model_matrix();
+        self.model_matrix = self.similarity.to_homogeneous();
     }
 
     pub fn set_scale(&mut self, s: f32) {

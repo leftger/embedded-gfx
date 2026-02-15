@@ -5,6 +5,7 @@
 use embedded_3dgfx::K3dengine;
 use embedded_3dgfx::draw::draw;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
+#[cfg(feature = "perfcounter")]
 use embedded_3dgfx::perfcounter::PerformanceCounter;
 use embedded_graphics::mono_font::{MonoTextStyle, ascii::FONT_6X10};
 use embedded_graphics::text::Text;
@@ -75,7 +76,9 @@ fn main() {
     cube.set_render_mode(RenderMode::Lines);
     cube.set_color(Rgb565::CSS_CYAN);
 
+    #[cfg(feature = "perfcounter")]
     let mut perf = PerformanceCounter::new();
+    #[cfg(feature = "perfcounter")]
     perf.only_fps(true);
 
     let text_style = MonoTextStyle::new(&FONT_6X10, Rgb565::CSS_WHITE);
@@ -90,6 +93,7 @@ fn main() {
     window.update(&display);
 
     'running: loop {
+        #[cfg(feature = "perfcounter")]
         perf.start_of_frame();
 
         // Handle events
@@ -120,10 +124,13 @@ fn main() {
         });
 
         // Display FPS
-        perf.print();
-        Text::new(perf.get_text(), Point::new(10, 20), text_style)
-            .draw(&mut display)
-            .unwrap();
+        #[cfg(feature = "perfcounter")]
+        {
+            perf.print();
+            Text::new(perf.get_text(), Point::new(10, 20), text_style)
+                .draw(&mut display)
+                .unwrap();
+        }
 
         // Update window
         window.update(&display);

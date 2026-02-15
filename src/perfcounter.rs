@@ -215,7 +215,7 @@ mod tests {
         perf.discard_measurement();
 
         // Next measurement should start from discarded checkpoint
-        let checkpoint_after_discard = perf.last_checkpoint_us;
+        let checkpoint_after_discard = perf.last_measurement_time_us;
         assert!(checkpoint_after_discard > perf.start_time_us);
     }
 

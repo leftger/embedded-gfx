@@ -17,6 +17,7 @@
 use embedded_3dgfx::K3dengine;
 use embedded_3dgfx::draw::draw_zbuffered_with_textures;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh};
+#[cfg(feature = "perfcounter")]
 use embedded_3dgfx::perfcounter::PerformanceCounter;
 use embedded_3dgfx::texture::{Texture, TextureManager};
 use embedded_graphics::mono_font::{MonoTextStyle, ascii::FONT_6X10};

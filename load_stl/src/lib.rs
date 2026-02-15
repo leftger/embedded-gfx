@@ -1,8 +1,7 @@
 extern crate proc_macro;
 
-use std::ops::Index;
-
 use proc_macro::TokenStream;
+use std::fmt::Write;
 
 #[proc_macro]
 pub fn embed_stl(input: TokenStream) -> TokenStream {

@@ -221,6 +221,12 @@ impl<'a> K3dMesh<'a> {
         self.update_model_matrix();
     }
 
+    /// Set orientation directly from a unit quaternion.
+    pub fn set_rotation(&mut self, rotation: UnitQuaternion<f32>) {
+        self.similarity.isometry.rotation = rotation;
+        self.update_model_matrix();
+    }
+
     pub fn set_target(&mut self, target: Point3<f32>) {
         let view = Similarity3::look_at_rh(
             &self.similarity.isometry.translation.vector.into(),

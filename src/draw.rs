@@ -1,8 +1,13 @@
+// Row width configuration - features are prioritized if multiple are enabled
 #[cfg(feature = "row_width_320")]
 const MAX_ROW_WIDTH: usize = 320;
-#[cfg(feature = "row_width_240")]
+#[cfg(all(feature = "row_width_240", not(feature = "row_width_320")))]
 const MAX_ROW_WIDTH: usize = 240;
-#[cfg(feature = "row_width_160")]
+#[cfg(all(
+    feature = "row_width_160",
+    not(feature = "row_width_240"),
+    not(feature = "row_width_320")
+))]
 const MAX_ROW_WIDTH: usize = 160;
 #[cfg(not(any(
     feature = "row_width_320",

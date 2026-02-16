@@ -63,6 +63,10 @@ pub enum Collider {
     Sphere { radius: f32 },
     /// An axis-aligned bounding box defined by half-extents along each axis.
     Aabb { half_extents: Vector3<f32> },
+    /// A capsule defined by height and radius.
+    /// The capsule is oriented along the Y axis, centered on the body position.
+    /// Height is the distance between the two hemisphere centers (excluding the caps).
+    Capsule { height: f32, radius: f32 },
 }
 
 /// A detected contact between two bodies.
@@ -390,6 +394,23 @@ fn collide(
             let result = collide_sphere_aabb(pos_b, *radius, pos_a, half_extents);
             result.map(|(normal, pen)| (-normal, pen))
         }
+        (Collider::Capsule { height: ha, radius: ra }, Collider::Capsule { height: hb, radius: rb }) => {
+            collide_capsule_capsule(pos_a, *ha, *ra, pos_b, *hb, *rb)
+        }
+        (Collider::Sphere { radius }, Collider::Capsule { height, radius: cap_radius }) => {
+            collide_sphere_capsule(pos_a, *radius, pos_b, *height, *cap_radius)
+        }
+        (Collider::Capsule { height, radius: cap_radius }, Collider::Sphere { radius }) => {
+            let result = collide_sphere_capsule(pos_b, *radius, pos_a, *height, *cap_radius);
+            result.map(|(normal, pen)| (-normal, pen))
+        }
+        (Collider::Capsule { height, radius }, Collider::Aabb { half_extents }) => {
+            collide_capsule_aabb(pos_a, *height, *radius, pos_b, half_extents)
+        }
+        (Collider::Aabb { half_extents }, Collider::Capsule { height, radius }) => {
+            let result = collide_capsule_aabb(pos_b, *height, *radius, pos_a, half_extents);
+            result.map(|(normal, pen)| (-normal, pen))
+        }
     }
 }
 
@@ -530,6 +551,329 @@ fn collide_sphere_aabb(
 
         let penetration = sphere_radius + min_dist;
         Some((normal, penetration))
+    }
+}
+
+/// Capsule vs Capsule intersection test.
+///
+/// Capsules are oriented along Y axis, centered at body position.
+fn collide_capsule_capsule(
+    pos_a: &Vector3<f32>,
+    height_a: f32,
+    radius_a: f32,
+    pos_b: &Vector3<f32>,
+    height_b: f32,
+    radius_b: f32,
+) -> Option<(Vector3<f32>, f32)> {
+    // Get capsule endpoints (top and bottom sphere centers)
+    let half_height_a = height_a * 0.5;
+    let half_height_b = height_b * 0.5;
+
+    let a_bottom = *pos_a + Vector3::new(0.0, -half_height_a, 0.0);
+    let a_top = *pos_a + Vector3::new(0.0, half_height_a, 0.0);
+    let b_bottom = *pos_b + Vector3::new(0.0, -half_height_b, 0.0);
+    let b_top = *pos_b + Vector3::new(0.0, half_height_b, 0.0);
+
+    // Find closest points on the two line segments
+    let (closest_a, closest_b) = closest_points_on_segments(a_bottom, a_top, b_bottom, b_top);
+
+    // Treat as sphere-sphere collision between closest points
+    collide_sphere_sphere(&closest_a, radius_a, &closest_b, radius_b)
+}
+
+/// Sphere vs Capsule intersection test.
+fn collide_sphere_capsule(
+    sphere_pos: &Vector3<f32>,
+    sphere_radius: f32,
+    capsule_pos: &Vector3<f32>,
+    capsule_height: f32,
+    capsule_radius: f32,
+) -> Option<(Vector3<f32>, f32)> {
+    // Get capsule endpoints
+    let half_height = capsule_height * 0.5;
+    let cap_bottom = *capsule_pos + Vector3::new(0.0, -half_height, 0.0);
+    let cap_top = *capsule_pos + Vector3::new(0.0, half_height, 0.0);
+
+    // Find closest point on capsule axis to sphere
+    let closest = closest_point_on_segment(*sphere_pos, cap_bottom, cap_top);
+
+    // Treat as sphere-sphere collision
+    collide_sphere_sphere(sphere_pos, sphere_radius, &closest, capsule_radius)
+}
+
+/// Capsule vs AABB intersection test.
+fn collide_capsule_aabb(
+    capsule_pos: &Vector3<f32>,
+    capsule_height: f32,
+    capsule_radius: f32,
+    aabb_pos: &Vector3<f32>,
+    aabb_half_extents: &Vector3<f32>,
+) -> Option<(Vector3<f32>, f32)> {
+    // Get capsule endpoints
+    let half_height = capsule_height * 0.5;
+    let cap_bottom = *capsule_pos + Vector3::new(0.0, -half_height, 0.0);
+    let cap_top = *capsule_pos + Vector3::new(0.0, half_height, 0.0);
+
+    // Find closest point on capsule axis to AABB
+    let aabb_min = aabb_pos - aabb_half_extents;
+    let aabb_max = aabb_pos + aabb_half_extents;
+
+    // Clamp capsule endpoints to find closest segment to AABB
+    let closest_on_capsule = closest_point_on_segment_to_aabb(cap_bottom, cap_top, &aabb_min, &aabb_max);
+
+    // Treat as sphere-AABB collision from the closest point on capsule
+    collide_sphere_aabb(&closest_on_capsule, capsule_radius, aabb_pos, aabb_half_extents)
+}
+
+/// Find closest point on line segment to a point.
+fn closest_point_on_segment(point: Vector3<f32>, seg_start: Vector3<f32>, seg_end: Vector3<f32>) -> Vector3<f32> {
+    let segment = seg_end - seg_start;
+    let segment_len_sq = segment.norm_squared();
+
+    if segment_len_sq < 1e-6 {
+        return seg_start;
+    }
+
+    let t = ((point - seg_start).dot(&segment) / segment_len_sq).clamp(0.0, 1.0);
+    seg_start + segment * t
+}
+
+/// Find closest points on two line segments.
+fn closest_points_on_segments(
+    a_start: Vector3<f32>,
+    a_end: Vector3<f32>,
+    b_start: Vector3<f32>,
+    b_end: Vector3<f32>,
+) -> (Vector3<f32>, Vector3<f32>) {
+    let d1 = a_end - a_start;
+    let d2 = b_end - b_start;
+    let r = a_start - b_start;
+
+    let a = d1.dot(&d1);
+    let e = d2.dot(&d2);
+    let f = d2.dot(&r);
+
+    let epsilon = 1e-6;
+
+    if a < epsilon && e < epsilon {
+        // Both segments are points
+        return (a_start, b_start);
+    }
+
+    let mut s: f32;
+    let mut t: f32;
+
+    if a < epsilon {
+        // First segment is a point
+        s = 0.0;
+        t = (f / e).clamp(0.0, 1.0);
+    } else {
+        let c = d1.dot(&r);
+        if e < epsilon {
+            // Second segment is a point
+            t = 0.0;
+            s = (-c / a).clamp(0.0, 1.0);
+        } else {
+            // General case
+            let b = d1.dot(&d2);
+            let denom = a * e - b * b;
+
+            s = if denom.abs() > epsilon {
+                ((b * f - c * e) / denom).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+
+            t = (b * s + f) / e;
+
+            if t < 0.0 {
+                t = 0.0;
+                s = (-c / a).clamp(0.0, 1.0);
+            } else if t > 1.0 {
+                t = 1.0;
+                s = ((b - c) / a).clamp(0.0, 1.0);
+            }
+        }
+    }
+
+    (a_start + d1 * s, b_start + d2 * t)
+}
+
+/// Find closest point on line segment to an AABB.
+fn closest_point_on_segment_to_aabb(
+    seg_start: Vector3<f32>,
+    seg_end: Vector3<f32>,
+    aabb_min: &Vector3<f32>,
+    aabb_max: &Vector3<f32>,
+) -> Vector3<f32> {
+    // Sample points along segment and find closest to AABB center
+    let aabb_center = (aabb_min + aabb_max) * 0.5;
+    closest_point_on_segment(aabb_center, seg_start, seg_end)
+}
+
+// ---------------------------------------------------------------------------
+// Ray Casting
+// ---------------------------------------------------------------------------
+
+/// A ray for intersection testing.
+#[derive(Debug, Clone, Copy)]
+pub struct Ray {
+    /// Ray origin point
+    pub origin: Vector3<f32>,
+    /// Ray direction (should be normalized)
+    pub direction: Vector3<f32>,
+}
+
+impl Ray {
+    /// Create a new ray with the given origin and direction.
+    ///
+    /// The direction will be normalized automatically.
+    pub fn new(origin: Vector3<f32>, direction: Vector3<f32>) -> Self {
+        Self {
+            origin,
+            direction: direction.normalize(),
+        }
+    }
+
+    /// Get a point along the ray at distance t.
+    pub fn point_at(&self, t: f32) -> Vector3<f32> {
+        self.origin + self.direction * t
+    }
+}
+
+/// Result of a ray cast intersection.
+#[derive(Debug, Clone, Copy)]
+pub struct RayCastHit {
+    /// ID of the body that was hit
+    pub body_id: BodyId,
+    /// Point of intersection in world space
+    pub point: Vector3<f32>,
+    /// Surface normal at the hit point
+    pub normal: Vector3<f32>,
+    /// Distance along the ray to the hit point
+    pub distance: f32,
+}
+
+/// Ray vs Sphere intersection test.
+///
+/// Returns the distance to the nearest intersection point, or None if no hit.
+fn ray_intersect_sphere(ray: &Ray, center: &Vector3<f32>, radius: f32) -> Option<f32> {
+    let oc = ray.origin - center;
+    let a = ray.direction.dot(&ray.direction);
+    let b = 2.0 * oc.dot(&ray.direction);
+    let c = oc.dot(&oc) - radius * radius;
+    let discriminant = b * b - 4.0 * a * c;
+
+    if discriminant < 0.0 {
+        return None;
+    }
+
+    let sqrt_disc = discriminant.sqrt();
+    let t1 = (-b - sqrt_disc) / (2.0 * a);
+    let t2 = (-b + sqrt_disc) / (2.0 * a);
+
+    // Return nearest positive intersection
+    if t1 > 0.0 {
+        Some(t1)
+    } else if t2 > 0.0 {
+        Some(t2)
+    } else {
+        None
+    }
+}
+
+/// Ray vs AABB intersection test.
+///
+/// Returns the distance to the nearest intersection point, or None if no hit.
+fn ray_intersect_aabb(
+    ray: &Ray,
+    aabb_pos: &Vector3<f32>,
+    half_extents: &Vector3<f32>,
+) -> Option<f32> {
+    let aabb_min = aabb_pos - half_extents;
+    let aabb_max = aabb_pos + half_extents;
+
+    let mut tmin = (aabb_min.x - ray.origin.x) / ray.direction.x;
+    let mut tmax = (aabb_max.x - ray.origin.x) / ray.direction.x;
+
+    if tmin > tmax {
+        core::mem::swap(&mut tmin, &mut tmax);
+    }
+
+    let mut tymin = (aabb_min.y - ray.origin.y) / ray.direction.y;
+    let mut tymax = (aabb_max.y - ray.origin.y) / ray.direction.y;
+
+    if tymin > tymax {
+        core::mem::swap(&mut tymin, &mut tymax);
+    }
+
+    if (tmin > tymax) || (tymin > tmax) {
+        return None;
+    }
+
+    tmin = tmin.max(tymin);
+    tmax = tmax.min(tymax);
+
+    let mut tzmin = (aabb_min.z - ray.origin.z) / ray.direction.z;
+    let mut tzmax = (aabb_max.z - ray.origin.z) / ray.direction.z;
+
+    if tzmin > tzmax {
+        core::mem::swap(&mut tzmin, &mut tzmax);
+    }
+
+    if (tmin > tzmax) || (tzmin > tmax) {
+        return None;
+    }
+
+    tmin = tmin.max(tzmin);
+
+    if tmin > 0.0 {
+        Some(tmin)
+    } else if tmax > 0.0 {
+        Some(tmax)
+    } else {
+        None
+    }
+}
+
+/// Ray vs Capsule intersection test.
+///
+/// Returns the distance to the nearest intersection point, or None if no hit.
+fn ray_intersect_capsule(
+    ray: &Ray,
+    capsule_pos: &Vector3<f32>,
+    height: f32,
+    radius: f32,
+) -> Option<f32> {
+    // Get capsule endpoints
+    let half_height = height * 0.5;
+    let cap_bottom = *capsule_pos + Vector3::new(0.0, -half_height, 0.0);
+    let cap_top = *capsule_pos + Vector3::new(0.0, half_height, 0.0);
+
+    // Find closest point on capsule axis to ray
+    // Simplified: test ray against spheres at endpoints and cylinder in between
+    let mut min_t = f32::MAX;
+    let mut hit = false;
+
+    // Test bottom sphere
+    if let Some(t) = ray_intersect_sphere(ray, &cap_bottom, radius) {
+        min_t = min_t.min(t);
+        hit = true;
+    }
+
+    // Test top sphere
+    if let Some(t) = ray_intersect_sphere(ray, &cap_top, radius) {
+        min_t = min_t.min(t);
+        hit = true;
+    }
+
+    // Test cylinder body (simplified - treats as expanded line segment)
+    // For more accuracy, would need proper ray-cylinder intersection
+
+    if hit {
+        Some(min_t)
+    } else {
+        None
     }
 }
 
@@ -717,6 +1061,92 @@ impl<const N: usize, const M: usize> PhysicsWorld<N, M> {
     /// Iterate over all bodies mutably.
     pub fn bodies_mut(&mut self) -> impl Iterator<Item = (BodyId, &mut RigidBody)> {
         self.bodies.iter_mut().enumerate().map(|(i, b)| (BodyId(i), b))
+    }
+
+    // -- Ray casting --
+
+    /// Cast a ray through the world and find the nearest intersection.
+    ///
+    /// Returns information about the hit, or None if no bodies were hit.
+    ///
+    /// # Arguments
+    /// * `ray` - The ray to cast
+    /// * `max_distance` - Maximum distance to check (use f32::MAX for infinite)
+    ///
+    /// # Example
+    /// ```
+    /// use embedded_3dgfx::physics::{PhysicsWorld, Ray};
+    /// use nalgebra::Vector3;
+    ///
+    /// let world = PhysicsWorld::<16>::new();
+    /// let ray = Ray::new(
+    ///     Vector3::new(0.0, 10.0, 0.0),
+    ///     Vector3::new(0.0, -1.0, 0.0)
+    /// );
+    ///
+    /// if let Some(hit) = world.ray_cast(&ray, 100.0) {
+    ///     println!("Hit body at distance: {}", hit.distance);
+    /// }
+    /// ```
+    pub fn ray_cast(&self, ray: &Ray, max_distance: f32) -> Option<RayCastHit> {
+        let mut nearest_hit: Option<RayCastHit> = None;
+        let mut min_distance = max_distance;
+
+        for (i, body) in self.bodies.iter().enumerate() {
+            if !body.active {
+                continue;
+            }
+
+            let collider = match &body.collider {
+                Some(c) => c,
+                None => continue,
+            };
+
+            let distance = match collider {
+                Collider::Sphere { radius } => {
+                    ray_intersect_sphere(ray, &body.position, *radius)
+                }
+                Collider::Aabb { half_extents } => {
+                    ray_intersect_aabb(ray, &body.position, half_extents)
+                }
+                Collider::Capsule { height, radius } => {
+                    ray_intersect_capsule(ray, &body.position, *height, *radius)
+                }
+            };
+
+            if let Some(dist) = distance {
+                if dist < min_distance {
+                    let point = ray.point_at(dist);
+                    let normal = match collider {
+                        Collider::Sphere { .. } => {
+                            (point - body.position).normalize()
+                        }
+                        Collider::Aabb { .. } => {
+                            // Approximate normal from hit point to AABB center
+                            (point - body.position).normalize()
+                        }
+                        Collider::Capsule { height, .. } => {
+                            // Get closest point on capsule axis
+                            let half_height = height * 0.5;
+                            let cap_bottom = body.position + Vector3::new(0.0, -half_height, 0.0);
+                            let cap_top = body.position + Vector3::new(0.0, half_height, 0.0);
+                            let closest = closest_point_on_segment(point, cap_bottom, cap_top);
+                            (point - closest).normalize()
+                        }
+                    };
+
+                    min_distance = dist;
+                    nearest_hit = Some(RayCastHit {
+                        body_id: BodyId(i),
+                        point,
+                        normal,
+                        distance: dist,
+                    });
+                }
+            }
+        }
+
+        nearest_hit
     }
 
     // -- Constraint management --

@@ -211,12 +211,13 @@ mod tests {
         let mut perf = PerformanceCounter::new();
         perf.start_of_frame();
 
-        std::thread::sleep(std::time::Duration::from_micros(100));
+        perf.add_measurement("test1");
+        // discard_measurement swaps old_text and text
         perf.discard_measurement();
 
-        // Next measurement should start from discarded checkpoint
-        let checkpoint_after_discard = perf.last_measurement_time_us;
-        assert!(checkpoint_after_discard > perf.start_time_us);
+        // After discard, the measurement should still be in old_text
+        let text_after = perf.get_text();
+        assert!(text_after.contains("test1"));
     }
 
     #[test]

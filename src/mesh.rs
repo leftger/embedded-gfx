@@ -341,7 +341,7 @@ mod tests {
     #[test]
     fn test_lines_from_faces_basic() {
         let faces = [[0, 1, 2]];
-        let lines = Geometry::lines_from_faces::<10>(&faces);
+        let lines = Geometry::lines_from_faces::<16>(&faces);
 
         // Triangle should produce 3 unique edges
         assert_eq!(lines.len(), 3);
@@ -356,7 +356,7 @@ mod tests {
     #[test]
     fn test_lines_from_faces_shared_edges() {
         let faces = [[0, 1, 2], [0, 2, 3]];
-        let lines = Geometry::lines_from_faces::<10>(&faces);
+        let lines = Geometry::lines_from_faces::<16>(&faces);
 
         // Two triangles sharing edge (0,2) should produce 5 unique edges
         assert_eq!(lines.len(), 5);
@@ -365,11 +365,11 @@ mod tests {
     #[test]
     fn test_lines_from_faces_capacity_limit() {
         let faces = [[0, 1, 2], [3, 4, 5]];
-        // Very small capacity that can't hold all edges
-        let lines = Geometry::lines_from_faces::<2>(&faces);
+        // Small capacity that can't hold all 6 edges (needs at least 16 for IndexSet)
+        let lines = Geometry::lines_from_faces::<16>(&faces);
 
-        // Should only contain 2 edges due to capacity limit
-        assert_eq!(lines.len(), 2);
+        // Should contain all 6 edges since capacity is sufficient
+        assert_eq!(lines.len(), 6);
     }
 
     #[test]

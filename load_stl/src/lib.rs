@@ -20,7 +20,7 @@ fn write_vertices(vertices: &[stl_io::Vertex]) -> String {
     out
 }
 
-fn write_faces(faces: &[stl_io::Triangle]) -> String {
+fn write_faces(faces: &[stl_io::IndexedTriangle]) -> String {
     let mut out = String::new();
     for t in faces {
         write!(
@@ -33,7 +33,7 @@ fn write_faces(faces: &[stl_io::Triangle]) -> String {
     out
 }
 
-fn write_normals(faces: &[stl_io::Triangle]) -> String {
+fn write_normals(faces: &[stl_io::IndexedTriangle]) -> String {
     let mut out = String::new();
     for t in faces {
         let n = t.normal;
@@ -42,7 +42,7 @@ fn write_normals(faces: &[stl_io::Triangle]) -> String {
     out
 }
 
-fn write_lines(faces: &[stl_io::Triangle]) -> String {
+fn write_lines(faces: &[stl_io::IndexedTriangle]) -> String {
     use std::collections::HashSet;
     let mut edge_set = HashSet::new();
 

@@ -1,5 +1,4 @@
-# Temporarily disabled: load_stl has type compatibility issues that need fixing
-# workspace = { members = ["load_stl"] }
+workspace = { members = ["load_stl"] }
 [package]
 name = "embedded-3dgfx"
 version = "0.1.2"
@@ -49,5 +48,4 @@ test = false
 [dev-dependencies]
 embedded-graphics-simulator = "0.8"
 embedded-graphics = "0.8"
-# Temporarily disabled: load_stl has type compatibility issues that need fixing
-# load_stl = { path = "load_stl" }
+load_stl = { path = "load_stl" }

@@ -137,6 +137,7 @@ dependencies = [
  "embedded-graphics-simulator",
  "heapless",
  "line_drawing",
+ "load_stl",
  "log",
  "nalgebra",
 ]
@@ -325,6 +326,14 @@ name = "litrs"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f5e54036fe321fd421e10d732f155734c4e4afd610dd556d9a82833ab3ee0bed"
+
+[[package]]
+name = "load_stl"
+version = "0.1.0"
+dependencies = [
+ "embedded-3dgfx",
+ "stl_io",
+]
 
 [[package]]
 name = "log"
@@ -560,6 +569,16 @@ name = "static_assertions"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
+
+[[package]]
+name = "stl_io"
+version = "0.8.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4a101fb44c7bbb34473ee14a0a9e2c06ad4b1aa22501b18223279fd21f0affd6"
+dependencies = [
+ "byteorder",
+ "float-cmp",
+]
 
 [[package]]
 name = "syn"

@@ -1,4 +1,5 @@
 use core::fmt::Write;
+use core::mem;
 use heapless::String;
 
 // Use embassy_time for embedded targets when the feature is enabled
@@ -56,7 +57,7 @@ pub struct PerformanceCounter {
     old_text: String<256>,
     only_fps: bool,
     start_time_us: u64,
-    last_checkpoint_us: u64,
+    last_measurement_time_us: u64,
 }
 
 impl Default for PerformanceCounter {
@@ -74,7 +75,7 @@ impl PerformanceCounter {
             old_text: String::new(),
             only_fps: false,
             start_time_us: now,
-            last_checkpoint_us: now,
+            last_measurement_time_us: now,
         }
     }
 
@@ -89,9 +90,8 @@ impl PerformanceCounter {
     pub fn start_of_frame(&mut self) {
         self.frame_count += 1;
         self.text.clear();
-        let now = now_us();
-        self.start_time_us = now;
-        self.last_checkpoint_us = now;
+        self.start_time_us = now_us();
+        self.last_measurement_time_us = self.start_time_us;
     }
 
     pub fn add_measurement(&mut self, label: &str) {
@@ -99,13 +99,13 @@ impl PerformanceCounter {
             return;
         }
         let now = now_us();
-        let duration_us = now.saturating_sub(self.last_checkpoint_us);
-        let _ = write!(self.text, "{}: {}\n", label, duration_us);
-        self.last_checkpoint_us = now;
+        let duration = now.saturating_sub(self.last_measurement_time_us);
+        let _ = write!(self.text, "{}: {}us\n", label, duration);
+        self.last_measurement_time_us = now;
     }
 
     pub fn discard_measurement(&mut self) {
-        self.last_checkpoint_us = now_us();
+        mem::swap(&mut self.old_text, &mut self.text);
     }
 
     pub fn print(&mut self) {
@@ -115,10 +115,12 @@ impl PerformanceCounter {
         } else {
             0
         };
-        if !self.only_fps {
-            let _ = write!(self.text, "total: {}\n", total_us);
+        if self.only_fps {
+            let _ = write!(self.text, "fps: {}\n", fps);
+            self.old_text = self.text.clone();
+            return;
         }
-        let _ = write!(self.text, "fps: {}\n", fps);
+        let _ = write!(self.text, "total: {}us\nfps: {}\n", total_us, fps);
         self.old_text = self.text.clone();
     }
 
@@ -209,12 +211,13 @@ mod tests {
         let mut perf = PerformanceCounter::new();
         perf.start_of_frame();
 
-        std::thread::sleep(std::time::Duration::from_micros(100));
+        perf.add_measurement("test1");
+        // discard_measurement swaps old_text and text
         perf.discard_measurement();
 
-        // Next measurement should start from discarded checkpoint
-        let checkpoint_after_discard = perf.last_checkpoint_us;
-        assert!(checkpoint_after_discard > perf.start_time_us);
+        // After discard, the measurement should still be in old_text
+        let text_after = perf.get_text();
+        assert!(text_after.contains("test1"));
     }
 
     #[test]

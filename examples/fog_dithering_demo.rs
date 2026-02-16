@@ -20,6 +20,7 @@
 use embedded_3dgfx::K3dengine;
 use embedded_3dgfx::draw::{DitherConfig, FogConfig, draw_zbuffered_with_effects};
 use embedded_3dgfx::mesh::{Geometry, K3dMesh};
+#[cfg(feature = "perfcounter")]
 use embedded_3dgfx::perfcounter::PerformanceCounter;
 use embedded_graphics::mono_font::{MonoTextStyle, ascii::FONT_6X10};
 use embedded_graphics::text::Text;

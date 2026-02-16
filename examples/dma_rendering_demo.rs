@@ -19,6 +19,7 @@ use embedded_3dgfx::K3dengine;
 use embedded_3dgfx::display_backend::SimulatorBackend;
 use embedded_3dgfx::draw::draw_zbuffered;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
+#[cfg(feature = "perfcounter")]
 use embedded_3dgfx::perfcounter::PerformanceCounter;
 use embedded_3dgfx::swapchain::StandardSwapChain;
 use embedded_graphics::mono_font::{MonoTextStyle, ascii::FONT_6X10};

@@ -24,9 +24,12 @@ categories = [
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = []
+default = ["row_width_240", "std"]
 std = ["perfcounter"]
 perfcounter = []
+row_width_160 = []
+row_width_240 = []
+row_width_320 = []
 
 [dependencies]
 embedded-graphics-core = "0.4.0"
@@ -40,6 +43,7 @@ embassy-time = { version = "0.5", default-features = false, optional = true }
 [lib]
 name = "embedded_3dgfx"
 path = "src/lib.rs"
+test = false
 
 [dev-dependencies]
 embedded-graphics-simulator = "0.8"

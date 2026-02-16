@@ -1,8 +1,7 @@
 extern crate proc_macro;
 
-use std::ops::Index;
-
 use proc_macro::TokenStream;
+use std::fmt::Write;
 
 #[proc_macro]
 pub fn embed_stl(input: TokenStream) -> TokenStream {
@@ -13,78 +12,92 @@ pub fn embed_stl(input: TokenStream) -> TokenStream {
     r.parse().unwrap()
 }
 
+fn write_vertices(vertices: &[stl_io::Vertex]) -> String {
+    let mut out = String::new();
+    for v in vertices {
+        write!(&mut out, "[{}f32,{}f32,{}f32],", v[0], v[1], v[2]).unwrap();
+    }
+    out
+}
+
+fn write_faces(faces: &[stl_io::IndexedTriangle]) -> String {
+    let mut out = String::new();
+    for t in faces {
+        write!(
+            &mut out,
+            "[{},{},{}],",
+            t.vertices[0], t.vertices[1], t.vertices[2]
+        )
+        .unwrap();
+    }
+    out
+}
+
+fn write_normals(faces: &[stl_io::IndexedTriangle]) -> String {
+    let mut out = String::new();
+    for t in faces {
+        let n = t.normal;
+        write!(&mut out, "[{}f32,{}f32,{}f32],", n[0], n[1], n[2]).unwrap();
+    }
+    out
+}
+
+fn write_lines(faces: &[stl_io::IndexedTriangle]) -> String {
+    use std::collections::HashSet;
+    let mut edge_set = HashSet::new();
+
+    for t in faces {
+        let v = t.vertices;
+        let edges = [(v[0], v[1]), (v[1], v[2]), (v[2], v[0])];
+        for (a, b) in edges {
+            let (min, max) = if a < b { (a, b) } else { (b, a) };
+            edge_set.insert((min, max));
+        }
+    }
+
+    let mut out = String::new();
+    for (a, b) in edge_set {
+        write!(&mut out, "[{},{}],", a, b).unwrap();
+    }
+    out
+}
+
 fn load_stl(file_name: &str) -> String {
+    use std::fmt::Write;
+
     let mut file = std::fs::OpenOptions::new()
         .read(true)
         .open(file_name)
         .unwrap();
     let stl = stl_io::read_stl(&mut file).unwrap();
 
-    let mut vertices = String::new();
-    for vertex in stl.vertices {
-        vertices += &format!(
-            "[{}f32,{}f32,{}f32],",
-            vertex.index(0),
-            vertex.index(1),
-            vertex.index(2)
-        );
-    }
+    let vertices = write_vertices(&stl.vertices);
+    let faces = write_faces(&stl.faces);
+    let normals = write_normals(&stl.faces);
+    let lines = write_lines(&stl.faces);
 
-    let mut faces = String::new();
-    for triangle in &stl.faces {
-        faces += &format!(
-            "[{},{},{}],",
-            triangle.vertices[0], triangle.vertices[1], triangle.vertices[2]
-        );
-    }
-
-    let mut normals = String::new();
-    for triangle in &stl.faces {
-        normals += &format!(
-            "[{}f32,{}f32,{}f32],",
-            triangle.normal.index(0),
-            triangle.normal.index(1),
-            triangle.normal.index(2)
-        );
-    }
-
-    let faces_vec: Vec<_> = stl
-        .faces
-        .iter()
-        .map(|f| [f.vertices[0], f.vertices[1], f.vertices[2]])
-        .collect();
-
-    // For a closed mesh, the number of unique edges is approximately faces * 3 / 2
-    // We use faces * 2 to be safe and avoid capacity issues
-    const MAX_EDGES: usize = 4096; // Reasonable limit for proc macro
-    let lines = embedded_3dgfx::mesh::Geometry::lines_from_faces::<MAX_EDGES>(&faces_vec);
-
-    let mut lines_ = String::new();
-    for line in lines {
-        lines_ += &format!("[{},{}],", line.0, line.1);
-    }
-
-    let mut ret: String = String::new();
-
-    ret += &format!(
+    let mut out = String::new();
+    write!(
+        &mut out,
         "Geometry {{
-        vertices: &[
-            {vertices}
-        ],
-        faces: &[
-            {faces}
-        ],
-        colors: &[],
-        lines: &[
-            {lines_}
-        ],
-        normals: &[
-            {normals}
-        ],
-        uvs: &[],
-        texture_id: None,
-    }}"
-    );
+            vertices: &[
+                {vertices}
+            ],
+            faces: &[
+                {faces}
+            ],
+            colors: &[],
+            lines: &[
+                {lines}
+            ],
+            normals: &[
+                {normals}
+            ],
+            uvs: &[],
+            texture_id: None,
+        }}"
+    )
+    .unwrap();
 
-    ret
+    out
 }

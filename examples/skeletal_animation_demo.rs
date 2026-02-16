@@ -150,6 +150,10 @@ fn main() {
     println!("  R: Reset pose");
     println!("  ESC: Exit");
 
+    // Initial render
+    display.clear(Rgb565::BLACK).unwrap();
+    window.update(&display);
+
     'running: loop {
         #[cfg(feature = "perfcounter")]
         perf.start_of_frame();

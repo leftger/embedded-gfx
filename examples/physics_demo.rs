@@ -69,7 +69,6 @@ fn make_cube() -> (Vec<[f32; 3]>, Vec<[usize; 3]>, Vec<[f32; 3]>) {
 // 3 free-falling cubes + 3 cubes in a chain = 6 total + 1 floor
 const NUM_FREE: usize = 3;
 const NUM_CHAIN: usize = 3;
-const NUM_CUBES: usize = NUM_FREE + NUM_CHAIN;
 
 fn main() {
     let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(640, 480));

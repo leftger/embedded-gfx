@@ -173,12 +173,15 @@ impl DitherConfig {
     }
 }
 
+/// Check if a triangle is backfacing based on its winding order
+/// Returns true if the triangle is facing away from the camera (clockwise winding in screen space)
 #[inline(always)]
 fn is_backfacing(a: Point, b: Point, c: Point) -> bool {
     let dx1 = b.x - a.x;
     let dy1 = b.y - a.y;
     let dx2 = c.x - a.x;
     let dy2 = c.y - a.y;
+    // Cross product: negative means clockwise (backfacing)
     dx1 * dy2 - dy1 * dx2 <= 0
 }
 
@@ -220,6 +223,11 @@ fn fill_triangle<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb56
 ) where
     <D as DrawTarget>::Error: Debug,
 {
+    // Skip backfacing triangles (optimization)
+    if is_backfacing(p1, p2, p3) {
+        return;
+    }
+
     let area = (p2.x - p1.x) * (p3.y - p1.y) - (p2.y - p1.y) * (p3.x - p1.x);
     if area == 0 {
         // Degenerate triangle (all points collinear)
@@ -835,15 +843,21 @@ fn fill_triangle_zbuffered<D: DrawTarget<Color = embedded_graphics_core::pixelco
 ) where
     <D as DrawTarget>::Error: Debug,
 {
+    // Convert to embedded_graphics Points
+    let p1_eg = Point::new(p1.x, p1.y);
+    let p2_eg = Point::new(p2.x, p2.y);
+    let p3_eg = Point::new(p3.x, p3.y);
+
+    // Skip backfacing triangles (optimization)
+    if is_backfacing(p1_eg, p2_eg, p3_eg) {
+        return;
+    }
+
     // Convert float depths to fixed-point integers (16.16 format)
     // This avoids floating-point operations in the inner loop
     let z1_int = (z1 * 65536.0) as u32;
     let z2_int = (z2 * 65536.0) as u32;
     let z3_int = (z3 * 65536.0) as u32;
-    // Convert to embedded_graphics Points
-    let p1_eg = Point::new(p1.x, p1.y);
-    let p2_eg = Point::new(p2.x, p2.y);
-    let p3_eg = Point::new(p3.x, p3.y);
 
     // Handle flat triangles
     if p2_eg.y == p3_eg.y {
@@ -938,15 +952,20 @@ fn fill_triangle_zbuffered_gouraud<
 ) where
     <D as DrawTarget>::Error: Debug,
 {
-    // Convert float depths to fixed-point integers (16.16 format)
-    let z1_int = (z1 * 65536.0) as u32;
-    let z2_int = (z2 * 65536.0) as u32;
-    let z3_int = (z3 * 65536.0) as u32;
-
     // Convert to embedded_graphics Points
     let p1_eg = Point::new(p1.x, p1.y);
     let p2_eg = Point::new(p2.x, p2.y);
     let p3_eg = Point::new(p3.x, p3.y);
+
+    // Skip backfacing triangles (optimization)
+    if is_backfacing(p1_eg, p2_eg, p3_eg) {
+        return;
+    }
+
+    // Convert float depths to fixed-point integers (16.16 format)
+    let z1_int = (z1 * 65536.0) as u32;
+    let z2_int = (z2 * 65536.0) as u32;
+    let z3_int = (z3 * 65536.0) as u32;
 
     // Handle flat triangles
     if p2_eg.y == p3_eg.y {
@@ -1459,15 +1478,20 @@ fn fill_triangle_zbuffered_textured<
 ) where
     <D as DrawTarget>::Error: Debug,
 {
-    // Convert float depths to fixed-point integers (16.16 format)
-    let z1_int = (z1 * 65536.0) as u32;
-    let z2_int = (z2 * 65536.0) as u32;
-    let z3_int = (z3 * 65536.0) as u32;
-
     // Convert to embedded_graphics Points
     let p1_eg = Point::new(p1.x, p1.y);
     let p2_eg = Point::new(p2.x, p2.y);
     let p3_eg = Point::new(p3.x, p3.y);
+
+    // Skip backfacing triangles (optimization)
+    if is_backfacing(p1_eg, p2_eg, p3_eg) {
+        return;
+    }
+
+    // Convert float depths to fixed-point integers (16.16 format)
+    let z1_int = (z1 * 65536.0) as u32;
+    let z2_int = (z2 * 65536.0) as u32;
+    let z3_int = (z3 * 65536.0) as u32;
 
     // Handle flat triangles
     if p2_eg.y == p3_eg.y {

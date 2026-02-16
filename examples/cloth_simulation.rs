@@ -91,7 +91,7 @@ fn main() {
 
     let mut vertex_buffer = vec![[0.0f32; 3]; cloth.particles.len()];
     let mut gravity_enabled = true;
-    let mut wind_force = Vector3::zeros();
+    let mut wind_force;
 
     println!("Cloth Simulation Demo");
     println!("Controls:");

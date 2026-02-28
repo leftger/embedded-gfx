@@ -282,6 +282,58 @@ impl K3dengine {
                     }
                 }
 
+                RenderMode::GouraudLightDir(direction) => {
+                    let color_as_float = Vector3::new(
+                        mesh.color.r() as f32 / 32.0,
+                        mesh.color.g() as f32 / 64.0,
+                        mesh.color.b() as f32 / 32.0,
+                    );
+                    let ambient_color = color_as_float * 0.1;
+                    let adjusted_dir = Vector3::new(direction.x, direction.y, -direction.z);
+
+                    for (face, face_normal) in
+                        geometry.faces.iter().zip(geometry.normals.iter())
+                    {
+                        let fn_vec = Vector3::new(face_normal[0], face_normal[1], face_normal[2]);
+                        let transformed_fn = mesh.model_matrix.transform_vector(&fn_vec);
+
+                        if self.camera.get_direction().dot(&transformed_fn) < 0.0 {
+                            continue;
+                        }
+
+                        if let Some([p1, p2, p3]) =
+                            self.transform_points(face, geometry.vertices, transform_matrix)
+                        {
+                            // Compute per-vertex colors
+                            let vertex_colors: [Rgb565; 3] = core::array::from_fn(|k| {
+                                let vn = if !geometry.vertex_normals.is_empty() {
+                                    let vn_arr = geometry.vertex_normals[face[k]];
+                                    let vn_vec =
+                                        Vector3::new(vn_arr[0], vn_arr[1], vn_arr[2]);
+                                    mesh.model_matrix.transform_vector(&vn_vec)
+                                } else {
+                                    transformed_fn
+                                };
+
+                                let intensity = vn.dot(&adjusted_dir).max(0.0);
+                                let c = color_as_float * intensity + ambient_color;
+                                Rgb565::new(
+                                    (c.x.clamp(0.0, 1.0) * 31.0) as u8,
+                                    (c.y.clamp(0.0, 1.0) * 63.0) as u8,
+                                    (c.z.clamp(0.0, 1.0) * 31.0) as u8,
+                                )
+                            });
+
+                            callback(DrawPrimitive::GouraudTriangleWithDepth {
+                                points: [p1.xy(), p2.xy(), p3.xy()],
+                                depths: [p1.z as f32, p2.z as f32, p3.z as f32],
+                                colors: vertex_colors,
+                            });
+                        }
+                    }
+
+                }
+
                 RenderMode::BlinnPhong {
                     light_dir,
                     specular_intensity,
@@ -517,6 +569,7 @@ mod tests {
             colors: &[],
             lines: &[],
             normals: &[],
+            vertex_normals: &[],
             uvs: &[],
             texture_id: None,
         };
@@ -543,6 +596,7 @@ mod tests {
             colors: &[],
             lines: &[],
             normals: &[],
+            vertex_normals: &[],
             uvs: &[],
             texture_id: None,
         };
@@ -576,6 +630,7 @@ mod tests {
             colors: &[],
             lines: &[],
             normals: &[],
+            vertex_normals: &[],
             uvs: &[],
             texture_id: None,
         };
@@ -592,6 +647,43 @@ mod tests {
         assert_eq!(primitives.len(), 3);
         for prim in primitives {
             assert!(matches!(prim, DrawPrimitive::Line(_, _)));
+        }
+    }
+
+    #[test]
+    fn test_render_gouraud_light_dir() {
+        let mut engine = K3dengine::new(640, 480);
+        engine.camera.set_position(Point3::new(0.0, 0.0, -10.0));
+        engine.camera.set_target(Point3::new(0.0, 0.0, 0.0));
+
+        let vertices = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
+        let faces = [[0, 1, 2]];
+        let normals = [[0.0, 0.0, -1.0]]; // face normal pointing toward camera
+        let vertex_normals = [[0.0, 0.0, -1.0], [0.0, 0.0, -1.0], [0.0, 0.0, -1.0]];
+
+        let geometry = mesh::Geometry {
+            vertices: &vertices,
+            faces: &faces,
+            colors: &[],
+            lines: &[],
+            normals: &normals,
+            vertex_normals: &vertex_normals,
+            uvs: &[],
+            texture_id: None,
+        };
+
+        let mut mesh = mesh::K3dMesh::new(geometry);
+        mesh.set_render_mode(mesh::RenderMode::GouraudLightDir(Vector3::new(0.0, 0.0, 1.0)));
+
+        let mut primitives = std::vec::Vec::new();
+        engine.render(std::iter::once(&mesh), |prim| {
+            primitives.push(prim);
+        });
+
+        // Should emit GouraudTriangleWithDepth primitives
+        assert!(!primitives.is_empty());
+        for prim in &primitives {
+            assert!(matches!(prim, DrawPrimitive::GouraudTriangleWithDepth { .. }));
         }
     }
 }

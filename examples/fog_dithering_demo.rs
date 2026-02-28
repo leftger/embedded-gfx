@@ -97,6 +97,7 @@ fn main() {
         colors: &cube_colors,
         lines: &[],
         normals: &[],
+        vertex_normals: &[],
         uvs: &[],
         texture_id: None,
     };

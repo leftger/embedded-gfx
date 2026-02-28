@@ -1265,7 +1265,22 @@ impl<const N: usize, const M: usize> PhysicsWorld<N, M> {
         Some(body.position + body.orientation * local_point)
     }
 
+    /// Compute the world-space AABB `(min_x, max_x)` along the X axis for a body.
+    #[inline]
+    fn body_x_extent(body: &RigidBody, collider: &Collider) -> (f32, f32) {
+        let px = body.position.x;
+        match collider {
+            Collider::Sphere { radius } => (px - radius, px + radius),
+            Collider::Aabb { half_extents } => (px - half_extents.x, px + half_extents.x),
+            Collider::Capsule { radius, .. } => (px - radius, px + radius),
+        }
+    }
+
     /// Detect all collisions between bodies with colliders.
+    ///
+    /// Uses a sort-and-sweep broad phase on the X axis to prune pairs that
+    /// cannot possibly overlap, then runs the narrow-phase `collide()` test
+    /// only on candidate pairs.
     ///
     /// Returns contacts in a fixed-capacity buffer. The `C` const generic sets the
     /// maximum number of contacts per detection pass. For `N` bodies, worst case is
@@ -1274,27 +1289,46 @@ impl<const N: usize, const M: usize> PhysicsWorld<N, M> {
     /// Pairs where both bodies lack a collider are skipped.
     pub fn detect_collisions<const C: usize>(&self) -> heapless::Vec<Contact, C> {
         let mut contacts = heapless::Vec::new();
-        let len = self.bodies.len();
 
-        for i in 0..len {
-            let body_a = &self.bodies[i];
-            if !body_a.active {
+        // Build list of (min_x, max_x, body_index) for active bodies with colliders
+        let mut entries = heapless::Vec::<(f32, f32, usize), N>::new();
+        for (i, body) in self.bodies.iter().enumerate() {
+            if !body.active {
                 continue;
             }
-            let col_a = match &body_a.collider {
-                Some(c) => c,
-                None => continue,
-            };
+            if let Some(ref col) = body.collider {
+                let (min_x, max_x) = Self::body_x_extent(body, col);
+                let _ = entries.push((min_x, max_x, i));
+            }
+        }
+
+        // Sort by min_x (insertion sort — good for small N and nearly-sorted data)
+        for i in 1..entries.len() {
+            let mut j = i;
+            while j > 0 && entries[j].0 < entries[j - 1].0 {
+                entries.swap(j, j - 1);
+                j -= 1;
+            }
+        }
+
+        // Sweep: for each entry, check overlapping entries on X axis
+        let len = entries.len();
+        for i in 0..len {
+            let (_, max_x_i, idx_a) = entries[i];
+            let body_a = &self.bodies[idx_a];
+            let col_a = body_a.collider.as_ref().unwrap();
 
             for j in (i + 1)..len {
-                let body_b = &self.bodies[j];
-                if !body_b.active {
-                    continue;
+                let (min_x_j, _, idx_b) = entries[j];
+
+                // Since entries are sorted by min_x, once min_x_j > max_x_i
+                // all subsequent entries are also non-overlapping on X
+                if min_x_j > max_x_i {
+                    break;
                 }
-                let col_b = match &body_b.collider {
-                    Some(c) => c,
-                    None => continue,
-                };
+
+                let body_b = &self.bodies[idx_b];
+                let col_b = body_b.collider.as_ref().unwrap();
 
                 // Skip pairs where both are static
                 if body_a.body_type == BodyType::Static && body_b.body_type == BodyType::Static {
@@ -1305,8 +1339,8 @@ impl<const N: usize, const M: usize> PhysicsWorld<N, M> {
                     collide(&body_a.position, col_a, &body_b.position, col_b)
                 {
                     let _ = contacts.push(Contact {
-                        body_a: BodyId(i),
-                        body_b: BodyId(j),
+                        body_a: BodyId(idx_a),
+                        body_b: BodyId(idx_b),
                         normal,
                         penetration,
                     });
@@ -3474,5 +3508,52 @@ mod tests {
         } else {
             panic!("Expected Distance constraint");
         }
+    }
+
+    #[test]
+    fn test_broad_phase_skips_distant_bodies() {
+        // Two spheres far apart on the X axis — broad phase should prune them
+        let mut world = PhysicsWorld::<4>::new();
+        world
+            .add_body(
+                RigidBody::new(1.0)
+                    .with_position(Vector3::new(0.0, 0.0, 0.0))
+                    .with_collider(Collider::Sphere { radius: 1.0 }),
+            )
+            .unwrap();
+        world
+            .add_body(
+                RigidBody::new(1.0)
+                    .with_position(Vector3::new(100.0, 0.0, 0.0))
+                    .with_collider(Collider::Sphere { radius: 1.0 }),
+            )
+            .unwrap();
+
+        let contacts = world.detect_collisions::<4>();
+        assert!(contacts.is_empty(), "Distant bodies should not collide");
+    }
+
+    #[test]
+    fn test_broad_phase_regression() {
+        // Same setup as test_detect_collisions_sphere_sphere — results must match
+        let mut world = PhysicsWorld::<4>::new();
+        world
+            .add_body(
+                RigidBody::new(1.0)
+                    .with_position(Vector3::new(0.0, 0.0, 0.0))
+                    .with_collider(Collider::Sphere { radius: 1.0 }),
+            )
+            .unwrap();
+        world
+            .add_body(
+                RigidBody::new(1.0)
+                    .with_position(Vector3::new(1.5, 0.0, 0.0))
+                    .with_collider(Collider::Sphere { radius: 1.0 }),
+            )
+            .unwrap();
+
+        let contacts = world.detect_collisions::<4>();
+        assert_eq!(contacts.len(), 1, "Overlapping spheres should produce one contact");
+        assert!(contacts[0].penetration > 0.0);
     }
 }

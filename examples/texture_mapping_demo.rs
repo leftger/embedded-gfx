@@ -160,6 +160,7 @@ fn main() {
         colors: &[],
         lines: &[],
         normals: &[],
+        vertex_normals: &[],
         uvs: &cube_uvs,
         texture_id: Some(current_texture_id),
     };

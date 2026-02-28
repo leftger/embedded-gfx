@@ -4,6 +4,10 @@ use heapless::index_set::FnvIndexSet;
 use log::error;
 use nalgebra::{Point3, Similarity3, UnitQuaternion, Vector3};
 
+// ComplexField provides sqrt() for f32 in no_std via libm
+#[allow(unused_imports)]
+use nalgebra::ComplexField;
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum RenderMode {
     Points,
@@ -15,6 +19,7 @@ pub enum RenderMode {
         specular_intensity: f32,
         shininess: f32,
     },
+    GouraudLightDir(Vector3<f32>),
 }
 #[derive(Debug, Default, Copy, Clone)]
 pub struct Geometry<'a> {
@@ -23,6 +28,9 @@ pub struct Geometry<'a> {
     pub colors: &'a [Rgb565],
     pub lines: &'a [[usize; 2]],
     pub normals: &'a [[f32; 3]],
+    /// Per-vertex normals for smooth (Gouraud) shading.
+    /// If non-empty, must have the same length as `vertices`.
+    pub vertex_normals: &'a [[f32; 3]],
     /// UV texture coordinates (one per vertex)
     pub uvs: &'a [[f32; 2]],
     /// Optional texture ID for this geometry
@@ -60,6 +68,11 @@ impl Geometry<'_> {
 
         if !self.uvs.is_empty() && self.uvs.len() != self.vertices.len() {
             error!("UVs are not the same length as vertices");
+            return false;
+        }
+
+        if !self.vertex_normals.is_empty() && self.vertex_normals.len() != self.vertices.len() {
+            error!("Vertex normals are not the same length as vertices");
             return false;
         }
 
@@ -263,6 +276,49 @@ impl<'a> K3dMesh<'a> {
     }
 }
 
+/// Compute per-vertex normals by averaging the face normals of all faces
+/// that share each vertex, then normalizing.
+///
+/// # Type Parameters
+/// * `V` - Maximum number of vertices (capacity of the returned Vec)
+///
+/// # Returns
+/// A heapless Vec with one normal per vertex. Vertices not referenced by any
+/// face get a zero normal.
+pub fn compute_vertex_normals<const V: usize>(
+    vertices: &[[f32; 3]],
+    faces: &[[usize; 3]],
+    face_normals: &[[f32; 3]],
+) -> Vec<[f32; 3], V> {
+    let mut normals = Vec::<[f32; 3], V>::new();
+    for _ in 0..vertices.len() {
+        if normals.push([0.0, 0.0, 0.0]).is_err() {
+            break;
+        }
+    }
+
+    for (face, fn_arr) in faces.iter().zip(face_normals.iter()) {
+        for &vi in face {
+            if vi < normals.len() {
+                normals[vi][0] += fn_arr[0];
+                normals[vi][1] += fn_arr[1];
+                normals[vi][2] += fn_arr[2];
+            }
+        }
+    }
+
+    for n in normals.iter_mut() {
+        let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+        if len > 1e-10 {
+            n[0] /= len;
+            n[1] /= len;
+            n[2] /= len;
+        }
+    }
+
+    normals
+}
+
 #[cfg(test)]
 mod tests {
     extern crate std;
@@ -279,6 +335,7 @@ mod tests {
             colors: &[],
             lines: &[],
             normals: &[],
+            vertex_normals: &[],
             uvs: &[],
             texture_id: None,
         };
@@ -298,6 +355,7 @@ mod tests {
             colors: &[],
             lines: &[],
             normals: &[],
+            vertex_normals: &[],
             uvs: &[],
             texture_id: None,
         };
@@ -318,6 +376,7 @@ mod tests {
             colors: &[],
             lines: &lines,
             normals: &[],
+            vertex_normals: &[],
             uvs: &[],
             texture_id: None,
         };
@@ -337,6 +396,7 @@ mod tests {
             colors: &colors,
             lines: &[],
             normals: &[],
+            vertex_normals: &[],
             uvs: &[],
             texture_id: None,
         };
@@ -387,6 +447,7 @@ mod tests {
             colors: &[],
             lines: &[],
             normals: &[],
+            vertex_normals: &[],
             uvs: &[],
             texture_id: None,
         };
@@ -406,6 +467,7 @@ mod tests {
             colors: &[],
             lines: &[],
             normals: &[],
+            vertex_normals: &[],
             uvs: &[],
             texture_id: None,
         };
@@ -424,6 +486,7 @@ mod tests {
             colors: &[],
             lines: &[],
             normals: &[],
+            vertex_normals: &[],
             uvs: &[],
             texture_id: None,
         };
@@ -442,6 +505,7 @@ mod tests {
             colors: &[],
             lines: &[],
             normals: &[],
+            vertex_normals: &[],
             uvs: &[],
             texture_id: None,
         };
@@ -460,6 +524,7 @@ mod tests {
             colors: &[],
             lines: &[],
             normals: &[],
+            vertex_normals: &[],
             uvs: &[],
             texture_id: None,
         };
@@ -480,6 +545,7 @@ mod tests {
             colors: &[],
             lines: &[],
             normals: &[],
+            vertex_normals: &[],
             uvs: &[],
             texture_id: None,
         };
@@ -499,6 +565,7 @@ mod tests {
             colors: &[],
             lines: &[],
             normals: &[],
+            vertex_normals: &[],
             uvs: &[],
             texture_id: None,
         };
@@ -520,6 +587,7 @@ mod tests {
             colors: &[],
             lines: &[],
             normals: &[],
+            vertex_normals: &[],
             uvs: &[],
             texture_id: None,
         };
@@ -534,5 +602,69 @@ mod tests {
 
         mesh.set_render_mode(RenderMode::SolidLightDir(Vector3::new(0.0, 1.0, 0.0)));
         assert!(matches!(mesh.render_mode, RenderMode::SolidLightDir(_)));
+    }
+
+    #[test]
+    fn test_compute_vertex_normals_single_triangle() {
+        let vertices = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
+        let faces = [[0, 1, 2]];
+        let face_normals = [[0.0, 0.0, 1.0]];
+
+        let vn = compute_vertex_normals::<8>(&vertices, &faces, &face_normals);
+        assert_eq!(vn.len(), 3);
+        for n in vn.iter() {
+            assert!((n[0] - 0.0).abs() < 1e-5);
+            assert!((n[1] - 0.0).abs() < 1e-5);
+            assert!((n[2] - 1.0).abs() < 1e-5);
+        }
+    }
+
+    #[test]
+    fn test_compute_vertex_normals_shared_edge() {
+        // Two triangles sharing edge (0,1), with normals pointing in +Z and +Y
+        let vertices = [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.5, 0.0, 1.0],
+            [0.5, 1.0, 0.0],
+        ];
+        let faces = [[0, 1, 2], [0, 1, 3]];
+        let face_normals = [[0.0, 0.0, 1.0], [0.0, 1.0, 0.0]];
+
+        let vn = compute_vertex_normals::<8>(&vertices, &faces, &face_normals);
+        assert_eq!(vn.len(), 4);
+
+        // Shared vertices 0 and 1 should have averaged normals
+        let _expected_len = (0.5f32 * 0.5 + 0.5 * 0.5).sqrt(); // ~0.707
+        for i in 0..2 {
+            let n = &vn[i];
+            let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+            assert!((len - 1.0).abs() < 1e-5, "Normal should be unit length");
+            assert!((n[1] - n[2]).abs() < 1e-5, "Y and Z components should be equal for shared verts");
+        }
+
+        // Vertex 2: only in face 0, should be [0,0,1]
+        assert!((vn[2][2] - 1.0).abs() < 1e-5);
+        // Vertex 3: only in face 1, should be [0,1,0]
+        assert!((vn[3][1] - 1.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_geometry_validation_vertex_normals_length_mismatch() {
+        let vertices = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]];
+        let vn = [[0.0, 0.0, 1.0]]; // Only 1 normal for 2 vertices
+
+        let geometry = Geometry {
+            vertices: &vertices,
+            faces: &[],
+            colors: &[],
+            lines: &[],
+            normals: &[],
+            vertex_normals: &vn,
+            uvs: &[],
+            texture_id: None,
+        };
+
+        assert!(!geometry.check_validity());
     }
 }

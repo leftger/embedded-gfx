@@ -640,7 +640,10 @@ mod tests {
             let n = &vn[i];
             let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
             assert!((len - 1.0).abs() < 1e-5, "Normal should be unit length");
-            assert!((n[1] - n[2]).abs() < 1e-5, "Y and Z components should be equal for shared verts");
+            assert!(
+                (n[1] - n[2]).abs() < 1e-5,
+                "Y and Z components should be equal for shared verts"
+            );
         }
 
         // Vertex 2: only in face 0, should be [0,0,1]

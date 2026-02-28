@@ -34,6 +34,17 @@ jobs:
     - name: Integration tests
       run: cargo test --test integration_tests
 
+  fmt:
+    name: Formatting
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        components: rustfmt
+    - name: cargo fmt
+      run: cargo fmt --all -- --check
+
   clippy:
     name: Clippy
     runs-on: ubuntu-latest

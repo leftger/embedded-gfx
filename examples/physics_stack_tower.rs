@@ -37,26 +37,44 @@ use std::time::Duration;
 
 fn make_box() -> (Vec<[f32; 3]>, Vec<[usize; 3]>, Vec<[f32; 3]>) {
     let vertices = vec![
-        [-0.5, -0.3, 0.5], [0.5, -0.3, 0.5], [0.5, 0.3, 0.5], [-0.5, 0.3, 0.5],
-        [-0.5, -0.3, -0.5], [0.5, -0.3, -0.5], [0.5, 0.3, -0.5], [-0.5, 0.3, -0.5],
+        [-0.5, -0.3, 0.5],
+        [0.5, -0.3, 0.5],
+        [0.5, 0.3, 0.5],
+        [-0.5, 0.3, 0.5],
+        [-0.5, -0.3, -0.5],
+        [0.5, -0.3, -0.5],
+        [0.5, 0.3, -0.5],
+        [-0.5, 0.3, -0.5],
     ];
 
     let faces = vec![
-        [0, 1, 2], [0, 2, 3], // front
-        [5, 4, 7], [5, 7, 6], // back
-        [3, 2, 6], [3, 6, 7], // top
-        [4, 5, 1], [4, 1, 0], // bottom
-        [1, 5, 6], [1, 6, 2], // right
-        [4, 0, 3], [4, 3, 7], // left
+        [0, 1, 2],
+        [0, 2, 3], // front
+        [5, 4, 7],
+        [5, 7, 6], // back
+        [3, 2, 6],
+        [3, 6, 7], // top
+        [4, 5, 1],
+        [4, 1, 0], // bottom
+        [1, 5, 6],
+        [1, 6, 2], // right
+        [4, 0, 3],
+        [4, 3, 7], // left
     ];
 
     let normals = vec![
-        [0.0, 0.0, 1.0], [0.0, 0.0, 1.0],
-        [0.0, 0.0, -1.0], [0.0, 0.0, -1.0],
-        [0.0, 1.0, 0.0], [0.0, 1.0, 0.0],
-        [0.0, -1.0, 0.0], [0.0, -1.0, 0.0],
-        [1.0, 0.0, 0.0], [1.0, 0.0, 0.0],
-        [-1.0, 0.0, 0.0], [-1.0, 0.0, 0.0],
+        [0.0, 0.0, 1.0],
+        [0.0, 0.0, 1.0],
+        [0.0, 0.0, -1.0],
+        [0.0, 0.0, -1.0],
+        [0.0, 1.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [0.0, -1.0, 0.0],
+        [0.0, -1.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [-1.0, 0.0, 0.0],
+        [-1.0, 0.0, 0.0],
     ];
 
     (vertices, faces, normals)
@@ -107,7 +125,9 @@ fn main() {
 
         let box_body = RigidBody::new(1.0)
             .with_position(pos)
-            .with_collider(Collider::Aabb { half_extents: BOX_HALF_EXTENTS })
+            .with_collider(Collider::Aabb {
+                half_extents: BOX_HALF_EXTENTS,
+            })
             .with_restitution(0.2) // Low bounce for stable stacking
             .with_friction(0.8) // High friction to prevent sliding
             .with_damping(0.05) // Some damping for stability
@@ -135,20 +155,24 @@ fn main() {
     }
 
     // Static floor
-    let _floor_id = physics.add_body(
-        RigidBody::new_static()
-            .with_position(Vector3::new(0.0, -0.1, 0.0))
-            .with_collider(Collider::Aabb {
-                half_extents: Vector3::new(10.0, 0.1, 10.0),
-            })
-            .with_restitution(0.3)
-            .with_friction(0.9)
-    ).unwrap();
+    let _floor_id = physics
+        .add_body(
+            RigidBody::new_static()
+                .with_position(Vector3::new(0.0, -0.1, 0.0))
+                .with_collider(Collider::Aabb {
+                    half_extents: Vector3::new(10.0, 0.1, 10.0),
+                })
+                .with_restitution(0.3)
+                .with_friction(0.9),
+        )
+        .unwrap();
 
     // Floor visual mesh
     let floor_verts: Vec<[f32; 3]> = vec![
-        [-8.0, 0.0, 5.0], [8.0, 0.0, 5.0],
-        [8.0, 0.0, -5.0], [-8.0, 0.0, -5.0],
+        [-8.0, 0.0, 5.0],
+        [8.0, 0.0, 5.0],
+        [8.0, 0.0, -5.0],
+        [-8.0, 0.0, -5.0],
     ];
     let floor_faces: Vec<[usize; 3]> = vec![[0, 1, 2], [0, 2, 3]];
     let floor_normals: Vec<[f32; 3]> = vec![[0.0, 1.0, 0.0], [0.0, 1.0, 0.0]];
@@ -256,9 +280,13 @@ fn main() {
                 .unwrap();
         }
 
-        Text::new("SPC=impulse ARROWS=push R=reset", Point::new(10, 470), text_style)
-            .draw(&mut display)
-            .unwrap();
+        Text::new(
+            "SPC=impulse ARROWS=push R=reset",
+            Point::new(10, 470),
+            text_style,
+        )
+        .draw(&mut display)
+        .unwrap();
 
         window.update(&display);
         thread::sleep(Duration::from_millis(16));

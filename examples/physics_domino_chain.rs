@@ -33,39 +33,57 @@ use std::time::Duration;
 
 fn make_domino() -> (Vec<[f32; 3]>, Vec<[usize; 3]>, Vec<[f32; 3]>) {
     // Thin rectangular box: width=0.2, height=2.0, depth=1.0
-    let hw = 0.1;  // half width
-    let hh = 1.0;  // half height
-    let hd = 0.5;  // half depth
+    let hw = 0.1; // half width
+    let hh = 1.0; // half height
+    let hd = 0.5; // half depth
 
     let vertices = vec![
         // Front face
-        [-hw, -hh, hd], [hw, -hh, hd], [hw, hh, hd], [-hw, hh, hd],
+        [-hw, -hh, hd],
+        [hw, -hh, hd],
+        [hw, hh, hd],
+        [-hw, hh, hd],
         // Back face
-        [-hw, -hh, -hd], [hw, -hh, -hd], [hw, hh, -hd], [-hw, hh, -hd],
+        [-hw, -hh, -hd],
+        [hw, -hh, -hd],
+        [hw, hh, -hd],
+        [-hw, hh, -hd],
     ];
 
     let faces = vec![
         // Front
-        [0, 1, 2], [0, 2, 3],
+        [0, 1, 2],
+        [0, 2, 3],
         // Back
-        [5, 4, 7], [5, 7, 6],
+        [5, 4, 7],
+        [5, 7, 6],
         // Top
-        [3, 2, 6], [3, 6, 7],
+        [3, 2, 6],
+        [3, 6, 7],
         // Bottom
-        [4, 5, 1], [4, 1, 0],
+        [4, 5, 1],
+        [4, 1, 0],
         // Right
-        [1, 5, 6], [1, 6, 2],
+        [1, 5, 6],
+        [1, 6, 2],
         // Left
-        [4, 0, 3], [4, 3, 7],
+        [4, 0, 3],
+        [4, 3, 7],
     ];
 
     let normals = vec![
-        [0.0, 0.0, 1.0], [0.0, 0.0, 1.0],
-        [0.0, 0.0, -1.0], [0.0, 0.0, -1.0],
-        [0.0, 1.0, 0.0], [0.0, 1.0, 0.0],
-        [0.0, -1.0, 0.0], [0.0, -1.0, 0.0],
-        [1.0, 0.0, 0.0], [1.0, 0.0, 0.0],
-        [-1.0, 0.0, 0.0], [-1.0, 0.0, 0.0],
+        [0.0, 0.0, 1.0],
+        [0.0, 0.0, 1.0],
+        [0.0, 0.0, -1.0],
+        [0.0, 0.0, -1.0],
+        [0.0, 1.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [0.0, -1.0, 0.0],
+        [0.0, -1.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [-1.0, 0.0, 0.0],
+        [-1.0, 0.0, 0.0],
     ];
 
     (vertices, faces, normals)
@@ -107,7 +125,9 @@ fn main() {
 
         let domino = RigidBody::new(0.5) // Light mass for easy tipping
             .with_position(pos)
-            .with_collider(Collider::Aabb { half_extents: DOMINO_HALF_EXTENTS })
+            .with_collider(Collider::Aabb {
+                half_extents: DOMINO_HALF_EXTENTS,
+            })
             .with_restitution(0.1) // Low bounce
             .with_friction(0.6) // Good friction to prevent sliding
             .with_damping(0.02)
@@ -143,20 +163,24 @@ fn main() {
     }
 
     // Static floor
-    let _floor_id = physics.add_body(
-        RigidBody::new_static()
-            .with_position(Vector3::new(0.0, -0.1, 0.0))
-            .with_collider(Collider::Aabb {
-                half_extents: Vector3::new(10.0, 0.1, 15.0),
-            })
-            .with_restitution(0.3)
-            .with_friction(0.7)
-    ).unwrap();
+    let _floor_id = physics
+        .add_body(
+            RigidBody::new_static()
+                .with_position(Vector3::new(0.0, -0.1, 0.0))
+                .with_collider(Collider::Aabb {
+                    half_extents: Vector3::new(10.0, 0.1, 15.0),
+                })
+                .with_restitution(0.3)
+                .with_friction(0.7),
+        )
+        .unwrap();
 
     // Floor visual mesh
     let floor_verts: Vec<[f32; 3]> = vec![
-        [-8.0, 0.0, 10.0], [8.0, 0.0, 10.0],
-        [8.0, 0.0, -10.0], [-8.0, 0.0, -10.0],
+        [-8.0, 0.0, 10.0],
+        [8.0, 0.0, 10.0],
+        [8.0, 0.0, -10.0],
+        [-8.0, 0.0, -10.0],
     ];
     let floor_faces: Vec<[usize; 3]> = vec![[0, 1, 2], [0, 2, 3]];
     let floor_normals: Vec<[f32; 3]> = vec![[0.0, 1.0, 0.0], [0.0, 1.0, 0.0]];
@@ -244,9 +268,13 @@ fn main() {
                 .unwrap();
         }
 
-        Text::new("SPACE=push first domino R=reset", Point::new(10, 470), text_style)
-            .draw(&mut display)
-            .unwrap();
+        Text::new(
+            "SPACE=push first domino R=reset",
+            Point::new(10, 470),
+            text_style,
+        )
+        .draw(&mut display)
+        .unwrap();
 
         window.update(&display);
         thread::sleep(Duration::from_millis(16));

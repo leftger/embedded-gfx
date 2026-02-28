@@ -5,8 +5,8 @@
 //! double-buffered rendering where the CPU can render to one buffer while
 //! the display hardware transfers another buffer.
 
-use embedded_graphics_framebuf::{backends::DMACapableFrameBufferBackend, FrameBuf};
 use embedded_graphics_core::pixelcolor::Rgb565;
+use embedded_graphics_framebuf::{FrameBuf, backends::DMACapableFrameBufferBackend};
 
 /// Error types for display backend operations
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -129,7 +129,11 @@ mod tests {
         let backend = SimulatorBackend::new();
         // Backend should exist and be ready
         // Use explicit trait method call with types
-        assert!(<SimulatorBackend as DisplayBackend<320, 240, TestBackend>>::is_dma_ready(&backend));
+        assert!(<SimulatorBackend as DisplayBackend<
+            320,
+            240,
+            TestBackend,
+        >>::is_dma_ready(&backend));
     }
 
     #[test]
@@ -137,10 +141,18 @@ mod tests {
         let mut backend = SimulatorBackend::new();
 
         // Should always be ready
-        assert!(<SimulatorBackend as DisplayBackend<320, 240, TestBackend>>::is_dma_ready(&backend));
+        assert!(<SimulatorBackend as DisplayBackend<
+            320,
+            240,
+            TestBackend,
+        >>::is_dma_ready(&backend));
 
         // Wait should be no-op
         <SimulatorBackend as DisplayBackend<320, 240, TestBackend>>::wait_for_dma(&mut backend);
-        assert!(<SimulatorBackend as DisplayBackend<320, 240, TestBackend>>::is_dma_ready(&backend));
+        assert!(<SimulatorBackend as DisplayBackend<
+            320,
+            240,
+            TestBackend,
+        >>::is_dma_ready(&backend));
     }
 }

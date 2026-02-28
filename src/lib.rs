@@ -33,8 +33,8 @@ pub mod texture;
 
 // Re-export framebuffer types from external crate for user convenience
 pub use embedded_graphics_framebuf::{
-    backends::{DMACapableFrameBufferBackend, EndianCorrectedBuffer, EndianCorrection},
     FrameBuf,
+    backends::{DMACapableFrameBufferBackend, EndianCorrectedBuffer, EndianCorrection},
 };
 
 #[derive(Debug, Clone)]
@@ -291,9 +291,7 @@ impl K3dengine {
                     let ambient_color = color_as_float * 0.1;
                     let adjusted_dir = Vector3::new(direction.x, direction.y, -direction.z);
 
-                    for (face, face_normal) in
-                        geometry.faces.iter().zip(geometry.normals.iter())
-                    {
+                    for (face, face_normal) in geometry.faces.iter().zip(geometry.normals.iter()) {
                         let fn_vec = Vector3::new(face_normal[0], face_normal[1], face_normal[2]);
                         let transformed_fn = mesh.model_matrix.transform_vector(&fn_vec);
 
@@ -308,8 +306,7 @@ impl K3dengine {
                             let vertex_colors: [Rgb565; 3] = core::array::from_fn(|k| {
                                 let vn = if !geometry.vertex_normals.is_empty() {
                                     let vn_arr = geometry.vertex_normals[face[k]];
-                                    let vn_vec =
-                                        Vector3::new(vn_arr[0], vn_arr[1], vn_arr[2]);
+                                    let vn_vec = Vector3::new(vn_arr[0], vn_arr[1], vn_arr[2]);
                                     mesh.model_matrix.transform_vector(&vn_vec)
                                 } else {
                                     transformed_fn
@@ -331,7 +328,6 @@ impl K3dengine {
                             });
                         }
                     }
-
                 }
 
                 RenderMode::BlinnPhong {
@@ -673,7 +669,9 @@ mod tests {
         };
 
         let mut mesh = mesh::K3dMesh::new(geometry);
-        mesh.set_render_mode(mesh::RenderMode::GouraudLightDir(Vector3::new(0.0, 0.0, 1.0)));
+        mesh.set_render_mode(mesh::RenderMode::GouraudLightDir(Vector3::new(
+            0.0, 0.0, 1.0,
+        )));
 
         let mut primitives = std::vec::Vec::new();
         engine.render(std::iter::once(&mesh), |prim| {
@@ -683,7 +681,10 @@ mod tests {
         // Should emit GouraudTriangleWithDepth primitives
         assert!(!primitives.is_empty());
         for prim in &primitives {
-            assert!(matches!(prim, DrawPrimitive::GouraudTriangleWithDepth { .. }));
+            assert!(matches!(
+                prim,
+                DrawPrimitive::GouraudTriangleWithDepth { .. }
+            ));
         }
     }
 }

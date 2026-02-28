@@ -23,8 +23,8 @@
 //! skeleton.update_transforms();
 //! ```
 
-use nalgebra::{Matrix4, Point3, UnitQuaternion, Vector3};
 use heapless::Vec;
+use nalgebra::{Matrix4, Point3, UnitQuaternion, Vector3};
 
 #[allow(unused_imports)]
 use nalgebra::ComplexField;
@@ -140,9 +140,7 @@ pub struct Skeleton<const N: usize> {
 impl<const N: usize> Skeleton<N> {
     /// Create a new empty skeleton.
     pub fn new() -> Self {
-        Self {
-            bones: Vec::new(),
-        }
+        Self { bones: Vec::new() }
     }
 
     /// Add a bone to the skeleton.
@@ -196,7 +194,8 @@ impl<const N: usize> Skeleton<N> {
         self.update_transforms();
 
         for bone in self.bones.iter_mut() {
-            bone.inverse_bind_pose = bone.world_transform
+            bone.inverse_bind_pose = bone
+                .world_transform
                 .try_inverse()
                 .unwrap_or(Matrix4::identity());
         }
@@ -321,7 +320,10 @@ pub fn apply_skinning<const N: usize>(
     source_vertices: &[[f32; 3]],
     output_vertices: &mut [[f32; 3]],
 ) -> usize {
-    let count = source_vertices.len().min(output_vertices.len()).min(skinning_data.vertex_skinning.len());
+    let count = source_vertices
+        .len()
+        .min(output_vertices.len())
+        .min(skinning_data.vertex_skinning.len());
 
     for i in 0..count {
         let vertex = Point3::new(
@@ -370,7 +372,10 @@ pub fn apply_skinning_to_normals<const N: usize>(
     source_normals: &[[f32; 3]],
     output_normals: &mut [[f32; 3]],
 ) -> usize {
-    let count = source_normals.len().min(output_normals.len()).min(skinning_data.vertex_skinning.len());
+    let count = source_normals
+        .len()
+        .min(output_normals.len())
+        .min(skinning_data.vertex_skinning.len());
 
     for i in 0..count {
         let normal = Vector3::new(
@@ -438,10 +443,12 @@ mod tests {
         let root = skeleton.add_bone(Bone::new("root"), None).unwrap();
 
         // Child offset by (1, 0, 0)
-        let child = skeleton.add_bone(
-            Bone::new("child").with_position(Vector3::new(1.0, 0.0, 0.0)),
-            Some(root)
-        ).unwrap();
+        let child = skeleton
+            .add_bone(
+                Bone::new("child").with_position(Vector3::new(1.0, 0.0, 0.0)),
+                Some(root),
+            )
+            .unwrap();
 
         skeleton.update_transforms();
 

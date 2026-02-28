@@ -42,11 +42,7 @@ fn make_sphere(segments: usize) -> (Vec<[f32; 3]>, Vec<[usize; 3]>, Vec<[f32; 3]
 
     for i in 0..segments {
         let theta = (i as f32 / segments as f32) * 2.0 * std::f32::consts::PI;
-        vertices.push([
-            radius * theta.cos(),
-            0.0,
-            radius * theta.sin(),
-        ]);
+        vertices.push([radius * theta.cos(), 0.0, radius * theta.sin()]);
     }
 
     // Top cap
@@ -110,17 +106,18 @@ fn main() {
 
         // Static anchor point above
         let anchor_pos = Vector3::new(x, CHAIN_LENGTH, 0.0);
-        let anchor_id = physics.add_body(
-            RigidBody::new_static()
-                .with_position(anchor_pos)
-        ).unwrap();
+        let anchor_id = physics
+            .add_body(RigidBody::new_static().with_position(anchor_pos))
+            .unwrap();
         anchor_ids.push(anchor_id);
 
         // Dynamic sphere
         let sphere_pos = Vector3::new(x, 0.0, 0.0);
         let sphere = RigidBody::new(1.0)
             .with_position(sphere_pos)
-            .with_collider(Collider::Sphere { radius: SPHERE_RADIUS })
+            .with_collider(Collider::Sphere {
+                radius: SPHERE_RADIUS,
+            })
             .with_restitution(0.99) // Nearly perfect elastic collision
             .with_friction(0.0) // Frictionless for clean momentum transfer
             .with_damping(0.0) // No damping for conservation
@@ -131,13 +128,15 @@ fn main() {
         sphere_ids.push(sphere_id);
 
         // Distance constraint acting as string
-        physics.add_distance_constraint(
-            anchor_id,
-            Vector3::zeros(),
-            sphere_id,
-            Vector3::zeros(),
-            0.0, // Rigid constraint
-        ).unwrap();
+        physics
+            .add_distance_constraint(
+                anchor_id,
+                Vector3::zeros(),
+                sphere_id,
+                Vector3::zeros(),
+                0.0, // Rigid constraint
+            )
+            .unwrap();
 
         // Create visual mesh
         let geometry = Geometry {
@@ -275,9 +274,13 @@ fn main() {
                 .draw(&mut display)
                 .unwrap();
         }
-        Text::new("1-5=pull SPACE=release R=reset", Point::new(10, 470), text_style)
-            .draw(&mut display)
-            .unwrap();
+        Text::new(
+            "1-5=pull SPACE=release R=reset",
+            Point::new(10, 470),
+            text_style,
+        )
+        .draw(&mut display)
+        .unwrap();
 
         window.update(&display);
         thread::sleep(Duration::from_millis(16));

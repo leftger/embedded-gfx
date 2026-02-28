@@ -14,11 +14,11 @@
 //! - Predictable frame timing
 
 use crate::display_backend::{DisplayBackend, DisplayError};
-use embedded_graphics_framebuf::{
-    backends::{DMACapableFrameBufferBackend, EndianCorrectedBuffer, EndianCorrection},
-    FrameBuf,
-};
 use embedded_graphics_core::pixelcolor::Rgb565;
+use embedded_graphics_framebuf::{
+    FrameBuf,
+    backends::{DMACapableFrameBufferBackend, EndianCorrectedBuffer, EndianCorrection},
+};
 
 /// Double-buffered swap chain for tear-free rendering
 ///

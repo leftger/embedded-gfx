@@ -41,11 +41,7 @@ fn make_sphere(segments: usize) -> (Vec<[f32; 3]>, Vec<[usize; 3]>, Vec<[f32; 3]
 
     for i in 0..segments {
         let theta = (i as f32 / segments as f32) * 2.0 * std::f32::consts::PI;
-        vertices.push([
-            radius * theta.cos(),
-            0.0,
-            radius * theta.sin(),
-        ]);
+        vertices.push([radius * theta.cos(), 0.0, radius * theta.sin()]);
     }
 
     for i in 0..segments {
@@ -110,7 +106,9 @@ fn main() {
 
         let ball = RigidBody::new(1.0)
             .with_position(pos)
-            .with_collider(Collider::Sphere { radius: BALL_RADIUS })
+            .with_collider(Collider::Sphere {
+                radius: BALL_RADIUS,
+            })
             .with_restitution(restitutions[i])
             .with_friction(0.3)
             .with_damping(0.01)
@@ -138,20 +136,24 @@ fn main() {
     }
 
     // Static floor
-    let _floor_id = physics.add_body(
-        RigidBody::new_static()
-            .with_position(Vector3::new(0.0, -0.1, 0.0))
-            .with_collider(Collider::Aabb {
-                half_extents: Vector3::new(15.0, 0.1, 10.0),
-            })
-            .with_restitution(1.0) // Floor is perfectly elastic
-            .with_friction(0.5)
-    ).unwrap();
+    let _floor_id = physics
+        .add_body(
+            RigidBody::new_static()
+                .with_position(Vector3::new(0.0, -0.1, 0.0))
+                .with_collider(Collider::Aabb {
+                    half_extents: Vector3::new(15.0, 0.1, 10.0),
+                })
+                .with_restitution(1.0) // Floor is perfectly elastic
+                .with_friction(0.5),
+        )
+        .unwrap();
 
     // Floor visual mesh
     let floor_verts: Vec<[f32; 3]> = vec![
-        [-12.0, 0.0, 5.0], [12.0, 0.0, 5.0],
-        [12.0, 0.0, -5.0], [-12.0, 0.0, -5.0],
+        [-12.0, 0.0, 5.0],
+        [12.0, 0.0, 5.0],
+        [12.0, 0.0, -5.0],
+        [-12.0, 0.0, -5.0],
     ];
     let floor_faces: Vec<[usize; 3]> = vec![[0, 1, 2], [0, 2, 3]];
     let floor_normals: Vec<[f32; 3]> = vec![[0.0, 1.0, 0.0], [0.0, 1.0, 0.0]];

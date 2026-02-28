@@ -19,9 +19,9 @@
 use embedded_3dgfx::K3dengine;
 use embedded_3dgfx::draw::draw;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
-use embedded_3dgfx::softbody::SoftBody;
 #[cfg(feature = "perfcounter")]
 use embedded_3dgfx::perfcounter::PerformanceCounter;
+use embedded_3dgfx::softbody::SoftBody;
 use embedded_graphics::mono_font::{MonoTextStyle, ascii::FONT_6X10};
 use embedded_graphics::text::Text;
 use embedded_graphics_core::pixelcolor::{Rgb565, RgbColor};
@@ -56,12 +56,8 @@ fn main() {
     let stiffness = 150.0;
     let damping = 0.5;
 
-    let mut jelly = SoftBody::<64, 256>::create_jelly_cube(
-        cube_size,
-        spacing,
-        stiffness,
-        damping,
-    ).expect("Failed to create jelly cube");
+    let mut jelly = SoftBody::<64, 256>::create_jelly_cube(cube_size, spacing, stiffness, damping)
+        .expect("Failed to create jelly cube");
 
     // Position cube above ground
     for particle in jelly.particles.iter_mut() {
@@ -81,9 +77,12 @@ fn main() {
         for y in 0..cube_size {
             for x in 0..cube_size {
                 // Only add faces on the outer surface
-                let is_surface = x == 0 || x == cube_size - 1 ||
-                                y == 0 || y == cube_size - 1 ||
-                                z == 0 || z == cube_size - 1;
+                let is_surface = x == 0
+                    || x == cube_size - 1
+                    || y == 0
+                    || y == cube_size - 1
+                    || z == 0
+                    || z == cube_size - 1;
 
                 if is_surface {
                     let idx = z * cube_size * cube_size + y * cube_size + x;
@@ -139,11 +138,9 @@ fn main() {
                     Keycode::R => {
                         // Reset jelly cube
                         jelly = SoftBody::<64, 256>::create_jelly_cube(
-                            cube_size,
-                            spacing,
-                            stiffness,
-                            damping,
-                        ).expect("Failed to create jelly cube");
+                            cube_size, spacing, stiffness, damping,
+                        )
+                        .expect("Failed to create jelly cube");
 
                         for particle in jelly.particles.iter_mut() {
                             particle.position.y += 4.0;

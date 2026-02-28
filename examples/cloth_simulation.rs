@@ -20,9 +20,9 @@
 use embedded_3dgfx::K3dengine;
 use embedded_3dgfx::draw::draw;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
-use embedded_3dgfx::softbody::SoftBody;
 #[cfg(feature = "perfcounter")]
 use embedded_3dgfx::perfcounter::PerformanceCounter;
+use embedded_3dgfx::softbody::SoftBody;
 use embedded_graphics::mono_font::{MonoTextStyle, ascii::FONT_6X10};
 use embedded_graphics::text::Text;
 use embedded_graphics_core::pixelcolor::{Rgb565, RgbColor};
@@ -58,13 +58,9 @@ fn main() {
     let stiffness = 200.0;
     let damping = 1.0;
 
-    let mut cloth = SoftBody::<64, 256>::create_cloth(
-        cloth_width,
-        cloth_height,
-        spacing,
-        stiffness,
-        damping,
-    ).expect("Failed to create cloth");
+    let mut cloth =
+        SoftBody::<64, 256>::create_cloth(cloth_width, cloth_height, spacing, stiffness, damping)
+            .expect("Failed to create cloth");
 
     // Position cloth at nice viewing height
     for particle in cloth.particles.iter_mut() {
@@ -133,7 +129,8 @@ fn main() {
                             spacing,
                             stiffness,
                             damping,
-                        ).expect("Failed to create cloth");
+                        )
+                        .expect("Failed to create cloth");
 
                         for particle in cloth.particles.iter_mut() {
                             particle.position.y += 4.0;
@@ -183,7 +180,11 @@ fn main() {
         });
 
         // Display info
-        let gravity_text = if gravity_enabled { "Gravity: ON" } else { "Gravity: OFF" };
+        let gravity_text = if gravity_enabled {
+            "Gravity: ON"
+        } else {
+            "Gravity: OFF"
+        };
         Text::new(gravity_text, Point::new(10, 10), text_style)
             .draw(&mut display)
             .unwrap();

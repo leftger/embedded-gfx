@@ -19,9 +19,9 @@
 use embedded_3dgfx::K3dengine;
 use embedded_3dgfx::draw::draw;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
-use embedded_3dgfx::physics::{PhysicsWorld, RigidBody, Collider};
 #[cfg(feature = "perfcounter")]
 use embedded_3dgfx::perfcounter::PerformanceCounter;
+use embedded_3dgfx::physics::{Collider, PhysicsWorld, RigidBody};
 use embedded_graphics::mono_font::{MonoTextStyle, ascii::FONT_6X10};
 use embedded_graphics::text::Text;
 use embedded_graphics_core::pixelcolor::{Rgb565, RgbColor};
@@ -34,7 +34,11 @@ use std::f32::consts::PI;
 use std::thread;
 use std::time::Duration;
 
-fn create_capsule_mesh(height: f32, radius: f32, segments: usize) -> (Vec<[f32; 3]>, Vec<[usize; 3]>) {
+fn create_capsule_mesh(
+    height: f32,
+    radius: f32,
+    segments: usize,
+) -> (Vec<[f32; 3]>, Vec<[usize; 3]>) {
     let mut vertices = Vec::new();
     let mut faces = Vec::new();
 
@@ -111,7 +115,7 @@ fn main() {
             .with_collider(Collider::Aabb {
                 half_extents: Vector3::new(10.0, 0.5, 10.0),
             })
-            .with_position(Vector3::new(0.0, -0.5, 0.0))
+            .with_position(Vector3::new(0.0, -0.5, 0.0)),
     );
 
     // Add initial capsule
@@ -122,20 +126,26 @@ fn main() {
                 radius: 0.4,
             })
             .with_position(Vector3::new(0.0, 5.0, 0.0))
-            .with_restitution(0.3)
+            .with_restitution(0.3),
     );
 
     // Create meshes
     let (capsule_verts, capsule_faces) = create_capsule_mesh(2.0, 0.4, 6);
     let floor_verts = vec![
-        [-10.0, -0.5, -10.0], [10.0, -0.5, -10.0],
-        [10.0, -0.5, 10.0], [-10.0, -0.5, 10.0],
-        [-10.0, 0.5, -10.0], [10.0, 0.5, -10.0],
-        [10.0, 0.5, 10.0], [-10.0, 0.5, 10.0],
+        [-10.0, -0.5, -10.0],
+        [10.0, -0.5, -10.0],
+        [10.0, -0.5, 10.0],
+        [-10.0, -0.5, 10.0],
+        [-10.0, 0.5, -10.0],
+        [10.0, 0.5, -10.0],
+        [10.0, 0.5, 10.0],
+        [-10.0, 0.5, 10.0],
     ];
     let floor_faces = vec![
-        [0, 1, 2], [0, 2, 3], // Bottom
-        [4, 6, 5], [4, 7, 6], // Top
+        [0, 1, 2],
+        [0, 2, 3], // Bottom
+        [4, 6, 5],
+        [4, 7, 6], // Top
     ];
 
     println!("Capsule Physics Demo");
@@ -160,11 +170,7 @@ fn main() {
                                 height: 2.0,
                                 radius: 0.4,
                             })
-                            .with_position(Vector3::new(
-                                ((count % 3) as f32 - 1.0) * 1.5,
-                                8.0,
-                                0.0,
-                            ))
+                            .with_position(Vector3::new(((count % 3) as f32 - 1.0) * 1.5, 8.0, 0.0))
                             .with_restitution(0.3);
                         let _ = world.add_body(capsule);
                     }
@@ -175,11 +181,7 @@ fn main() {
                             .with_collider(Collider::Aabb {
                                 half_extents: Vector3::new(0.5, 0.5, 0.5),
                             })
-                            .with_position(Vector3::new(
-                                ((count % 4) as f32 - 1.5) * 1.0,
-                                6.0,
-                                0.0,
-                            ))
+                            .with_position(Vector3::new(((count % 4) as f32 - 1.5) * 1.0, 6.0, 0.0))
                             .with_restitution(0.4);
                         let _ = world.add_body(cube);
                     }
@@ -188,11 +190,7 @@ fn main() {
                         let count = world.bodies().count();
                         let sphere = RigidBody::new(1.0)
                             .with_collider(Collider::Sphere { radius: 0.5 })
-                            .with_position(Vector3::new(
-                                ((count % 5) as f32 - 2.0) * 0.8,
-                                7.0,
-                                0.0,
-                            ))
+                            .with_position(Vector3::new(((count % 5) as f32 - 2.0) * 0.8, 7.0, 0.0))
                             .with_restitution(0.6);
                         let _ = world.add_body(sphere);
                     }
@@ -205,7 +203,7 @@ fn main() {
                                 .with_collider(Collider::Aabb {
                                     half_extents: Vector3::new(10.0, 0.5, 10.0),
                                 })
-                                .with_position(Vector3::new(0.0, -0.5, 0.0))
+                                .with_position(Vector3::new(0.0, -0.5, 0.0)),
                         );
                     }
                     _ => {}
@@ -233,7 +231,7 @@ fn main() {
                     if body.body_type == embedded_3dgfx::physics::BodyType::Static {
                         (&floor_verts[..], &floor_faces[..], Rgb565::CSS_GRAY)
                     } else {
-                        continue
+                        continue;
                     }
                 }
                 _ => continue,
@@ -264,9 +262,13 @@ fn main() {
             });
         }
 
-        Text::new(&format!("Bodies: {}", world.bodies().count()), Point::new(10, 10), text_style)
-            .draw(&mut display)
-            .unwrap();
+        Text::new(
+            &format!("Bodies: {}", world.bodies().count()),
+            Point::new(10, 10),
+            text_style,
+        )
+        .draw(&mut display)
+        .unwrap();
 
         #[cfg(feature = "perfcounter")]
         {

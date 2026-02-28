@@ -19,9 +19,9 @@
 use embedded_3dgfx::K3dengine;
 use embedded_3dgfx::draw::draw;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
-use embedded_3dgfx::physics::{PhysicsWorld, RigidBody, Collider, Ray};
 #[cfg(feature = "perfcounter")]
 use embedded_3dgfx::perfcounter::PerformanceCounter;
+use embedded_3dgfx::physics::{Collider, PhysicsWorld, Ray, RigidBody};
 use embedded_graphics::mono_font::{MonoTextStyle, ascii::FONT_6X10};
 use embedded_graphics::text::Text;
 use embedded_graphics_core::pixelcolor::{Rgb565, RgbColor};
@@ -35,19 +35,29 @@ use std::time::Duration;
 
 fn create_cube_mesh() -> (Vec<[f32; 3]>, Vec<[usize; 3]>) {
     let vertices = vec![
-        [-0.5, -0.5, 0.5], [0.5, -0.5, 0.5],
-        [0.5, 0.5, 0.5], [-0.5, 0.5, 0.5],
-        [-0.5, -0.5, -0.5], [0.5, -0.5, -0.5],
-        [0.5, 0.5, -0.5], [-0.5, 0.5, -0.5],
+        [-0.5, -0.5, 0.5],
+        [0.5, -0.5, 0.5],
+        [0.5, 0.5, 0.5],
+        [-0.5, 0.5, 0.5],
+        [-0.5, -0.5, -0.5],
+        [0.5, -0.5, -0.5],
+        [0.5, 0.5, -0.5],
+        [-0.5, 0.5, -0.5],
     ];
 
     let faces = vec![
-        [0, 1, 2], [0, 2, 3], // Front
-        [5, 4, 7], [5, 7, 6], // Back
-        [3, 2, 6], [3, 6, 7], // Top
-        [4, 5, 1], [4, 1, 0], // Bottom
-        [1, 5, 6], [1, 6, 2], // Right
-        [4, 0, 3], [4, 3, 7], // Left
+        [0, 1, 2],
+        [0, 2, 3], // Front
+        [5, 4, 7],
+        [5, 7, 6], // Back
+        [3, 2, 6],
+        [3, 6, 7], // Top
+        [4, 5, 1],
+        [4, 1, 0], // Bottom
+        [1, 5, 6],
+        [1, 6, 2], // Right
+        [4, 0, 3],
+        [4, 3, 7], // Left
     ];
 
     (vertices, faces)
@@ -61,14 +71,27 @@ fn create_sphere_mesh(radius: f32) -> (Vec<[f32; 3]>, Vec<[usize; 3]>) {
     let t = (1.0 + 5.0_f32.sqrt()) / 2.0;
 
     let initial_verts = [
-        [-1.0, t, 0.0], [1.0, t, 0.0], [-1.0, -t, 0.0], [1.0, -t, 0.0],
-        [0.0, -1.0, t], [0.0, 1.0, t], [0.0, -1.0, -t], [0.0, 1.0, -t],
-        [t, 0.0, -1.0], [t, 0.0, 1.0], [-t, 0.0, -1.0], [-t, 0.0, 1.0],
+        [-1.0, t, 0.0],
+        [1.0, t, 0.0],
+        [-1.0, -t, 0.0],
+        [1.0, -t, 0.0],
+        [0.0, -1.0, t],
+        [0.0, 1.0, t],
+        [0.0, -1.0, -t],
+        [0.0, 1.0, -t],
+        [t, 0.0, -1.0],
+        [t, 0.0, 1.0],
+        [-t, 0.0, -1.0],
+        [-t, 0.0, 1.0],
     ];
 
     for v in &initial_verts {
         let len = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
-        vertices.push([v[0] / len * radius, v[1] / len * radius, v[2] / len * radius]);
+        vertices.push([
+            v[0] / len * radius,
+            v[1] / len * radius,
+            v[2] / len * radius,
+        ]);
     }
 
     // Icosahedron faces
@@ -105,7 +128,7 @@ fn main() {
     world.add_body(
         RigidBody::new_static()
             .with_collider(Collider::Sphere { radius: 0.8 })
-            .with_position(Vector3::new(-3.0, 2.0, 0.0))
+            .with_position(Vector3::new(-3.0, 2.0, 0.0)),
     );
 
     // Cube (AABB)
@@ -114,7 +137,7 @@ fn main() {
             .with_collider(Collider::Aabb {
                 half_extents: Vector3::new(0.7, 0.7, 0.7),
             })
-            .with_position(Vector3::new(0.0, 2.0, 0.0))
+            .with_position(Vector3::new(0.0, 2.0, 0.0)),
     );
 
     // Capsule
@@ -124,7 +147,7 @@ fn main() {
                 height: 2.0,
                 radius: 0.5,
             })
-            .with_position(Vector3::new(3.0, 2.0, 0.0))
+            .with_position(Vector3::new(3.0, 2.0, 0.0)),
     );
 
     let (cube_verts, cube_faces) = create_cube_mesh();
@@ -150,15 +173,16 @@ fn main() {
                     Keycode::Escape => break 'running,
                     Keycode::Space => {
                         // Cast ray from camera forward
-                        let ray = Ray::new(
-                            engine.camera.position.coords,
-                            engine.camera.get_direction(),
-                        );
+                        let ray =
+                            Ray::new(engine.camera.position.coords, engine.camera.get_direction());
 
                         last_hit = world.ray_cast(&ray, 100.0);
 
                         if let Some(hit) = &last_hit {
-                            println!("Hit! Distance: {:.2}, Body: {:?}", hit.distance, hit.body_id);
+                            println!(
+                                "Hit! Distance: {:.2}, Body: {:?}",
+                                hit.distance, hit.body_id
+                            );
                             println!("  Point: {:?}", hit.point);
                             println!("  Normal: {:?}", hit.normal);
                         } else {

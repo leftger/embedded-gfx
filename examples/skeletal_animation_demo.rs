@@ -19,9 +19,9 @@
 use embedded_3dgfx::K3dengine;
 use embedded_3dgfx::draw::draw;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
-use embedded_3dgfx::skeleton::{Skeleton, Bone, SkinningData, VertexSkinning, apply_skinning};
 #[cfg(feature = "perfcounter")]
 use embedded_3dgfx::perfcounter::PerformanceCounter;
+use embedded_3dgfx::skeleton::{Bone, Skeleton, SkinningData, VertexSkinning, apply_skinning};
 use embedded_graphics::mono_font::{MonoTextStyle, ascii::FONT_6X10};
 use embedded_graphics::text::Text;
 use embedded_graphics_core::pixelcolor::{Rgb565, RgbColor};
@@ -55,22 +55,28 @@ fn main() {
     let mut skeleton = Skeleton::<8>::new();
 
     // Root bone (shoulder)
-    let shoulder = skeleton.add_bone(
-        Bone::new("shoulder").with_position(Vector3::new(0.0, 3.0, 0.0)),
-        None
-    ).unwrap();
+    let shoulder = skeleton
+        .add_bone(
+            Bone::new("shoulder").with_position(Vector3::new(0.0, 3.0, 0.0)),
+            None,
+        )
+        .unwrap();
 
     // Elbow bone (child of shoulder)
-    let elbow = skeleton.add_bone(
-        Bone::new("elbow").with_position(Vector3::new(0.0, -1.5, 0.0)),
-        Some(shoulder)
-    ).unwrap();
+    let elbow = skeleton
+        .add_bone(
+            Bone::new("elbow").with_position(Vector3::new(0.0, -1.5, 0.0)),
+            Some(shoulder),
+        )
+        .unwrap();
 
     // Hand bone (child of elbow)
-    let hand = skeleton.add_bone(
-        Bone::new("hand").with_position(Vector3::new(0.0, -1.5, 0.0)),
-        Some(elbow)
-    ).unwrap();
+    let hand = skeleton
+        .add_bone(
+            Bone::new("hand").with_position(Vector3::new(0.0, -1.5, 0.0)),
+            Some(elbow),
+        )
+        .unwrap();
 
     // Compute bind pose
     skeleton.update_transforms();

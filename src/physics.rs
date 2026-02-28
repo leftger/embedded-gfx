@@ -144,7 +144,10 @@ impl RigidBody {
     /// # Panics
     /// Panics if `mass` is not positive and finite.
     pub fn new(mass: f32) -> Self {
-        assert!(mass > 0.0 && mass.is_finite(), "mass must be positive and finite");
+        assert!(
+            mass > 0.0 && mass.is_finite(),
+            "mass must be positive and finite"
+        );
         // Default inertia: treat as unit sphere (I = 2/5 * m * 1^2)
         let i = 0.4 * mass;
         let inv_i = 1.0 / i;
@@ -265,7 +268,8 @@ impl RigidBody {
             let ix = k * (hy2 + hz2);
             let iy = k * (hx2 + hz2);
             let iz = k * (hx2 + hy2);
-            self.inv_inertia_local = Matrix3::from_diagonal(&Vector3::new(1.0 / ix, 1.0 / iy, 1.0 / iz));
+            self.inv_inertia_local =
+                Matrix3::from_diagonal(&Vector3::new(1.0 / ix, 1.0 / iy, 1.0 / iz));
         }
         self
     }
@@ -348,12 +352,7 @@ impl RigidBody {
         // where ω * q is the quaternion product with ω encoded as (0, ωx, ωy, ωz)
         let w = &self.angular_velocity;
         let half_dt = 0.5 * dt;
-        let dq = nalgebra::Quaternion::new(
-            0.0,
-            w.x * half_dt,
-            w.y * half_dt,
-            w.z * half_dt,
-        );
+        let dq = nalgebra::Quaternion::new(0.0, w.x * half_dt, w.y * half_dt, w.z * half_dt);
         let q = self.orientation.into_inner();
         let new_q = q + dq * q;
         // Renormalize to prevent drift
@@ -394,13 +393,30 @@ fn collide(
             let result = collide_sphere_aabb(pos_b, *radius, pos_a, half_extents);
             result.map(|(normal, pen)| (-normal, pen))
         }
-        (Collider::Capsule { height: ha, radius: ra }, Collider::Capsule { height: hb, radius: rb }) => {
-            collide_capsule_capsule(pos_a, *ha, *ra, pos_b, *hb, *rb)
-        }
-        (Collider::Sphere { radius }, Collider::Capsule { height, radius: cap_radius }) => {
-            collide_sphere_capsule(pos_a, *radius, pos_b, *height, *cap_radius)
-        }
-        (Collider::Capsule { height, radius: cap_radius }, Collider::Sphere { radius }) => {
+        (
+            Collider::Capsule {
+                height: ha,
+                radius: ra,
+            },
+            Collider::Capsule {
+                height: hb,
+                radius: rb,
+            },
+        ) => collide_capsule_capsule(pos_a, *ha, *ra, pos_b, *hb, *rb),
+        (
+            Collider::Sphere { radius },
+            Collider::Capsule {
+                height,
+                radius: cap_radius,
+            },
+        ) => collide_sphere_capsule(pos_a, *radius, pos_b, *height, *cap_radius),
+        (
+            Collider::Capsule {
+                height,
+                radius: cap_radius,
+            },
+            Collider::Sphere { radius },
+        ) => {
             let result = collide_sphere_capsule(pos_b, *radius, pos_a, *height, *cap_radius);
             result.map(|(normal, pen)| (-normal, pen))
         }
@@ -619,14 +635,24 @@ fn collide_capsule_aabb(
     let aabb_max = aabb_pos + aabb_half_extents;
 
     // Clamp capsule endpoints to find closest segment to AABB
-    let closest_on_capsule = closest_point_on_segment_to_aabb(cap_bottom, cap_top, &aabb_min, &aabb_max);
+    let closest_on_capsule =
+        closest_point_on_segment_to_aabb(cap_bottom, cap_top, &aabb_min, &aabb_max);
 
     // Treat as sphere-AABB collision from the closest point on capsule
-    collide_sphere_aabb(&closest_on_capsule, capsule_radius, aabb_pos, aabb_half_extents)
+    collide_sphere_aabb(
+        &closest_on_capsule,
+        capsule_radius,
+        aabb_pos,
+        aabb_half_extents,
+    )
 }
 
 /// Find closest point on line segment to a point.
-fn closest_point_on_segment(point: Vector3<f32>, seg_start: Vector3<f32>, seg_end: Vector3<f32>) -> Vector3<f32> {
+fn closest_point_on_segment(
+    point: Vector3<f32>,
+    seg_start: Vector3<f32>,
+    seg_end: Vector3<f32>,
+) -> Vector3<f32> {
     let segment = seg_end - seg_start;
     let segment_len_sq = segment.norm_squared();
 
@@ -870,11 +896,7 @@ fn ray_intersect_capsule(
     // Test cylinder body (simplified - treats as expanded line segment)
     // For more accuracy, would need proper ray-cylinder intersection
 
-    if hit {
-        Some(min_t)
-    } else {
-        None
-    }
+    if hit { Some(min_t) } else { None }
 }
 
 // ---------------------------------------------------------------------------
@@ -1060,7 +1082,10 @@ impl<const N: usize, const M: usize> PhysicsWorld<N, M> {
 
     /// Iterate over all bodies mutably.
     pub fn bodies_mut(&mut self) -> impl Iterator<Item = (BodyId, &mut RigidBody)> {
-        self.bodies.iter_mut().enumerate().map(|(i, b)| (BodyId(i), b))
+        self.bodies
+            .iter_mut()
+            .enumerate()
+            .map(|(i, b)| (BodyId(i), b))
     }
 
     // -- Ray casting --
@@ -1103,9 +1128,7 @@ impl<const N: usize, const M: usize> PhysicsWorld<N, M> {
             };
 
             let distance = match collider {
-                Collider::Sphere { radius } => {
-                    ray_intersect_sphere(ray, &body.position, *radius)
-                }
+                Collider::Sphere { radius } => ray_intersect_sphere(ray, &body.position, *radius),
                 Collider::Aabb { half_extents } => {
                     ray_intersect_aabb(ray, &body.position, half_extents)
                 }
@@ -1118,9 +1141,7 @@ impl<const N: usize, const M: usize> PhysicsWorld<N, M> {
                 if dist < min_distance {
                     let point = ray.point_at(dist);
                     let normal = match collider {
-                        Collider::Sphere { .. } => {
-                            (point - body.position).normalize()
-                        }
+                        Collider::Sphere { .. } => (point - body.position).normalize(),
                         Collider::Aabb { .. } => {
                             // Approximate normal from hit point to AABB center
                             (point - body.position).normalize()
@@ -1368,8 +1389,8 @@ impl<const N: usize, const M: usize> PhysicsWorld<N, M> {
 
             // Compute contact point: on the surface of each body along the normal.
             // For simplicity, use the midpoint of the overlap region along the normal.
-            let contact_point = self.bodies[a].position
-                + contact.normal * (contact.penetration * 0.5);
+            let contact_point =
+                self.bodies[a].position + contact.normal * (contact.penetration * 0.5);
 
             let ra = contact_point - self.bodies[a].position;
             let rb = contact_point - self.bodies[b].position;
@@ -1387,10 +1408,8 @@ impl<const N: usize, const M: usize> PhysicsWorld<N, M> {
             self.bodies[b].position += correction * inv_mass_b;
 
             // --- Contact-point velocity (linear + angular) ---
-            let vel_a = self.bodies[a].velocity
-                + self.bodies[a].angular_velocity.cross(&ra);
-            let vel_b = self.bodies[b].velocity
-                + self.bodies[b].angular_velocity.cross(&rb);
+            let vel_a = self.bodies[a].velocity + self.bodies[a].angular_velocity.cross(&ra);
+            let vel_b = self.bodies[b].velocity + self.bodies[b].angular_velocity.cross(&rb);
             let relative_vel = vel_b - vel_a;
             let vel_along_normal = relative_vel.dot(&contact.normal);
 
@@ -1399,9 +1418,7 @@ impl<const N: usize, const M: usize> PhysicsWorld<N, M> {
                 continue;
             }
 
-            let restitution = self.bodies[a]
-                .restitution
-                .min(self.bodies[b].restitution);
+            let restitution = self.bodies[a].restitution.min(self.bodies[b].restitution);
 
             // Effective mass including angular contribution:
             // 1/m_eff = 1/m_a + 1/m_b + (I_a⁻¹(ra×n))×ra·n + (I_b⁻¹(rb×n))×rb·n
@@ -1431,10 +1448,8 @@ impl<const N: usize, const M: usize> PhysicsWorld<N, M> {
 
             if mu > 1e-6 {
                 // Recompute relative velocity at contact point after normal impulse
-                let vel_a = self.bodies[a].velocity
-                    + self.bodies[a].angular_velocity.cross(&ra);
-                let vel_b = self.bodies[b].velocity
-                    + self.bodies[b].angular_velocity.cross(&rb);
+                let vel_a = self.bodies[a].velocity + self.bodies[a].angular_velocity.cross(&ra);
+                let vel_b = self.bodies[b].velocity + self.bodies[b].angular_velocity.cross(&rb);
                 let relative_vel = vel_b - vel_a;
 
                 let vn = relative_vel.dot(&contact.normal);
@@ -1458,8 +1473,10 @@ impl<const N: usize, const M: usize> PhysicsWorld<N, M> {
                         let friction_impulse = tangent * jt;
                         self.bodies[a].velocity -= friction_impulse * inv_mass_a;
                         self.bodies[b].velocity += friction_impulse * inv_mass_b;
-                        self.bodies[a].angular_velocity -= inv_inertia_a * ra.cross(&friction_impulse);
-                        self.bodies[b].angular_velocity += inv_inertia_b * rb.cross(&friction_impulse);
+                        self.bodies[a].angular_velocity -=
+                            inv_inertia_a * ra.cross(&friction_impulse);
+                        self.bodies[b].angular_velocity +=
+                            inv_inertia_b * rb.cross(&friction_impulse);
                     }
                 }
             }
@@ -1835,15 +1852,13 @@ mod tests {
 
     #[test]
     fn test_speed() {
-        let body = RigidBody::new(1.0)
-            .with_velocity(Vector3::new(3.0, 4.0, 0.0));
+        let body = RigidBody::new(1.0).with_velocity(Vector3::new(3.0, 4.0, 0.0));
         assert!(approx_eq(body.speed(), 5.0));
     }
 
     #[test]
     fn test_kinetic_energy() {
-        let body = RigidBody::new(2.0)
-            .with_velocity(Vector3::new(3.0, 0.0, 0.0));
+        let body = RigidBody::new(2.0).with_velocity(Vector3::new(3.0, 0.0, 0.0));
         // KE = 0.5 * 2 * 9 = 9
         assert!(approx_eq(body.kinetic_energy(), 9.0));
     }
@@ -1902,8 +1917,7 @@ mod tests {
         let mut world = PhysicsWorld::<4>::new();
         world.set_gravity(Vector3::new(0.0, -9.81, 0.0));
 
-        let body = RigidBody::new_static()
-            .with_position(Vector3::new(0.0, 0.0, 0.0));
+        let body = RigidBody::new_static().with_position(Vector3::new(0.0, 0.0, 0.0));
         let id = world.add_body(body).unwrap();
 
         world.step::<4>(1.0);
@@ -1921,7 +1935,10 @@ mod tests {
         let id = world.add_body(body).unwrap();
 
         // Apply a force and step
-        world.body_mut(id).unwrap().apply_force(Vector3::new(10.0, 0.0, 0.0));
+        world
+            .body_mut(id)
+            .unwrap()
+            .apply_force(Vector3::new(10.0, 0.0, 0.0));
         world.step::<4>(1.0);
 
         let b = world.body(id).unwrap();
@@ -1980,8 +1997,12 @@ mod tests {
     #[test]
     fn test_bodies_iterator() {
         let mut world = PhysicsWorld::<4>::new();
-        world.add_body(RigidBody::new(1.0).with_position(Vector3::new(1.0, 0.0, 0.0))).unwrap();
-        world.add_body(RigidBody::new(2.0).with_position(Vector3::new(2.0, 0.0, 0.0))).unwrap();
+        world
+            .add_body(RigidBody::new(1.0).with_position(Vector3::new(1.0, 0.0, 0.0)))
+            .unwrap();
+        world
+            .add_body(RigidBody::new(2.0).with_position(Vector3::new(2.0, 0.0, 0.0)))
+            .unwrap();
 
         let positions: std::vec::Vec<f32> = world.bodies().map(|(_, b)| b.position.x).collect();
         assert_eq!(positions, std::vec![1.0, 2.0]);
@@ -2380,14 +2401,12 @@ mod tests {
 
     #[test]
     fn test_collider_builder() {
-        let body = RigidBody::new(1.0)
-            .with_collider(Collider::Sphere { radius: 2.0 });
+        let body = RigidBody::new(1.0).with_collider(Collider::Sphere { radius: 2.0 });
         assert_eq!(body.collider, Some(Collider::Sphere { radius: 2.0 }));
 
-        let body2 = RigidBody::new(1.0)
-            .with_collider(Collider::Aabb {
-                half_extents: Vector3::new(1.0, 2.0, 3.0),
-            });
+        let body2 = RigidBody::new(1.0).with_collider(Collider::Aabb {
+            half_extents: Vector3::new(1.0, 2.0, 3.0),
+        });
         assert!(matches!(body2.collider, Some(Collider::Aabb { .. })));
     }
 
@@ -2398,10 +2417,7 @@ mod tests {
         world.add_body(RigidBody::new(1.0)).unwrap();
         // Body with collider overlapping the first
         world
-            .add_body(
-                RigidBody::new(1.0)
-                    .with_collider(Collider::Sphere { radius: 100.0 }),
-            )
+            .add_body(RigidBody::new(1.0).with_collider(Collider::Sphere { radius: 100.0 }))
             .unwrap();
 
         let contacts = world.detect_collisions::<4>();
@@ -2591,7 +2607,9 @@ mod tests {
     #[test]
     fn test_remove_body() {
         let mut world = PhysicsWorld::<4>::new();
-        let id = world.add_body(RigidBody::new(1.0).with_velocity(Vector3::new(5.0, 0.0, 0.0))).unwrap();
+        let id = world
+            .add_body(RigidBody::new(1.0).with_velocity(Vector3::new(5.0, 0.0, 0.0)))
+            .unwrap();
 
         assert_eq!(world.active_body_count(), 1);
         assert!(world.remove_body(id));
@@ -2624,11 +2642,13 @@ mod tests {
         let mut world = PhysicsWorld::<4>::new();
         world.set_gravity(Vector3::new(0.0, -10.0, 0.0));
 
-        let id = world.add_body(
-            RigidBody::new(1.0)
-                .with_position(Vector3::new(0.0, 10.0, 0.0))
-                .with_damping(0.0),
-        ).unwrap();
+        let id = world
+            .add_body(
+                RigidBody::new(1.0)
+                    .with_position(Vector3::new(0.0, 10.0, 0.0))
+                    .with_damping(0.0),
+            )
+            .unwrap();
 
         world.remove_body(id);
         world.step::<4>(1.0);
@@ -2673,11 +2693,13 @@ mod tests {
         let mut world = PhysicsWorld::<4>::new();
         world.set_gravity(Vector3::new(0.0, -10.0, 0.0));
 
-        let id = world.add_body(
-            RigidBody::new(1.0)
-                .with_position(Vector3::new(0.0, 10.0, 0.0))
-                .with_damping(0.0),
-        ).unwrap();
+        let id = world
+            .add_body(
+                RigidBody::new(1.0)
+                    .with_position(Vector3::new(0.0, 10.0, 0.0))
+                    .with_damping(0.0),
+            )
+            .unwrap();
 
         // Deactivate, step (should not move)
         world.remove_body(id);
@@ -2712,8 +2734,20 @@ mod tests {
         let mut world = PhysicsWorld::<4>::new();
         world.set_gravity(Vector3::new(0.0, -10.0, 0.0));
 
-        let id0 = world.add_body(RigidBody::new(1.0).with_position(Vector3::new(0.0, 10.0, 0.0)).with_damping(0.0)).unwrap();
-        let id1 = world.add_body(RigidBody::new(1.0).with_position(Vector3::new(5.0, 10.0, 0.0)).with_damping(0.0)).unwrap();
+        let id0 = world
+            .add_body(
+                RigidBody::new(1.0)
+                    .with_position(Vector3::new(0.0, 10.0, 0.0))
+                    .with_damping(0.0),
+            )
+            .unwrap();
+        let id1 = world
+            .add_body(
+                RigidBody::new(1.0)
+                    .with_position(Vector3::new(5.0, 10.0, 0.0))
+                    .with_damping(0.0),
+            )
+            .unwrap();
 
         // Remove first, step
         world.remove_body(id0);
@@ -2735,8 +2769,7 @@ mod tests {
 
     #[test]
     fn test_angular_velocity_builder() {
-        let body = RigidBody::new(1.0)
-            .with_angular_velocity(Vector3::new(0.0, 5.0, 0.0));
+        let body = RigidBody::new(1.0).with_angular_velocity(Vector3::new(0.0, 5.0, 0.0));
         assert!(approx_eq(body.angular_velocity.y, 5.0));
     }
 
@@ -2768,8 +2801,7 @@ mod tests {
 
     #[test]
     fn test_inertia_box() {
-        let body = RigidBody::new(12.0)
-            .with_inertia_box(Vector3::new(1.0, 2.0, 3.0));
+        let body = RigidBody::new(12.0).with_inertia_box(Vector3::new(1.0, 2.0, 3.0));
         // Full dims: 2x4x6
         // Ixx = (12/12) * (16 + 36) = 52, inv = 1/52
         // Iyy = (12/12) * (4 + 36) = 40, inv = 1/40
@@ -2791,7 +2823,10 @@ mod tests {
         let mut body = RigidBody::new(1.0);
         body.apply_torque(Vector3::new(1.0, 0.0, 0.0));
         body.apply_torque(Vector3::new(0.0, 2.0, 0.0));
-        assert!(approx_vec_eq(&body.torque_accumulator, &Vector3::new(1.0, 2.0, 0.0)));
+        assert!(approx_vec_eq(
+            &body.torque_accumulator,
+            &Vector3::new(1.0, 2.0, 0.0)
+        ));
     }
 
     #[test]
@@ -2813,12 +2848,14 @@ mod tests {
     #[test]
     fn test_constant_angular_velocity_changes_orientation() {
         let mut world = PhysicsWorld::<4>::new();
-        let id = world.add_body(
-            RigidBody::new(1.0)
-                .with_angular_velocity(Vector3::new(0.0, core::f32::consts::PI, 0.0))
-                .with_angular_damping(0.0)
-                .with_damping(0.0),
-        ).unwrap();
+        let id = world
+            .add_body(
+                RigidBody::new(1.0)
+                    .with_angular_velocity(Vector3::new(0.0, core::f32::consts::PI, 0.0))
+                    .with_angular_damping(0.0)
+                    .with_damping(0.0),
+            )
+            .unwrap();
 
         // After 1 second at PI rad/s around Y, orientation should have rotated ~180 degrees
         for _ in 0..100 {
@@ -2835,15 +2872,20 @@ mod tests {
     #[test]
     fn test_torque_produces_angular_acceleration() {
         let mut world = PhysicsWorld::<4>::new();
-        let id = world.add_body(
-            RigidBody::new(1.0)
-                .with_inertia_sphere(1.0)
-                .with_angular_damping(0.0)
-                .with_damping(0.0),
-        ).unwrap();
+        let id = world
+            .add_body(
+                RigidBody::new(1.0)
+                    .with_inertia_sphere(1.0)
+                    .with_angular_damping(0.0)
+                    .with_damping(0.0),
+            )
+            .unwrap();
 
         // Apply torque around Z axis
-        world.body_mut(id).unwrap().apply_torque(Vector3::new(0.0, 0.0, 1.0));
+        world
+            .body_mut(id)
+            .unwrap()
+            .apply_torque(Vector3::new(0.0, 0.0, 1.0));
         world.step::<4>(1.0);
 
         let body = world.body(id).unwrap();
@@ -2855,14 +2897,19 @@ mod tests {
     #[test]
     fn test_torque_cleared_after_step() {
         let mut world = PhysicsWorld::<4>::new();
-        let id = world.add_body(
-            RigidBody::new(1.0)
-                .with_inertia_sphere(1.0)
-                .with_angular_damping(0.0)
-                .with_damping(0.0),
-        ).unwrap();
+        let id = world
+            .add_body(
+                RigidBody::new(1.0)
+                    .with_inertia_sphere(1.0)
+                    .with_angular_damping(0.0)
+                    .with_damping(0.0),
+            )
+            .unwrap();
 
-        world.body_mut(id).unwrap().apply_torque(Vector3::new(0.0, 0.0, 1.0));
+        world
+            .body_mut(id)
+            .unwrap()
+            .apply_torque(Vector3::new(0.0, 0.0, 1.0));
         world.step::<4>(1.0);
 
         // No new torque — angular velocity should stay constant
@@ -2875,12 +2922,14 @@ mod tests {
     #[test]
     fn test_angular_damping_reduces_spin() {
         let mut world = PhysicsWorld::<4>::new();
-        let id = world.add_body(
-            RigidBody::new(1.0)
-                .with_angular_velocity(Vector3::new(10.0, 0.0, 0.0))
-                .with_angular_damping(0.1)
-                .with_damping(0.0),
-        ).unwrap();
+        let id = world
+            .add_body(
+                RigidBody::new(1.0)
+                    .with_angular_velocity(Vector3::new(10.0, 0.0, 0.0))
+                    .with_angular_damping(0.1)
+                    .with_damping(0.0),
+            )
+            .unwrap();
 
         world.step::<4>(1.0);
 
@@ -2892,12 +2941,14 @@ mod tests {
     #[test]
     fn test_orientation_stays_normalized() {
         let mut world = PhysicsWorld::<4>::new();
-        let id = world.add_body(
-            RigidBody::new(1.0)
-                .with_angular_velocity(Vector3::new(3.0, 5.0, 7.0))
-                .with_angular_damping(0.0)
-                .with_damping(0.0),
-        ).unwrap();
+        let id = world
+            .add_body(
+                RigidBody::new(1.0)
+                    .with_angular_velocity(Vector3::new(3.0, 5.0, 7.0))
+                    .with_angular_damping(0.0)
+                    .with_damping(0.0),
+            )
+            .unwrap();
 
         // Many steps to check quaternion doesn't drift
         for _ in 0..1000 {
@@ -2949,16 +3000,19 @@ mod tests {
         let ball = world.body(BodyId(0)).unwrap();
         // Friction at the contact should have induced angular velocity (spinning)
         let omega_magnitude = ball.angular_velocity.norm();
-        assert!(omega_magnitude > 0.01, "Expected angular velocity from friction, got {}", omega_magnitude);
+        assert!(
+            omega_magnitude > 0.01,
+            "Expected angular velocity from friction, got {}",
+            omega_magnitude
+        );
     }
 
     #[test]
     fn test_remove_body_clears_angular_state() {
         let mut world = PhysicsWorld::<4>::new();
-        let id = world.add_body(
-            RigidBody::new(1.0)
-                .with_angular_velocity(Vector3::new(5.0, 5.0, 5.0)),
-        ).unwrap();
+        let id = world
+            .add_body(RigidBody::new(1.0).with_angular_velocity(Vector3::new(5.0, 5.0, 5.0)))
+            .unwrap();
 
         world.remove_body(id);
         let body = world.body(id).unwrap();
@@ -2969,8 +3023,7 @@ mod tests {
     fn test_inv_inertia_world_rotated() {
         // For a non-uniform inertia tensor, rotating the body should change
         // the world-space inverse inertia
-        let mut body = RigidBody::new(1.0)
-            .with_inertia_box(Vector3::new(1.0, 2.0, 3.0));
+        let mut body = RigidBody::new(1.0).with_inertia_box(Vector3::new(1.0, 2.0, 3.0));
 
         let inv_i_local_00 = body.inv_inertia_local[(0, 0)];
         let inv_i_world_00 = body.inv_inertia_world()[(0, 0)];
@@ -2984,8 +3037,14 @@ mod tests {
         );
         let inv_i_rotated = body.inv_inertia_world();
         // After 90-degree Y rotation, Ixx and Izz should swap
-        assert!(approx_eq(inv_i_rotated[(0, 0)], body.inv_inertia_local[(2, 2)]));
-        assert!(approx_eq(inv_i_rotated[(2, 2)], body.inv_inertia_local[(0, 0)]));
+        assert!(approx_eq(
+            inv_i_rotated[(0, 0)],
+            body.inv_inertia_local[(2, 2)]
+        ));
+        assert!(approx_eq(
+            inv_i_rotated[(2, 2)],
+            body.inv_inertia_local[(0, 0)]
+        ));
     }
 
     #[test]
@@ -3038,14 +3097,16 @@ mod tests {
         let a = world.add_body(RigidBody::new(1.0)).unwrap();
         let b = world.add_body(RigidBody::new(1.0)).unwrap();
 
-        let cid = world.add_constraint(Constraint::Distance {
-            body_a: a,
-            body_b: b,
-            anchor_a: Vector3::zeros(),
-            anchor_b: Vector3::zeros(),
-            rest_length: 2.0,
-            compliance: 0.0,
-        }).unwrap();
+        let cid = world
+            .add_constraint(Constraint::Distance {
+                body_a: a,
+                body_b: b,
+                anchor_a: Vector3::zeros(),
+                anchor_b: Vector3::zeros(),
+                rest_length: 2.0,
+                compliance: 0.0,
+            })
+            .unwrap();
 
         assert_eq!(world.constraint_count(), 1);
         assert!(world.constraint(cid).is_some());
@@ -3074,7 +3135,9 @@ mod tests {
         let a = world.add_body(RigidBody::new(1.0)).unwrap();
         let b = world.add_body(RigidBody::new(1.0)).unwrap();
 
-        let cid = world.add_ball_socket(a, Vector3::zeros(), b, Vector3::zeros(), 0.0).unwrap();
+        let cid = world
+            .add_ball_socket(a, Vector3::zeros(), b, Vector3::zeros(), 0.0)
+            .unwrap();
         assert_eq!(world.constraint_count(), 1);
 
         assert!(world.remove_constraint(cid));
@@ -3093,24 +3156,26 @@ mod tests {
         world.set_gravity(Vector3::new(0.0, -10.0, 0.0));
 
         // Two bodies connected by a rigid rod of length 3
-        let a = world.add_body(
-            RigidBody::new(1.0)
-                .with_position(Vector3::new(0.0, 5.0, 0.0))
-                .with_damping(0.0)
-                .with_angular_damping(0.0),
-        ).unwrap();
-        let b = world.add_body(
-            RigidBody::new(1.0)
-                .with_position(Vector3::new(3.0, 5.0, 0.0))
-                .with_damping(0.0)
-                .with_angular_damping(0.0),
-        ).unwrap();
+        let a = world
+            .add_body(
+                RigidBody::new(1.0)
+                    .with_position(Vector3::new(0.0, 5.0, 0.0))
+                    .with_damping(0.0)
+                    .with_angular_damping(0.0),
+            )
+            .unwrap();
+        let b = world
+            .add_body(
+                RigidBody::new(1.0)
+                    .with_position(Vector3::new(3.0, 5.0, 0.0))
+                    .with_damping(0.0)
+                    .with_angular_damping(0.0),
+            )
+            .unwrap();
 
-        world.add_distance_constraint(
-            a, Vector3::zeros(),
-            b, Vector3::zeros(),
-            0.0,
-        ).unwrap();
+        world
+            .add_distance_constraint(a, Vector3::zeros(), b, Vector3::zeros(), 0.0)
+            .unwrap();
 
         // Run simulation — gravity pulls both down, constraint keeps distance
         for _ in 0..200 {
@@ -3121,8 +3186,11 @@ mod tests {
         let pb = world.body(b).unwrap().position;
         let dist = (pb - pa).norm();
         // Distance should stay close to 3.0
-        assert!((dist - 3.0).abs() < 0.3,
-            "Expected distance ~3.0, got {}", dist);
+        assert!(
+            (dist - 3.0).abs() < 0.3,
+            "Expected distance ~3.0, got {}",
+            dist
+        );
     }
 
     #[test]
@@ -3133,24 +3201,23 @@ mod tests {
         world.set_gravity(Vector3::new(0.0, -10.0, 0.0));
         world.solver_iterations = 8;
 
-        let a = world.add_body(
-            RigidBody::new_static()
-                .with_position(Vector3::new(0.0, 10.0, 0.0)),
-        ).unwrap();
+        let a = world
+            .add_body(RigidBody::new_static().with_position(Vector3::new(0.0, 10.0, 0.0)))
+            .unwrap();
 
-        let b = world.add_body(
-            RigidBody::new(1.0)
-                .with_position(Vector3::new(0.0, 10.0, 0.0))
-                .with_damping(0.01)
-                .with_angular_damping(0.01),
-        ).unwrap();
+        let b = world
+            .add_body(
+                RigidBody::new(1.0)
+                    .with_position(Vector3::new(0.0, 10.0, 0.0))
+                    .with_damping(0.01)
+                    .with_angular_damping(0.01),
+            )
+            .unwrap();
 
         // Ball-socket: pin body B's center to body A's center
-        world.add_ball_socket(
-            a, Vector3::zeros(),
-            b, Vector3::zeros(),
-            0.0,
-        ).unwrap();
+        world
+            .add_ball_socket(a, Vector3::zeros(), b, Vector3::zeros(), 0.0)
+            .unwrap();
 
         for _ in 0..120 {
             world.step::<4>(1.0 / 60.0);
@@ -3168,24 +3235,23 @@ mod tests {
         let mut world = PhysicsWorld::<4, 4>::new();
         world.set_gravity(Vector3::new(0.0, -10.0, 0.0));
 
-        let anchor = world.add_body(
-            RigidBody::new_static()
-                .with_position(Vector3::new(0.0, 10.0, 0.0)),
-        ).unwrap();
+        let anchor = world
+            .add_body(RigidBody::new_static().with_position(Vector3::new(0.0, 10.0, 0.0)))
+            .unwrap();
 
-        let bob = world.add_body(
-            RigidBody::new(1.0)
-                .with_position(Vector3::new(3.0, 10.0, 0.0))
-                .with_damping(0.0)
-                .with_angular_damping(0.0),
-        ).unwrap();
+        let bob = world
+            .add_body(
+                RigidBody::new(1.0)
+                    .with_position(Vector3::new(3.0, 10.0, 0.0))
+                    .with_damping(0.0)
+                    .with_angular_damping(0.0),
+            )
+            .unwrap();
 
         // Distance constraint (rod of length 3)
-        world.add_distance_constraint(
-            anchor, Vector3::zeros(),
-            bob, Vector3::zeros(),
-            0.0,
-        ).unwrap();
+        world
+            .add_distance_constraint(anchor, Vector3::zeros(), bob, Vector3::zeros(), 0.0)
+            .unwrap();
 
         // Bob starts at same height as anchor, should swing down
         let initial_y = 10.0;
@@ -3196,7 +3262,11 @@ mod tests {
 
         let bob_pos = world.body(bob).unwrap().position;
         // Bob should have swung below the anchor
-        assert!(bob_pos.y < initial_y, "Bob should swing down, y={}", bob_pos.y);
+        assert!(
+            bob_pos.y < initial_y,
+            "Bob should swing down, y={}",
+            bob_pos.y
+        );
     }
 
     #[test]
@@ -3205,28 +3275,34 @@ mod tests {
         let mut world = PhysicsWorld::<4, 4>::new();
         world.set_gravity(Vector3::zeros());
 
-        let a = world.add_body(
-            RigidBody::new(1.0)
-                .with_position(Vector3::new(0.0, 0.0, 0.0))
-                .with_damping(0.0)
-                .with_angular_damping(0.0),
-        ).unwrap();
-        let b = world.add_body(
-            RigidBody::new(1.0)
-                .with_position(Vector3::new(5.0, 0.0, 0.0))
-                .with_damping(0.0)
-                .with_angular_damping(0.0),
-        ).unwrap();
+        let a = world
+            .add_body(
+                RigidBody::new(1.0)
+                    .with_position(Vector3::new(0.0, 0.0, 0.0))
+                    .with_damping(0.0)
+                    .with_angular_damping(0.0),
+            )
+            .unwrap();
+        let b = world
+            .add_body(
+                RigidBody::new(1.0)
+                    .with_position(Vector3::new(5.0, 0.0, 0.0))
+                    .with_damping(0.0)
+                    .with_angular_damping(0.0),
+            )
+            .unwrap();
 
         // Soft spring with rest_length=2, compliance=0.01 (springy)
-        world.add_constraint(Constraint::Distance {
-            body_a: a,
-            body_b: b,
-            anchor_a: Vector3::zeros(),
-            anchor_b: Vector3::zeros(),
-            rest_length: 2.0,
-            compliance: 0.01,
-        }).unwrap();
+        world
+            .add_constraint(Constraint::Distance {
+                body_a: a,
+                body_b: b,
+                anchor_a: Vector3::zeros(),
+                anchor_b: Vector3::zeros(),
+                rest_length: 2.0,
+                compliance: 0.01,
+            })
+            .unwrap();
 
         // Step a few times
         for _ in 0..60 {
@@ -3245,24 +3321,23 @@ mod tests {
         let mut world = PhysicsWorld::<4, 4>::new();
         world.set_gravity(Vector3::new(0.0, -10.0, 0.0));
 
-        let a = world.add_body(
-            RigidBody::new_static()
-                .with_position(Vector3::new(0.0, 10.0, 0.0)),
-        ).unwrap();
-        let b = world.add_body(
-            RigidBody::new(1.0)
-                .with_position(Vector3::new(2.0, 10.0, 0.0))
-                .with_inertia_box(Vector3::new(0.5, 0.5, 0.5))
-                .with_damping(0.0)
-                .with_angular_damping(0.0),
-        ).unwrap();
+        let a = world
+            .add_body(RigidBody::new_static().with_position(Vector3::new(0.0, 10.0, 0.0)))
+            .unwrap();
+        let b = world
+            .add_body(
+                RigidBody::new(1.0)
+                    .with_position(Vector3::new(2.0, 10.0, 0.0))
+                    .with_inertia_box(Vector3::new(0.5, 0.5, 0.5))
+                    .with_damping(0.0)
+                    .with_angular_damping(0.0),
+            )
+            .unwrap();
 
         // Fixed joint — should preserve relative orientation
-        world.add_fixed_joint(
-            a, Vector3::new(2.0, 0.0, 0.0),
-            b, Vector3::zeros(),
-            0.0,
-        ).unwrap();
+        world
+            .add_fixed_joint(a, Vector3::new(2.0, 0.0, 0.0), b, Vector3::zeros(), 0.0)
+            .unwrap();
 
         // Store initial relative orientation
         let initial_qa = world.body(a).unwrap().orientation;
@@ -3289,33 +3364,32 @@ mod tests {
         world.set_gravity(Vector3::new(0.0, -10.0, 0.0));
         world.solver_iterations = 8;
 
-        let anchor = world.add_body(
-            RigidBody::new_static()
-                .with_position(Vector3::new(0.0, 10.0, 0.0)),
-        ).unwrap();
-        let link1 = world.add_body(
-            RigidBody::new(1.0)
-                .with_position(Vector3::new(0.0, 8.0, 0.0))
-                .with_damping(0.01)
-                .with_angular_damping(0.01),
-        ).unwrap();
-        let link2 = world.add_body(
-            RigidBody::new(1.0)
-                .with_position(Vector3::new(0.0, 6.0, 0.0))
-                .with_damping(0.01)
-                .with_angular_damping(0.01),
-        ).unwrap();
+        let anchor = world
+            .add_body(RigidBody::new_static().with_position(Vector3::new(0.0, 10.0, 0.0)))
+            .unwrap();
+        let link1 = world
+            .add_body(
+                RigidBody::new(1.0)
+                    .with_position(Vector3::new(0.0, 8.0, 0.0))
+                    .with_damping(0.01)
+                    .with_angular_damping(0.01),
+            )
+            .unwrap();
+        let link2 = world
+            .add_body(
+                RigidBody::new(1.0)
+                    .with_position(Vector3::new(0.0, 6.0, 0.0))
+                    .with_damping(0.01)
+                    .with_angular_damping(0.01),
+            )
+            .unwrap();
 
-        world.add_distance_constraint(
-            anchor, Vector3::zeros(),
-            link1, Vector3::zeros(),
-            0.0,
-        ).unwrap();
-        world.add_distance_constraint(
-            link1, Vector3::zeros(),
-            link2, Vector3::zeros(),
-            0.0,
-        ).unwrap();
+        world
+            .add_distance_constraint(anchor, Vector3::zeros(), link1, Vector3::zeros(), 0.0)
+            .unwrap();
+        world
+            .add_distance_constraint(link1, Vector3::zeros(), link2, Vector3::zeros(), 0.0)
+            .unwrap();
 
         for _ in 0..600 {
             world.step::<4>(1.0 / 60.0);
@@ -3344,28 +3418,34 @@ mod tests {
         let mut world = PhysicsWorld::<4, 4>::new();
         world.set_gravity(Vector3::zeros());
 
-        let a = world.add_body(
-            RigidBody::new(1.0)
-                .with_position(Vector3::new(-3.0, 0.0, 0.0))
-                .with_damping(0.0)
-                .with_angular_damping(0.0),
-        ).unwrap();
-        let b = world.add_body(
-            RigidBody::new(1.0)
-                .with_position(Vector3::new(3.0, 0.0, 0.0))
-                .with_damping(0.0)
-                .with_angular_damping(0.0),
-        ).unwrap();
+        let a = world
+            .add_body(
+                RigidBody::new(1.0)
+                    .with_position(Vector3::new(-3.0, 0.0, 0.0))
+                    .with_damping(0.0)
+                    .with_angular_damping(0.0),
+            )
+            .unwrap();
+        let b = world
+            .add_body(
+                RigidBody::new(1.0)
+                    .with_position(Vector3::new(3.0, 0.0, 0.0))
+                    .with_damping(0.0)
+                    .with_angular_damping(0.0),
+            )
+            .unwrap();
 
         // Distance constraint with rest_length=2 (bodies start 6 apart)
-        world.add_constraint(Constraint::Distance {
-            body_a: a,
-            body_b: b,
-            anchor_a: Vector3::zeros(),
-            anchor_b: Vector3::zeros(),
-            rest_length: 2.0,
-            compliance: 0.0,
-        }).unwrap();
+        world
+            .add_constraint(Constraint::Distance {
+                body_a: a,
+                body_b: b,
+                anchor_a: Vector3::zeros(),
+                anchor_b: Vector3::zeros(),
+                rest_length: 2.0,
+                compliance: 0.0,
+            })
+            .unwrap();
 
         for _ in 0..120 {
             world.step::<4>(1.0 / 60.0);
@@ -3376,7 +3456,11 @@ mod tests {
 
         // Center of mass should remain at origin (symmetric motion)
         let com = (pa + pb) / 2.0;
-        assert!(com.norm() < 0.5, "COM should stay near origin, got {:?}", com);
+        assert!(
+            com.norm() < 0.5,
+            "COM should stay near origin, got {:?}",
+            com
+        );
     }
 
     #[test]
@@ -3385,26 +3469,29 @@ mod tests {
         let mut world = PhysicsWorld::<4, 4>::new();
         world.set_gravity(Vector3::zeros());
 
-        let fixed = world.add_body(
-            RigidBody::new_static()
-                .with_position(Vector3::new(0.0, 0.0, 0.0)),
-        ).unwrap();
-        let dynamic = world.add_body(
-            RigidBody::new(1.0)
-                .with_position(Vector3::new(5.0, 0.0, 0.0))
-                .with_damping(0.0)
-                .with_angular_damping(0.0),
-        ).unwrap();
+        let fixed = world
+            .add_body(RigidBody::new_static().with_position(Vector3::new(0.0, 0.0, 0.0)))
+            .unwrap();
+        let dynamic = world
+            .add_body(
+                RigidBody::new(1.0)
+                    .with_position(Vector3::new(5.0, 0.0, 0.0))
+                    .with_damping(0.0)
+                    .with_angular_damping(0.0),
+            )
+            .unwrap();
 
         // Distance constraint rest_length=2
-        world.add_constraint(Constraint::Distance {
-            body_a: fixed,
-            body_b: dynamic,
-            anchor_a: Vector3::zeros(),
-            anchor_b: Vector3::zeros(),
-            rest_length: 2.0,
-            compliance: 0.0,
-        }).unwrap();
+        world
+            .add_constraint(Constraint::Distance {
+                body_a: fixed,
+                body_b: dynamic,
+                anchor_a: Vector3::zeros(),
+                anchor_b: Vector3::zeros(),
+                rest_length: 2.0,
+                compliance: 0.0,
+            })
+            .unwrap();
 
         for _ in 0..120 {
             world.step::<4>(1.0 / 60.0);
@@ -3428,22 +3515,21 @@ mod tests {
             world.set_gravity(Vector3::new(0.0, -10.0, 0.0));
             world.solver_iterations = iterations;
 
-            let a = world.add_body(
-                RigidBody::new_static()
-                    .with_position(Vector3::new(0.0, 10.0, 0.0)),
-            ).unwrap();
-            let b = world.add_body(
-                RigidBody::new(1.0)
-                    .with_position(Vector3::new(3.0, 10.0, 0.0))
-                    .with_damping(0.0)
-                    .with_angular_damping(0.0),
-            ).unwrap();
+            let a = world
+                .add_body(RigidBody::new_static().with_position(Vector3::new(0.0, 10.0, 0.0)))
+                .unwrap();
+            let b = world
+                .add_body(
+                    RigidBody::new(1.0)
+                        .with_position(Vector3::new(3.0, 10.0, 0.0))
+                        .with_damping(0.0)
+                        .with_angular_damping(0.0),
+                )
+                .unwrap();
 
-            world.add_distance_constraint(
-                a, Vector3::zeros(),
-                b, Vector3::zeros(),
-                0.0,
-            ).unwrap();
+            world
+                .add_distance_constraint(a, Vector3::zeros(), b, Vector3::zeros(), 0.0)
+                .unwrap();
             world
         };
 
@@ -3464,8 +3550,12 @@ mod tests {
         let error_high = ((pb_high - pa_high).norm() - 3.0).abs();
 
         // Higher iterations should give less error (or equal)
-        assert!(error_high <= error_low + EPSILON,
-            "High iterations error {} should be <= low iterations error {}", error_high, error_low);
+        assert!(
+            error_high <= error_low + EPSILON,
+            "High iterations error {} should be <= low iterations error {}",
+            error_high,
+            error_low
+        );
     }
 
     #[test]
@@ -3474,11 +3564,13 @@ mod tests {
         let mut world = PhysicsWorld::<4, 4>::new();
         world.set_gravity(Vector3::new(0.0, -10.0, 0.0));
 
-        let id = world.add_body(
-            RigidBody::new(1.0)
-                .with_position(Vector3::new(0.0, 10.0, 0.0))
-                .with_damping(0.0),
-        ).unwrap();
+        let id = world
+            .add_body(
+                RigidBody::new(1.0)
+                    .with_position(Vector3::new(0.0, 10.0, 0.0))
+                    .with_damping(0.0),
+            )
+            .unwrap();
 
         world.step::<4>(1.0);
 
@@ -3489,18 +3581,16 @@ mod tests {
     #[test]
     fn test_add_distance_constraint_helper() {
         let mut world = PhysicsWorld::<4, 4>::new();
-        let a = world.add_body(
-            RigidBody::new(1.0).with_position(Vector3::new(0.0, 0.0, 0.0)),
-        ).unwrap();
-        let b = world.add_body(
-            RigidBody::new(1.0).with_position(Vector3::new(5.0, 0.0, 0.0)),
-        ).unwrap();
+        let a = world
+            .add_body(RigidBody::new(1.0).with_position(Vector3::new(0.0, 0.0, 0.0)))
+            .unwrap();
+        let b = world
+            .add_body(RigidBody::new(1.0).with_position(Vector3::new(5.0, 0.0, 0.0)))
+            .unwrap();
 
-        let cid = world.add_distance_constraint(
-            a, Vector3::zeros(),
-            b, Vector3::zeros(),
-            0.0,
-        ).unwrap();
+        let cid = world
+            .add_distance_constraint(a, Vector3::zeros(), b, Vector3::zeros(), 0.0)
+            .unwrap();
 
         // Rest length should be auto-computed from positions
         if let Constraint::Distance { rest_length, .. } = world.constraint(cid).unwrap() {
@@ -3553,7 +3643,11 @@ mod tests {
             .unwrap();
 
         let contacts = world.detect_collisions::<4>();
-        assert_eq!(contacts.len(), 1, "Overlapping spheres should produce one contact");
+        assert_eq!(
+            contacts.len(),
+            1,
+            "Overlapping spheres should produce one contact"
+        );
         assert!(contacts[0].penetration > 0.0);
     }
 }

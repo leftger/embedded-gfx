@@ -39,11 +39,7 @@ fn make_sphere(segments: usize) -> (Vec<[f32; 3]>, Vec<[usize; 3]>, Vec<[f32; 3]
 
     for i in 0..segments {
         let theta = (i as f32 / segments as f32) * 2.0 * std::f32::consts::PI;
-        vertices.push([
-            radius * theta.cos(),
-            0.0,
-            radius * theta.sin(),
-        ]);
+        vertices.push([radius * theta.cos(), 0.0, radius * theta.sin()]);
     }
 
     for i in 0..segments {
@@ -82,16 +78,12 @@ fn main() {
     physics.solver_iterations = 20;
 
     let pendulum_configs = [
-        (4.0, 1.0, 0.4),  // length, mass, radius
+        (4.0, 1.0, 0.4), // length, mass, radius
         (6.0, 1.5, 0.5),
         (8.0, 2.0, 0.6),
     ];
 
-    let colors = [
-        Rgb565::CSS_RED,
-        Rgb565::CSS_CYAN,
-        Rgb565::CSS_YELLOW,
-    ];
+    let colors = [Rgb565::CSS_RED, Rgb565::CSS_CYAN, Rgb565::CSS_YELLOW];
 
     let mut bob_ids: Vec<BodyId> = Vec::new();
     let mut anchor_ids: Vec<BodyId> = Vec::new();
@@ -107,10 +99,9 @@ fn main() {
 
         // Static anchor point
         let anchor_pos = Vector3::new(x, 10.0, 0.0);
-        let anchor_id = physics.add_body(
-            RigidBody::new_static()
-                .with_position(anchor_pos)
-        ).unwrap();
+        let anchor_id = physics
+            .add_body(RigidBody::new_static().with_position(anchor_pos))
+            .unwrap();
         anchor_ids.push(anchor_id);
 
         // Pendulum bob
@@ -130,13 +121,15 @@ fn main() {
         bob_ids.push(bob_id);
 
         // Distance constraint (the "string")
-        physics.add_distance_constraint(
-            anchor_id,
-            Vector3::zeros(),
-            bob_id,
-            Vector3::zeros(),
-            0.0, // Rigid constraint
-        ).unwrap();
+        physics
+            .add_distance_constraint(
+                anchor_id,
+                Vector3::zeros(),
+                bob_id,
+                Vector3::zeros(),
+                0.0, // Rigid constraint
+            )
+            .unwrap();
 
         // Visual mesh
         let geometry = Geometry {
@@ -249,9 +242,13 @@ fn main() {
                 .unwrap();
         }
 
-        Text::new("SPACE=impulse 1-3=pull R=reset", Point::new(10, 470), text_style)
-            .draw(&mut display)
-            .unwrap();
+        Text::new(
+            "SPACE=impulse 1-3=pull R=reset",
+            Point::new(10, 470),
+            text_style,
+        )
+        .draw(&mut display)
+        .unwrap();
 
         window.update(&display);
         thread::sleep(Duration::from_millis(16));

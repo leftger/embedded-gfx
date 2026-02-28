@@ -43,11 +43,7 @@ fn make_sphere(segments: usize) -> (Vec<[f32; 3]>, Vec<[usize; 3]>, Vec<[f32; 3]
 
     for i in 0..segments {
         let theta = (i as f32 / segments as f32) * 2.0 * std::f32::consts::PI;
-        vertices.push([
-            radius * theta.cos(),
-            0.0,
-            radius * theta.sin(),
-        ]);
+        vertices.push([radius * theta.cos(), 0.0, radius * theta.sin()]);
     }
 
     for i in 0..segments {
@@ -92,7 +88,9 @@ fn main() {
 
     let ball = RigidBody::new(1.0)
         .with_position(initial_pos)
-        .with_collider(Collider::Sphere { radius: BALL_RADIUS })
+        .with_collider(Collider::Sphere {
+            radius: BALL_RADIUS,
+        })
         .with_restitution(0.4)
         .with_friction(current_friction)
         .with_damping(0.01)
@@ -127,7 +125,9 @@ fn main() {
 
     let mut ramp_body = RigidBody::new_static()
         .with_position(ramp_pos)
-        .with_collider(Collider::Aabb { half_extents: ramp_half_extents })
+        .with_collider(Collider::Aabb {
+            half_extents: ramp_half_extents,
+        })
         .with_restitution(0.3)
         .with_friction(0.6);
     ramp_body.orientation = ramp_rotation;
@@ -140,24 +140,42 @@ fn main() {
     let hd = ramp_half_extents.z;
 
     let ramp_verts: Vec<[f32; 3]> = vec![
-        [-hw, -hh, hd], [hw, -hh, hd], [hw, hh, hd], [-hw, hh, hd],
-        [-hw, -hh, -hd], [hw, -hh, -hd], [hw, hh, -hd], [-hw, hh, -hd],
+        [-hw, -hh, hd],
+        [hw, -hh, hd],
+        [hw, hh, hd],
+        [-hw, hh, hd],
+        [-hw, -hh, -hd],
+        [hw, -hh, -hd],
+        [hw, hh, -hd],
+        [-hw, hh, -hd],
     ];
     let ramp_faces: Vec<[usize; 3]> = vec![
-        [0, 1, 2], [0, 2, 3], // front
-        [5, 4, 7], [5, 7, 6], // back
-        [3, 2, 6], [3, 6, 7], // top
-        [4, 5, 1], [4, 1, 0], // bottom
-        [1, 5, 6], [1, 6, 2], // right
-        [4, 0, 3], [4, 3, 7], // left
+        [0, 1, 2],
+        [0, 2, 3], // front
+        [5, 4, 7],
+        [5, 7, 6], // back
+        [3, 2, 6],
+        [3, 6, 7], // top
+        [4, 5, 1],
+        [4, 1, 0], // bottom
+        [1, 5, 6],
+        [1, 6, 2], // right
+        [4, 0, 3],
+        [4, 3, 7], // left
     ];
     let ramp_normals: Vec<[f32; 3]> = vec![
-        [0.0, 0.0, 1.0], [0.0, 0.0, 1.0],
-        [0.0, 0.0, -1.0], [0.0, 0.0, -1.0],
-        [0.0, 1.0, 0.0], [0.0, 1.0, 0.0],
-        [0.0, -1.0, 0.0], [0.0, -1.0, 0.0],
-        [1.0, 0.0, 0.0], [1.0, 0.0, 0.0],
-        [-1.0, 0.0, 0.0], [-1.0, 0.0, 0.0],
+        [0.0, 0.0, 1.0],
+        [0.0, 0.0, 1.0],
+        [0.0, 0.0, -1.0],
+        [0.0, 0.0, -1.0],
+        [0.0, 1.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [0.0, -1.0, 0.0],
+        [0.0, -1.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [-1.0, 0.0, 0.0],
+        [-1.0, 0.0, 0.0],
     ];
 
     let ramp_geometry = Geometry {
@@ -177,19 +195,23 @@ fn main() {
     ramp_mesh.set_rotation(ramp_rotation);
 
     // Floor at bottom
-    let _floor_id = physics.add_body(
-        RigidBody::new_static()
-            .with_position(Vector3::new(0.0, -0.1, 0.0))
-            .with_collider(Collider::Aabb {
-                half_extents: Vector3::new(15.0, 0.1, 10.0),
-            })
-            .with_restitution(0.3)
-            .with_friction(0.6)
-    ).unwrap();
+    let _floor_id = physics
+        .add_body(
+            RigidBody::new_static()
+                .with_position(Vector3::new(0.0, -0.1, 0.0))
+                .with_collider(Collider::Aabb {
+                    half_extents: Vector3::new(15.0, 0.1, 10.0),
+                })
+                .with_restitution(0.3)
+                .with_friction(0.6),
+        )
+        .unwrap();
 
     let floor_verts: Vec<[f32; 3]> = vec![
-        [-12.0, 0.0, 8.0], [12.0, 0.0, 8.0],
-        [12.0, 0.0, -8.0], [-12.0, 0.0, -8.0],
+        [-12.0, 0.0, 8.0],
+        [12.0, 0.0, 8.0],
+        [12.0, 0.0, -8.0],
+        [-12.0, 0.0, -8.0],
     ];
     let floor_faces: Vec<[usize; 3]> = vec![[0, 1, 2], [0, 2, 3]];
     let floor_normals: Vec<[f32; 3]> = vec![[0.0, 1.0, 0.0], [0.0, 1.0, 0.0]];

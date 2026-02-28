@@ -34,8 +34,8 @@
 //! soft_body.step(0.016);
 //! ```
 
-use nalgebra::Vector3;
 use heapless::Vec;
+use nalgebra::Vector3;
 
 #[allow(unused_imports)]
 use nalgebra::ComplexField;
@@ -405,7 +405,8 @@ impl<const P: usize, const S: usize> SoftBody<P, S> {
                     }
 
                     // Apply friction to horizontal velocity
-                    let horizontal_vel = Vector3::new(particle.velocity.x, 0.0, particle.velocity.z);
+                    let horizontal_vel =
+                        Vector3::new(particle.velocity.x, 0.0, particle.velocity.z);
                     let friction_impulse = horizontal_vel * -self.ground_friction;
                     particle.velocity.x += friction_impulse.x;
                     particle.velocity.z += friction_impulse.z;
@@ -510,11 +511,7 @@ impl<const P: usize, const S: usize> SoftBody<P, S> {
         // Create particle grid
         for y in 0..height {
             for x in 0..width {
-                let position = Vector3::new(
-                    x as f32 * spacing,
-                    -(y as f32 * spacing),
-                    0.0,
-                );
+                let position = Vector3::new(x as f32 * spacing, -(y as f32 * spacing), 0.0);
                 let particle = Particle::new(position, 1.0);
                 soft_body.add_particle(particle)?;
             }
@@ -552,8 +549,20 @@ impl<const P: usize, const S: usize> SoftBody<P, S> {
                 let diagonal_length = spacing * 1.414; // sqrt(2)
 
                 // Diagonal springs
-                soft_body.add_spring(idx, idx + width + 1, diagonal_length, stiffness * 0.5, damping)?;
-                soft_body.add_spring(idx + 1, idx + width, diagonal_length, stiffness * 0.5, damping)?;
+                soft_body.add_spring(
+                    idx,
+                    idx + width + 1,
+                    diagonal_length,
+                    stiffness * 0.5,
+                    damping,
+                )?;
+                soft_body.add_spring(
+                    idx + 1,
+                    idx + width,
+                    diagonal_length,
+                    stiffness * 0.5,
+                    damping,
+                )?;
             }
         }
 
@@ -607,17 +616,21 @@ impl<const P: usize, const S: usize> SoftBody<P, S> {
 
                     // Z-axis springs
                     if z < size - 1 {
-                        soft_body.add_spring(idx, idx + size * size, spacing, stiffness, damping)?;
+                        soft_body.add_spring(
+                            idx,
+                            idx + size * size,
+                            spacing,
+                            stiffness,
+                            damping,
+                        )?;
                     }
                 }
             }
         }
 
         // Enable pressure to maintain volume
-        soft_body.pressure_config = PressureConfig::new(
-            (size as f32 * spacing).powi(3),
-            stiffness * 0.1,
-        );
+        soft_body.pressure_config =
+            PressureConfig::new((size as f32 * spacing).powi(3), stiffness * 0.1);
 
         Ok(soft_body)
     }
@@ -660,7 +673,8 @@ impl<const P: usize, const S: usize> SoftBody<P, S> {
         // For now, just connect nearby particles
         for i in 0..soft_body.particles.len() {
             for j in i + 1..soft_body.particles.len() {
-                let dist = (soft_body.particles[i].position - soft_body.particles[j].position).norm();
+                let dist =
+                    (soft_body.particles[i].position - soft_body.particles[j].position).norm();
                 if dist < radius * 1.5 {
                     soft_body.add_spring(i, j, dist, stiffness, damping)?;
                 }
@@ -729,8 +743,12 @@ mod tests {
     fn test_softbody_add_spring() {
         let mut soft_body = SoftBody::<16, 32>::new();
 
-        soft_body.add_particle(Particle::new(Vector3::zeros(), 1.0)).unwrap();
-        soft_body.add_particle(Particle::new(Vector3::new(1.0, 0.0, 0.0), 1.0)).unwrap();
+        soft_body
+            .add_particle(Particle::new(Vector3::zeros(), 1.0))
+            .unwrap();
+        soft_body
+            .add_particle(Particle::new(Vector3::new(1.0, 0.0, 0.0), 1.0))
+            .unwrap();
 
         let result = soft_body.add_spring(0, 1, 1.0, 100.0, 0.5);
         assert!(result.is_ok());

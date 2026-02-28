@@ -46,21 +46,33 @@ fn make_cube() -> (Vec<[f32; 3]>, Vec<[usize; 3]>, Vec<[f32; 3]>) {
     ];
 
     let faces = vec![
-        [0, 1, 2], [0, 2, 3], // front
-        [5, 4, 7], [5, 7, 6], // back
-        [3, 2, 6], [3, 6, 7], // top
-        [4, 5, 1], [4, 1, 0], // bottom
-        [1, 5, 6], [1, 6, 2], // right
-        [4, 0, 3], [4, 3, 7], // left
+        [0, 1, 2],
+        [0, 2, 3], // front
+        [5, 4, 7],
+        [5, 7, 6], // back
+        [3, 2, 6],
+        [3, 6, 7], // top
+        [4, 5, 1],
+        [4, 1, 0], // bottom
+        [1, 5, 6],
+        [1, 6, 2], // right
+        [4, 0, 3],
+        [4, 3, 7], // left
     ];
 
     let normals = vec![
-        [0.0, 0.0, 1.0], [0.0, 0.0, 1.0],
-        [0.0, 0.0, -1.0], [0.0, 0.0, -1.0],
-        [0.0, 1.0, 0.0], [0.0, 1.0, 0.0],
-        [0.0, -1.0, 0.0], [0.0, -1.0, 0.0],
-        [1.0, 0.0, 0.0], [1.0, 0.0, 0.0],
-        [-1.0, 0.0, 0.0], [-1.0, 0.0, 0.0],
+        [0.0, 0.0, 1.0],
+        [0.0, 0.0, 1.0],
+        [0.0, 0.0, -1.0],
+        [0.0, 0.0, -1.0],
+        [0.0, 1.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [0.0, -1.0, 0.0],
+        [0.0, -1.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [-1.0, 0.0, 0.0],
+        [-1.0, 0.0, 0.0],
     ];
 
     (vertices, faces, normals)
@@ -134,21 +146,30 @@ fn main() {
         initial_ang_vels.push(initial_spins[i % initial_spins.len()]);
 
         let geometry = Geometry {
-            vertices: &vertices, faces: &faces, colors: &[], lines: &[],
-            normals: &normals, vertex_normals: &[], uvs: &[], texture_id: None,
+            vertices: &vertices,
+            faces: &faces,
+            colors: &[],
+            lines: &[],
+            normals: &normals,
+            vertex_normals: &[],
+            uvs: &[],
+            texture_id: None,
         };
         let mut mesh = K3dMesh::new(geometry);
         mesh.set_render_mode(RenderMode::SolidLightDir(Vector3::new(0.5, 1.0, 0.3)));
         mesh.set_color(colors[i % colors.len()]);
-        mesh.set_position(free_positions[i].x, free_positions[i].y, free_positions[i].z);
+        mesh.set_position(
+            free_positions[i].x,
+            free_positions[i].y,
+            free_positions[i].z,
+        );
         meshes.push(mesh);
     }
 
     // -- Hanging chain (right side): static anchor + 3 linked cubes --
-    let chain_anchor = physics.add_body(
-        RigidBody::new_static()
-            .with_position(Vector3::new(4.0, 12.0, 0.0)),
-    ).unwrap();
+    let chain_anchor = physics
+        .add_body(RigidBody::new_static().with_position(Vector3::new(4.0, 12.0, 0.0)))
+        .unwrap();
 
     let chain_spacing = 2.0;
     let mut prev_id = chain_anchor;
@@ -167,11 +188,15 @@ fn main() {
         let id = physics.add_body(body).unwrap();
 
         // Connect to previous link with a distance constraint
-        physics.add_distance_constraint(
-            prev_id, Vector3::zeros(),
-            id, Vector3::zeros(),
-            0.0, // compliance = rigid
-        ).unwrap();
+        physics
+            .add_distance_constraint(
+                prev_id,
+                Vector3::zeros(),
+                id,
+                Vector3::zeros(),
+                0.0, // compliance = rigid
+            )
+            .unwrap();
 
         body_ids.push(id);
         initial_positions.push(pos);
@@ -179,8 +204,14 @@ fn main() {
         prev_id = id;
 
         let geometry = Geometry {
-            vertices: &vertices, faces: &faces, colors: &[], lines: &[],
-            normals: &normals, vertex_normals: &[], uvs: &[], texture_id: None,
+            vertices: &vertices,
+            faces: &faces,
+            colors: &[],
+            lines: &[],
+            normals: &normals,
+            vertex_normals: &[],
+            uvs: &[],
+            texture_id: None,
         };
         let mut mesh = K3dMesh::new(geometry);
         mesh.set_render_mode(RenderMode::SolidLightDir(Vector3::new(0.5, 1.0, 0.3)));
@@ -204,15 +235,23 @@ fn main() {
 
     // Floor visual mesh
     let floor_verts: Vec<[f32; 3]> = vec![
-        [-8.0, 0.0, 5.0], [8.0, 0.0, 5.0],
-        [8.0, 0.0, -5.0], [-8.0, 0.0, -5.0],
+        [-8.0, 0.0, 5.0],
+        [8.0, 0.0, 5.0],
+        [8.0, 0.0, -5.0],
+        [-8.0, 0.0, -5.0],
     ];
     let floor_faces: Vec<[usize; 3]> = vec![[0, 1, 2], [0, 2, 3]];
     let floor_normals: Vec<[f32; 3]> = vec![[0.0, 1.0, 0.0], [0.0, 1.0, 0.0]];
 
     let floor_geometry = Geometry {
-        vertices: &floor_verts, faces: &floor_faces, colors: &[], lines: &[],
-        normals: &floor_normals, vertex_normals: &[], uvs: &[], texture_id: None,
+        vertices: &floor_verts,
+        faces: &floor_faces,
+        colors: &[],
+        lines: &[],
+        normals: &floor_normals,
+        vertex_normals: &[],
+        uvs: &[],
+        texture_id: None,
     };
     let mut floor_mesh = K3dMesh::new(floor_geometry);
     floor_mesh.set_render_mode(RenderMode::SolidLightDir(Vector3::new(0.5, 1.0, 0.3)));
@@ -317,9 +356,13 @@ fn main() {
         Text::new(perf.get_text(), Point::new(10, 15), text_style)
             .draw(&mut display)
             .unwrap();
-        Text::new("SPC=impulse T=torque D=deact R=reset", Point::new(10, 470), text_style)
-            .draw(&mut display)
-            .unwrap();
+        Text::new(
+            "SPC=impulse T=torque D=deact R=reset",
+            Point::new(10, 470),
+            text_style,
+        )
+        .draw(&mut display)
+        .unwrap();
 
         window.update(&display);
         thread::sleep(Duration::from_millis(16));

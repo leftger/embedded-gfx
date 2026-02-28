@@ -41,11 +41,7 @@ fn make_sphere(segments: usize) -> (Vec<[f32; 3]>, Vec<[usize; 3]>, Vec<[f32; 3]
 
     for i in 0..segments {
         let theta = (i as f32 / segments as f32) * 2.0 * std::f32::consts::PI;
-        vertices.push([
-            radius * theta.cos(),
-            0.0,
-            radius * theta.sin(),
-        ]);
+        vertices.push([radius * theta.cos(), 0.0, radius * theta.sin()]);
     }
 
     for i in 0..segments {
@@ -65,26 +61,44 @@ fn make_sphere(segments: usize) -> (Vec<[f32; 3]>, Vec<[usize; 3]>, Vec<[f32; 3]
 
 fn make_box() -> (Vec<[f32; 3]>, Vec<[usize; 3]>, Vec<[f32; 3]>) {
     let vertices = vec![
-        [-0.5, -0.5, 0.5], [0.5, -0.5, 0.5], [0.5, 0.5, 0.5], [-0.5, 0.5, 0.5],
-        [-0.5, -0.5, -0.5], [0.5, -0.5, -0.5], [0.5, 0.5, -0.5], [-0.5, 0.5, -0.5],
+        [-0.5, -0.5, 0.5],
+        [0.5, -0.5, 0.5],
+        [0.5, 0.5, 0.5],
+        [-0.5, 0.5, 0.5],
+        [-0.5, -0.5, -0.5],
+        [0.5, -0.5, -0.5],
+        [0.5, 0.5, -0.5],
+        [-0.5, 0.5, -0.5],
     ];
 
     let faces = vec![
-        [0, 1, 2], [0, 2, 3],
-        [5, 4, 7], [5, 7, 6],
-        [3, 2, 6], [3, 6, 7],
-        [4, 5, 1], [4, 1, 0],
-        [1, 5, 6], [1, 6, 2],
-        [4, 0, 3], [4, 3, 7],
+        [0, 1, 2],
+        [0, 2, 3],
+        [5, 4, 7],
+        [5, 7, 6],
+        [3, 2, 6],
+        [3, 6, 7],
+        [4, 5, 1],
+        [4, 1, 0],
+        [1, 5, 6],
+        [1, 6, 2],
+        [4, 0, 3],
+        [4, 3, 7],
     ];
 
     let normals = vec![
-        [0.0, 0.0, 1.0], [0.0, 0.0, 1.0],
-        [0.0, 0.0, -1.0], [0.0, 0.0, -1.0],
-        [0.0, 1.0, 0.0], [0.0, 1.0, 0.0],
-        [0.0, -1.0, 0.0], [0.0, -1.0, 0.0],
-        [1.0, 0.0, 0.0], [1.0, 0.0, 0.0],
-        [-1.0, 0.0, 0.0], [-1.0, 0.0, 0.0],
+        [0.0, 0.0, 1.0],
+        [0.0, 0.0, 1.0],
+        [0.0, 0.0, -1.0],
+        [0.0, 0.0, -1.0],
+        [0.0, 1.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [0.0, -1.0, 0.0],
+        [0.0, -1.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [-1.0, 0.0, 0.0],
+        [-1.0, 0.0, 0.0],
     ];
 
     (vertices, faces, normals)
@@ -130,7 +144,9 @@ fn main() {
 
             let box_body = RigidBody::new(0.5)
                 .with_position(pos)
-                .with_collider(Collider::Aabb { half_extents: Vector3::new(0.5, 0.5, 0.5) })
+                .with_collider(Collider::Aabb {
+                    half_extents: Vector3::new(0.5, 0.5, 0.5),
+                })
                 .with_restitution(0.3)
                 .with_friction(0.6)
                 .with_damping(0.02)
@@ -164,10 +180,9 @@ fn main() {
 
     // Wrecking ball anchor
     let anchor_pos = Vector3::new(-3.0, 10.0, 0.0);
-    let anchor_id = physics.add_body(
-        RigidBody::new_static()
-            .with_position(anchor_pos)
-    ).unwrap();
+    let anchor_id = physics
+        .add_body(RigidBody::new_static().with_position(anchor_pos))
+        .unwrap();
 
     // Wrecking ball
     let ball_pos = Vector3::new(-3.0, 10.0 - CHAIN_LENGTH, 0.0);
@@ -175,7 +190,9 @@ fn main() {
 
     let ball = RigidBody::new(10.0) // Heavy ball
         .with_position(ball_pos)
-        .with_collider(Collider::Sphere { radius: BALL_RADIUS })
+        .with_collider(Collider::Sphere {
+            radius: BALL_RADIUS,
+        })
         .with_restitution(0.4)
         .with_friction(0.2)
         .with_damping(0.005)
@@ -185,13 +202,9 @@ fn main() {
     let ball_id = physics.add_body(ball).unwrap();
 
     // Chain constraint
-    physics.add_distance_constraint(
-        anchor_id,
-        Vector3::zeros(),
-        ball_id,
-        Vector3::zeros(),
-        0.0,
-    ).unwrap();
+    physics
+        .add_distance_constraint(anchor_id, Vector3::zeros(), ball_id, Vector3::zeros(), 0.0)
+        .unwrap();
 
     // Ball mesh
     let ball_geometry = Geometry {
@@ -210,19 +223,23 @@ fn main() {
     ball_mesh.set_position(ball_pos.x, ball_pos.y, ball_pos.z);
 
     // Floor
-    let _floor_id = physics.add_body(
-        RigidBody::new_static()
-            .with_position(Vector3::new(0.0, -0.1, 0.0))
-            .with_collider(Collider::Aabb {
-                half_extents: Vector3::new(20.0, 0.1, 10.0),
-            })
-            .with_restitution(0.3)
-            .with_friction(0.7)
-    ).unwrap();
+    let _floor_id = physics
+        .add_body(
+            RigidBody::new_static()
+                .with_position(Vector3::new(0.0, -0.1, 0.0))
+                .with_collider(Collider::Aabb {
+                    half_extents: Vector3::new(20.0, 0.1, 10.0),
+                })
+                .with_restitution(0.3)
+                .with_friction(0.7),
+        )
+        .unwrap();
 
     let floor_verts: Vec<[f32; 3]> = vec![
-        [-15.0, 0.0, 8.0], [15.0, 0.0, 8.0],
-        [15.0, 0.0, -8.0], [-15.0, 0.0, -8.0],
+        [-15.0, 0.0, 8.0],
+        [15.0, 0.0, 8.0],
+        [15.0, 0.0, -8.0],
+        [-15.0, 0.0, -8.0],
     ];
     let floor_faces: Vec<[usize; 3]> = vec![[0, 1, 2], [0, 2, 3]];
     let floor_normals: Vec<[f32; 3]> = vec![[0.0, 1.0, 0.0], [0.0, 1.0, 0.0]];

@@ -93,6 +93,7 @@ fn load_stl(file_name: &str) -> String {
             normals: &[
                 {normals}
             ],
+            vertex_normals: &[],
             uvs: &[],
             texture_id: None,
         }}"

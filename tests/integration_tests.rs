@@ -67,6 +67,7 @@ fn test_full_rendering_pipeline_points() {
         colors: &[],
         lines: &[],
         normals: &[],
+        vertex_normals: &[],
         uvs: &[],
         texture_id: None,
     };
@@ -99,6 +100,7 @@ fn test_full_rendering_pipeline_lines() {
         colors: &[],
         lines: &[],
         normals: &[],
+        vertex_normals: &[],
         uvs: &[],
         texture_id: None,
     };
@@ -131,6 +133,7 @@ fn test_full_rendering_pipeline_solid() {
         colors: &[],
         lines: &[],
         normals: &[],
+        vertex_normals: &[],
         uvs: &[],
         texture_id: None,
     };
@@ -160,6 +163,7 @@ fn test_multiple_meshes() {
         colors: &[],
         lines: &[],
         normals: &[],
+        vertex_normals: &[],
         uvs: &[],
         texture_id: None,
     };
@@ -173,6 +177,7 @@ fn test_multiple_meshes() {
         colors: &[],
         lines: &[],
         normals: &[],
+        vertex_normals: &[],
         uvs: &[],
         texture_id: None,
     };
@@ -200,6 +205,7 @@ fn test_mesh_transformation() {
         colors: &[],
         lines: &[],
         normals: &[],
+        vertex_normals: &[],
         uvs: &[],
         texture_id: None,
     };
@@ -229,6 +235,7 @@ fn test_mesh_scaling() {
         colors: &[],
         lines: &[],
         normals: &[],
+        vertex_normals: &[],
         uvs: &[],
         texture_id: None,
     };
@@ -264,6 +271,7 @@ fn test_backface_culling() {
         colors: &[],
         lines: &[],
         normals: &normals,
+        vertex_normals: &[],
         uvs: &[],
         texture_id: None,
     };
@@ -294,6 +302,7 @@ fn test_camera_movement() {
         colors: &[],
         lines: &[],
         normals: &[],
+        vertex_normals: &[],
         uvs: &[],
         texture_id: None,
     };
@@ -327,6 +336,7 @@ fn test_out_of_view_culling() {
         colors: &[],
         lines: &[],
         normals: &[],
+        vertex_normals: &[],
         uvs: &[],
         texture_id: None,
     };
@@ -359,6 +369,7 @@ fn test_lighting_mode() {
         colors: &[],
         lines: &[],
         normals: &normals,
+        vertex_normals: &[],
         uvs: &[],
         texture_id: None,
     };
@@ -392,6 +403,7 @@ fn test_colored_vertices() {
         colors: &colors,
         lines: &[],
         normals: &[],
+        vertex_normals: &[],
         uvs: &[],
         texture_id: None,
     };
@@ -423,6 +435,7 @@ fn test_lines_from_explicit_edges() {
         colors: &[],
         lines: &lines,
         normals: &[],
+        vertex_normals: &[],
         uvs: &[],
         texture_id: None,
     };

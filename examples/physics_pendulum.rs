@@ -145,6 +145,7 @@ fn main() {
             colors: &[],
             lines: &[],
             normals: &normals,
+            vertex_normals: &[],
             uvs: &[],
             texture_id: None,
         };

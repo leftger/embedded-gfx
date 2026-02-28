@@ -107,6 +107,7 @@ fn main() {
         colors: &[],
         lines: &[],
         normals: &[],
+        vertex_normals: &[],
         uvs: &[],
         texture_id: None,
     };
@@ -121,6 +122,7 @@ fn main() {
         colors: &[],
         lines: &[],
         normals: &[],
+        vertex_normals: &[],
         uvs: &[],
         texture_id: None,
     };
@@ -135,6 +137,7 @@ fn main() {
         colors: &[],
         lines: &[],
         normals: &[],
+        vertex_normals: &[],
         uvs: &[],
         texture_id: None,
     };
@@ -151,6 +154,7 @@ fn main() {
         colors: &[],
         lines: &[],
         normals: &[],
+        vertex_normals: &[],
         uvs: &[],
         texture_id: None,
     };

@@ -135,7 +135,7 @@ fn main() {
 
         let geometry = Geometry {
             vertices: &vertices, faces: &faces, colors: &[], lines: &[],
-            normals: &normals, uvs: &[], texture_id: None,
+            normals: &normals, vertex_normals: &[], uvs: &[], texture_id: None,
         };
         let mut mesh = K3dMesh::new(geometry);
         mesh.set_render_mode(RenderMode::SolidLightDir(Vector3::new(0.5, 1.0, 0.3)));
@@ -180,7 +180,7 @@ fn main() {
 
         let geometry = Geometry {
             vertices: &vertices, faces: &faces, colors: &[], lines: &[],
-            normals: &normals, uvs: &[], texture_id: None,
+            normals: &normals, vertex_normals: &[], uvs: &[], texture_id: None,
         };
         let mut mesh = K3dMesh::new(geometry);
         mesh.set_render_mode(RenderMode::SolidLightDir(Vector3::new(0.5, 1.0, 0.3)));
@@ -212,7 +212,7 @@ fn main() {
 
     let floor_geometry = Geometry {
         vertices: &floor_verts, faces: &floor_faces, colors: &[], lines: &[],
-        normals: &floor_normals, uvs: &[], texture_id: None,
+        normals: &floor_normals, vertex_normals: &[], uvs: &[], texture_id: None,
     };
     let mut floor_mesh = K3dMesh::new(floor_geometry);
     floor_mesh.set_render_mode(RenderMode::SolidLightDir(Vector3::new(0.5, 1.0, 0.3)));

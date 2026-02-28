@@ -10,21 +10,62 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
-
+  check:
+    name: Check
     runs-on: ubuntu-latest
-
     steps:
     - uses: actions/checkout@v4
+    - uses: dtolnay/rust-toolchain@stable
+    - uses: Swatinem/rust-cache@v2
+    - name: cargo check
+      run: cargo check --lib --all-features
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: dtolnay/rust-toolchain@stable
+    - uses: Swatinem/rust-cache@v2
     - name: Install SDL2
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y libsdl2-dev
-    - name: Check library
-      run: cargo check --lib --verbose
-    - name: Run library tests
-      run: cargo test --lib --verbose
-    - name: Check with std feature
-      run: cargo check --lib --features std --verbose
-    - name: Check with all features
-      run: cargo check --lib --all-features --verbose
+      run: sudo apt-get update && sudo apt-get install -y libsdl2-dev
+    - name: Unit tests
+      run: cargo test --lib
+    - name: Integration tests
+      run: cargo test --test integration_tests
+
+  fmt:
+    name: Formatting
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+    - uses: actions/checkout@v4
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        components: rustfmt
+    - name: cargo fmt
+      run: cargo fmt --all -- --check
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        components: clippy
+    - uses: Swatinem/rust-cache@v2
+    - name: cargo clippy
+      run: cargo clippy --lib --all-features
+
+  examples:
+    name: Examples
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: dtolnay/rust-toolchain@stable
+    - uses: Swatinem/rust-cache@v2
+    - name: Install SDL2
+      run: sudo apt-get update && sudo apt-get install -y libsdl2-dev
+    - name: Build examples
+      run: cargo build --examples

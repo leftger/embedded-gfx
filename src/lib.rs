@@ -37,6 +37,8 @@ pub use embedded_graphics_framebuf::{
     backends::{DMACapableFrameBufferBackend, EndianCorrectedBuffer, EndianCorrection},
 };
 
+pub use draw::ReadPixel;
+
 #[derive(Debug, Clone)]
 pub enum DrawPrimitive {
     ColoredPoint(Point2<i32>, Rgb565),

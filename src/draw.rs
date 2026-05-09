@@ -1018,12 +1018,129 @@ pub fn draw_zbuffered_aa_coverage<D>(
             );
         }
         DrawPrimitive::Line([p1, p2], color) => {
-            // Lines don't accumulate coverage with each other in any
-            // meaningful way; route to the standard Wu's path.
-            draw_line_aa(p1.x, p1.y, p2.x, p2.y, color, fb);
+            // Use the coverage-aware Wu's variant so the bg composite at
+            // end-of-frame doesn't overwrite line pixels.
+            draw_line_aa_coverage(
+                p1.x, p1.y, p2.x, p2.y, color, fb, coverage, width,
+            );
         }
         other => draw_zbuffered(other, fb, zbuffer, width),
     }
+}
+
+/// Wu's anti-aliased line that updates a coverage buffer alongside the
+/// framebuffer write. Use with `draw_zbuffered_aa_coverage` so the bg
+/// composite at end-of-frame respects line pixels.
+#[cfg(feature = "aa-coverage")]
+pub fn draw_line_aa_coverage<D>(
+    x0: i32,
+    y0: i32,
+    x1: i32,
+    y1: i32,
+    color: Rgb565,
+    fb: &mut D,
+    coverage: &mut [u8],
+    width: usize,
+) where
+    D: DrawTarget<Color = Rgb565> + ReadPixel,
+    <D as DrawTarget>::Error: Debug,
+{
+    let dx = (x1 - x0).abs();
+    let dy = (y1 - y0).abs();
+    let steep = dy > dx;
+    let (x0, y0, x1, y1) = if steep {
+        (y0, x0, y1, x1)
+    } else {
+        (x0, y0, x1, y1)
+    };
+    let (x0, y0, x1, y1) = if x0 > x1 {
+        (x1, y1, x0, y0)
+    } else {
+        (x0, y0, x1, y1)
+    };
+    let dx = x1 - x0;
+    let dy = y1 - y0;
+    if dx == 0 {
+        let (px, py) = if steep { (y0, x0) } else { (x0, y0) };
+        plot_aa_cov(fb, px, py, color, coverage, width, 256);
+        return;
+    }
+    let gradient: i32 = ((dy as i64) << 16) as i32 / dx;
+    let mut intery: i32 = y0 << 16;
+    for x in x0..=x1 {
+        let y_int = intery >> 16;
+        let frac_q16 = (intery & 0xFFFF) as u32;
+        let cov_top = 256 - (frac_q16 >> 8);
+        let cov_bot = frac_q16 >> 8;
+        if steep {
+            plot_aa_cov(fb, y_int, x, color, coverage, width, cov_top);
+            plot_aa_cov(fb, y_int + 1, x, color, coverage, width, cov_bot);
+        } else {
+            plot_aa_cov(fb, x, y_int, color, coverage, width, cov_top);
+            plot_aa_cov(fb, x, y_int + 1, color, coverage, width, cov_bot);
+        }
+        intery += gradient;
+    }
+}
+
+/// Coverage-aware single-pixel plot for Wu's lines. Mirrors the four-case
+/// logic of `aa_pixel_cov` but without the z-test (lines don't carry depth).
+#[cfg(feature = "aa-coverage")]
+#[inline(always)]
+fn plot_aa_cov<D>(
+    fb: &mut D,
+    x: i32,
+    y: i32,
+    color: Rgb565,
+    coverage: &mut [u8],
+    width: usize,
+    coverage_q8: u32,
+) where
+    D: DrawTarget<Color = Rgb565> + ReadPixel,
+    <D as DrawTarget>::Error: Debug,
+{
+    if x < 0 || y < 0 || coverage_q8 == 0 {
+        return;
+    }
+    let idx = y as usize * width + x as usize;
+    if idx >= coverage.len() {
+        return;
+    }
+    let p = Point::new(x, y);
+
+    if coverage_q8 >= 256 {
+        coverage[idx] = 255;
+        fb.draw_iter([embedded_graphics_core::Pixel(p, color)]).unwrap();
+        return;
+    }
+
+    let prev_cov = coverage[idx] as u32;
+
+    if prev_cov == 0 {
+        let claim_255 = (coverage_q8 * 255) >> 8;
+        coverage[idx] = claim_255 as u8;
+        fb.draw_iter([embedded_graphics_core::Pixel(p, color)]).unwrap();
+        return;
+    }
+
+    if prev_cov >= 255 {
+        let existing = fb.read_pixel(p);
+        let result = blend_q8(existing, color, coverage_q8);
+        fb.draw_iter([embedded_graphics_core::Pixel(p, result)]).unwrap();
+        return;
+    }
+
+    let remaining = 255 - prev_cov;
+    let claim_255 = ((coverage_q8 * 255) >> 8).min(remaining);
+    if claim_255 == 0 {
+        return;
+    }
+    let new_total = prev_cov + claim_255;
+    let existing = fb.read_pixel(p);
+    let blend_factor = (claim_255 * 256) / new_total;
+    let result = blend_q8(existing, color, blend_factor);
+    coverage[idx] = new_total as u8;
+    fb.draw_iter([embedded_graphics_core::Pixel(p, result)]).unwrap();
 }
 
 /// Composite background color into pixels that weren't fully covered by

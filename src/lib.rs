@@ -37,6 +37,7 @@ pub use embedded_graphics_framebuf::{
     backends::{DMACapableFrameBufferBackend, EndianCorrectedBuffer, EndianCorrection},
 };
 
+#[cfg(feature = "aa")]
 pub use draw::ReadPixel;
 
 #[derive(Debug, Clone)]

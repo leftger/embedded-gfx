@@ -18,6 +18,7 @@ const MAX_ROW_WIDTH: usize = 100;
 
 use core::fmt::Debug;
 use embedded_graphics_core::draw_target::DrawTarget;
+#[cfg(feature = "aa")]
 use embedded_graphics_core::pixelcolor::Rgb565;
 use embedded_graphics_core::pixelcolor::RgbColor;
 use embedded_graphics_core::prelude::Point;
@@ -32,12 +33,14 @@ use crate::DrawPrimitive;
 /// anti-aliased line endpoints with the existing framebuffer contents.
 /// Implementers should return the most recently written color at `point`,
 /// or `Rgb565::BLACK` for out-of-bounds reads.
+#[cfg(feature = "aa")]
 pub trait ReadPixel {
     fn read_pixel(&self, point: Point) -> Rgb565;
 }
 
 /// Component-wise blend in 8-bit fixed-point coverage.
 /// `coverage_q8` ∈ [0, 256]; 256 = full triangle color, 0 = full background.
+#[cfg(feature = "aa")]
 #[inline(always)]
 fn blend_q8(bg: Rgb565, fg: Rgb565, coverage_q8: u32) -> Rgb565 {
     let inv = 256 - coverage_q8;
@@ -48,6 +51,17 @@ fn blend_q8(bg: Rgb565, fg: Rgb565, coverage_q8: u32) -> Rgb565 {
 }
 
 /// Z-test + coverage blend + write a single AA pixel.
+///
+/// Coverage handling has three cases:
+/// - Full coverage (`coverage_q8 >= 256`): fast path, write color directly.
+/// - Partial coverage on a virgin pixel (z-buffer at `u32::MAX`): true
+///   silhouette against the background — blend `bg * (1-c) + color * c`.
+/// - Partial coverage on a pixel another triangle has already painted:
+///   treat as a shared interior edge and write full color. This avoids the
+///   classic double-blend seam artifact at shared edges in closed meshes.
+///   Tradeoff: thin protrusions whose silhouette overlaps another triangle
+///   lose AA on that overlap. Acceptable for typical closed geometry.
+#[cfg(feature = "aa-heuristic")]
 #[inline(always)]
 fn aa_pixel<D>(
     fb: &mut D,
@@ -72,16 +86,15 @@ fn aa_pixel<D>(
     if z >= zbuffer[idx].saturating_add(DEPTH_EPSILON) {
         return;
     }
-    // Don't update the z-buffer for partial-coverage pixels: the triangle
-    // doesn't fully own the pixel, so leave depth available for the next
-    // triangle to potentially blend on top of.
-    let final_color = if coverage_q8 >= 256 {
-        zbuffer[idx] = z;
+
+    let pixel_was_virgin = zbuffer[idx] == u32::MAX;
+    let final_color = if coverage_q8 >= 256 || !pixel_was_virgin {
         color
     } else {
         let bg = fb.read_pixel(Point::new(x, y));
         blend_q8(bg, color, coverage_q8)
     };
+    zbuffer[idx] = z;
     fb.draw_iter([embedded_graphics_core::Pixel(
         Point::new(x, y),
         final_color,
@@ -705,6 +718,7 @@ pub fn draw_zbuffered<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::
 /// Lines use Wu's algorithm.
 ///
 /// Requires `ReadPixel` on the framebuffer for the boundary blends.
+#[cfg(feature = "aa-heuristic")]
 #[inline]
 pub fn draw_zbuffered_aa<D>(
     primitive: DrawPrimitive,
@@ -746,6 +760,7 @@ pub fn draw_zbuffered_aa<D>(
     }
 }
 
+#[cfg(feature = "aa-heuristic")]
 #[inline(always)]
 fn fill_triangle_zbuffered_aa<D>(
     p1: nalgebra::Point2<i32>,
@@ -794,6 +809,7 @@ fn fill_triangle_zbuffered_aa<D>(
     }
 }
 
+#[cfg(feature = "aa-heuristic")]
 #[inline(always)]
 fn fill_bottom_flat_aa<D>(
     p1: Point,
@@ -832,6 +848,7 @@ fn fill_bottom_flat_aa<D>(
     }
 }
 
+#[cfg(feature = "aa-heuristic")]
 #[inline(always)]
 fn fill_top_flat_aa<D>(
     p1: Point,
@@ -875,6 +892,7 @@ fn fill_top_flat_aa<D>(
 /// `cx1` / `cx2` are 16.16 fixed-point edge positions. The fractional parts
 /// give us per-edge sub-pixel coverage; the integer span between them is
 /// rendered with the existing fully-opaque fast path.
+#[cfg(feature = "aa-heuristic")]
 #[inline(always)]
 fn aa_scanline<D>(
     cx1: i32,
@@ -947,10 +965,391 @@ fn aa_scanline<D>(
     }
 }
 
+/// Z-buffered drawing with coverage-tracked analytical edge AA.
+///
+/// Differs from `draw_zbuffered_aa` by maintaining a per-pixel coverage
+/// buffer (`u8`, 0..255) so that multiple triangles meeting at a shared
+/// edge composite additively rather than overwriting each other. This
+/// eliminates the residual color-step seam at coplanar shared edges that
+/// the simpler `draw_zbuffered_aa` heuristic leaves behind.
+///
+/// **Caller protocol per frame:**
+/// 1. Clear `zbuffer` to `u32::MAX` and `coverage` to `0`.
+/// 2. Render all primitives via this function.
+/// 3. Call [`composite_aa_background`] with the desired background color.
+///    This blends `bg` into pixels that aren't fully covered.
+///
+/// **Cost:** an additional `width * height` byte buffer (~6 KiB at 96×64).
+/// Inner-pixel rasterization is the same fast path as `draw_zbuffered`.
+#[cfg(feature = "aa-coverage")]
+#[inline]
+pub fn draw_zbuffered_aa_coverage<D>(
+    primitive: DrawPrimitive,
+    fb: &mut D,
+    zbuffer: &mut [u32],
+    coverage: &mut [u8],
+    width: usize,
+) where
+    D: DrawTarget<Color = Rgb565> + ReadPixel,
+    <D as DrawTarget>::Error: Debug,
+{
+    match primitive {
+        DrawPrimitive::ColoredTriangleWithDepth {
+            mut points,
+            mut depths,
+            color,
+        } => {
+            if points[0].y > points[1].y {
+                points.swap(0, 1);
+                depths.swap(0, 1);
+            }
+            if points[0].y > points[2].y {
+                points.swap(0, 2);
+                depths.swap(0, 2);
+            }
+            if points[1].y > points[2].y {
+                points.swap(1, 2);
+                depths.swap(1, 2);
+            }
+            let [p1, p2, p3] = points;
+            let [z1, z2, z3] = depths;
+            fill_triangle_zbuffered_aa_cov(
+                p1, p2, p3, z1, z2, z3, color, fb, zbuffer, coverage, width,
+            );
+        }
+        DrawPrimitive::Line([p1, p2], color) => {
+            // Lines don't accumulate coverage with each other in any
+            // meaningful way; route to the standard Wu's path.
+            draw_line_aa(p1.x, p1.y, p2.x, p2.y, color, fb);
+        }
+        other => draw_zbuffered(other, fb, zbuffer, width),
+    }
+}
+
+/// Composite background color into pixels that weren't fully covered by
+/// the AA rasterizer. Run once per frame after all primitives have been
+/// drawn via `draw_zbuffered_aa_coverage`.
+#[cfg(feature = "aa-coverage")]
+pub fn composite_aa_background<D>(
+    fb: &mut D,
+    coverage: &[u8],
+    bg: Rgb565,
+    width: usize,
+    height: usize,
+) where
+    D: DrawTarget<Color = Rgb565> + ReadPixel,
+    <D as DrawTarget>::Error: Debug,
+{
+    for y in 0..height {
+        for x in 0..width {
+            let idx = y * width + x;
+            let cov = coverage[idx];
+            if cov == 255 {
+                continue; // pixel fully owned by triangles, nothing to do
+            }
+            let p = Point::new(x as i32, y as i32);
+            let final_color = if cov == 0 {
+                bg
+            } else {
+                // Pixel holds the (already pre-composited) accumulated
+                // triangle color, weighted by `cov / 255`. Composite the
+                // remaining `(255 - cov) / 255` with the bg.
+                let tri_color = fb.read_pixel(p);
+                // Convert 0..255 to 0..256 q8 coverage for blend_q8.
+                let cov_q8 = ((cov as u32) * 256) / 255;
+                blend_q8(bg, tri_color, cov_q8)
+            };
+            fb.draw_iter([embedded_graphics_core::Pixel(p, final_color)])
+                .unwrap();
+        }
+    }
+}
+
+/// Z-test + coverage-tracked write of a single AA pixel.
+///
+/// Four cases, branched on `coverage_q8` (this triangle's pixel coverage)
+/// and `coverage[idx]` (sum of prior triangles' coverage at this pixel):
+///
+/// 1. Full coverage (`coverage_q8 >= 256`): triangle covers the pixel
+///    completely. Overwrite. Coverage saturates to 255.
+/// 2. Virgin pixel + partial: store pure triangle color; bg gets composited
+///    by `composite_aa_background` at end-of-frame using the claimed cov.
+/// 3. Already-fully-covered pixel + partial closer triangle: blend the new
+///    color over the existing (existing acts as the local "background"
+///    since it's the visible scene behind the new triangle).
+/// 4. Partially-claimed pixel + partial new: weighted-average accumulation
+///    of pure triangle colors. This is the shared-coplanar-edge case.
+#[cfg(feature = "aa-coverage")]
+#[inline(always)]
+fn aa_pixel_cov<D>(
+    fb: &mut D,
+    x: i32,
+    y: i32,
+    color: Rgb565,
+    z: u32,
+    zbuffer: &mut [u32],
+    coverage: &mut [u8],
+    width: usize,
+    coverage_q8: u32,
+) where
+    D: DrawTarget<Color = Rgb565> + ReadPixel,
+    <D as DrawTarget>::Error: Debug,
+{
+    if x < 0 || y < 0 || coverage_q8 == 0 {
+        return;
+    }
+    let idx = y as usize * width + x as usize;
+    if idx >= zbuffer.len() {
+        return;
+    }
+    if z >= zbuffer[idx].saturating_add(DEPTH_EPSILON) {
+        return;
+    }
+
+    let p = Point::new(x, y);
+
+    // Case 1: full coverage — overwrite unconditionally.
+    if coverage_q8 >= 256 {
+        coverage[idx] = 255;
+        zbuffer[idx] = z;
+        fb.draw_iter([embedded_graphics_core::Pixel(p, color)]).unwrap();
+        return;
+    }
+
+    let prev_cov = coverage[idx] as u32;
+
+    if prev_cov == 0 {
+        // Case 2: virgin pixel + partial coverage. Pure triangle color;
+        // bg composite at end of frame fills the unclaimed remainder.
+        let claim_255 = (coverage_q8 * 255) >> 8;
+        coverage[idx] = claim_255 as u8;
+        zbuffer[idx] = z;
+        fb.draw_iter([embedded_graphics_core::Pixel(p, color)]).unwrap();
+        return;
+    }
+
+    if prev_cov >= 255 {
+        // Case 3: pixel was fully claimed by farther geometry. We're closer
+        // (z-test passed). Anti-alias the new triangle's edge against the
+        // existing pixel as if it were the local background. Total coverage
+        // stays at 255 — no bg composite needed.
+        let existing = fb.read_pixel(p);
+        let result = blend_q8(existing, color, coverage_q8);
+        zbuffer[idx] = z;
+        fb.draw_iter([embedded_graphics_core::Pixel(p, result)]).unwrap();
+        return;
+    }
+
+    // Case 4: partially-claimed pixel + partial new triangle. Weighted-
+    // average accumulation. This is the coplanar-shared-edge case.
+    let remaining = 255 - prev_cov;
+    let claim_255 = ((coverage_q8 * 255) >> 8).min(remaining);
+    if claim_255 == 0 {
+        return;
+    }
+    let new_total = prev_cov + claim_255;
+    let existing = fb.read_pixel(p);
+    let blend_factor = (claim_255 * 256) / new_total;
+    let result = blend_q8(existing, color, blend_factor);
+    coverage[idx] = new_total as u8;
+    zbuffer[idx] = z;
+    fb.draw_iter([embedded_graphics_core::Pixel(p, result)]).unwrap();
+}
+
+#[cfg(feature = "aa-coverage")]
+#[inline(always)]
+fn fill_triangle_zbuffered_aa_cov<D>(
+    p1: nalgebra::Point2<i32>,
+    p2: nalgebra::Point2<i32>,
+    p3: nalgebra::Point2<i32>,
+    z1: f32,
+    z2: f32,
+    z3: f32,
+    color: Rgb565,
+    fb: &mut D,
+    zbuffer: &mut [u32],
+    coverage: &mut [u8],
+    width: usize,
+) where
+    D: DrawTarget<Color = Rgb565> + ReadPixel,
+    <D as DrawTarget>::Error: Debug,
+{
+    let p1_eg = Point::new(p1.x, p1.y);
+    let p2_eg = Point::new(p2.x, p2.y);
+    let p3_eg = Point::new(p3.x, p3.y);
+
+    let z1_int = (z1 * 65536.0) as u32;
+    let z2_int = (z2 * 65536.0) as u32;
+    let z3_int = (z3 * 65536.0) as u32;
+
+    if p2_eg.y == p3_eg.y {
+        fill_bottom_flat_aa_cov(
+            p1_eg, p2_eg, p3_eg, z1_int, z2_int, z3_int, color, fb, zbuffer, coverage, width,
+        );
+    } else if p1_eg.y == p2_eg.y {
+        fill_top_flat_aa_cov(
+            p1_eg, p2_eg, p3_eg, z1_int, z2_int, z3_int, color, fb, zbuffer, coverage, width,
+        );
+    } else {
+        let t = (p2_eg.y - p1_eg.y) as f32 / (p3_eg.y - p1_eg.y) as f32;
+        let p4 = Point::new(
+            (p1_eg.x as f32 + t * (p3_eg.x - p1_eg.x) as f32) as i32,
+            p2_eg.y,
+        );
+        let z4_int = (z1_int as i64 + (t * (z3_int as i64 - z1_int as i64) as f32) as i64) as u32;
+        fill_bottom_flat_aa_cov(
+            p1_eg, p2_eg, p4, z1_int, z2_int, z4_int, color, fb, zbuffer, coverage, width,
+        );
+        fill_top_flat_aa_cov(
+            p2_eg, p4, p3_eg, z2_int, z4_int, z3_int, color, fb, zbuffer, coverage, width,
+        );
+    }
+}
+
+#[cfg(feature = "aa-coverage")]
+#[inline(always)]
+fn fill_bottom_flat_aa_cov<D>(
+    p1: Point,
+    p2: Point,
+    p3: Point,
+    z1: u32,
+    z2: u32,
+    z3: u32,
+    color: Rgb565,
+    fb: &mut D,
+    zbuffer: &mut [u32],
+    coverage: &mut [u8],
+    width: usize,
+) where
+    D: DrawTarget<Color = Rgb565> + ReadPixel,
+    <D as DrawTarget>::Error: Debug,
+{
+    let height = p2.y - p1.y;
+    if height == 0 {
+        return;
+    }
+    let invslope1 = ((p2.x - p1.x) << 16) / height;
+    let invslope2 = ((p3.x - p1.x) << 16) / height;
+
+    let mut curx1 = p1.x << 16;
+    let mut curx2 = p1.x << 16;
+
+    for scanline_y in p1.y..=p2.y {
+        let dy = scanline_y - p1.y;
+        let z_left = (z1 as i64 + ((z2 as i64 - z1 as i64) * dy as i64 / height as i64)) as u32;
+        let z_right = (z1 as i64 + ((z3 as i64 - z1 as i64) * dy as i64 / height as i64)) as u32;
+
+        aa_scanline_cov(
+            curx1, curx2, scanline_y, z_left, z_right, color, fb, zbuffer, coverage, width,
+        );
+
+        curx1 += invslope1;
+        curx2 += invslope2;
+    }
+}
+
+#[cfg(feature = "aa-coverage")]
+#[inline(always)]
+fn fill_top_flat_aa_cov<D>(
+    p1: Point,
+    p2: Point,
+    p3: Point,
+    z1: u32,
+    z2: u32,
+    z3: u32,
+    color: Rgb565,
+    fb: &mut D,
+    zbuffer: &mut [u32],
+    coverage: &mut [u8],
+    width: usize,
+) where
+    D: DrawTarget<Color = Rgb565> + ReadPixel,
+    <D as DrawTarget>::Error: Debug,
+{
+    let height = p3.y - p1.y;
+    if height == 0 {
+        return;
+    }
+    let invslope1 = ((p3.x - p1.x) << 16) / height;
+    let invslope2 = ((p3.x - p2.x) << 16) / height;
+
+    let mut curx1 = p3.x << 16;
+    let mut curx2 = p3.x << 16;
+
+    for scanline_y in (p1.y..=p3.y).rev() {
+        let dy = scanline_y - p1.y;
+        let z_left = (z1 as i64 + ((z3 as i64 - z1 as i64) * dy as i64 / height as i64)) as u32;
+        let z_right = (z2 as i64 + ((z3 as i64 - z2 as i64) * dy as i64 / height as i64)) as u32;
+
+        aa_scanline_cov(
+            curx1, curx2, scanline_y, z_left, z_right, color, fb, zbuffer, coverage, width,
+        );
+
+        curx1 -= invslope1;
+        curx2 -= invslope2;
+    }
+}
+
+#[cfg(feature = "aa-coverage")]
+#[inline(always)]
+fn aa_scanline_cov<D>(
+    cx1: i32,
+    cx2: i32,
+    y: i32,
+    z_left: u32,
+    z_right: u32,
+    color: Rgb565,
+    fb: &mut D,
+    zbuffer: &mut [u32],
+    coverage: &mut [u8],
+    width: usize,
+) where
+    D: DrawTarget<Color = Rgb565> + ReadPixel,
+    <D as DrawTarget>::Error: Debug,
+{
+    let (left_fx, right_fx, z_l, z_r) = if cx1 <= cx2 {
+        (cx1, cx2, z_left, z_right)
+    } else {
+        (cx2, cx1, z_right, z_left)
+    };
+
+    let l_int = left_fx >> 16;
+    let r_int = right_fx >> 16;
+    let l_frac_q16 = (left_fx & 0xFFFF) as u32;
+    let r_frac_q16 = (right_fx & 0xFFFF) as u32;
+    let span = r_int - l_int;
+
+    if l_int == r_int {
+        let cov_q16 = r_frac_q16.saturating_sub(l_frac_q16);
+        aa_pixel_cov(fb, l_int, y, color, z_l, zbuffer, coverage, width, cov_q16 >> 8);
+        return;
+    }
+
+    let left_cov_q8 = 256 - (l_frac_q16 >> 8);
+    aa_pixel_cov(fb, l_int, y, color, z_l, zbuffer, coverage, width, left_cov_q8);
+
+    if span > 1 {
+        for x in (l_int + 1)..r_int {
+            // Inner pixels are full coverage (q8 = 256). Use the same code
+            // path as boundary pixels so coverage tracks correctly.
+            let t_num = (x - l_int) as i64;
+            let t_den = span as i64;
+            let z = (z_l as i64 + ((z_r as i64 - z_l as i64) * t_num / t_den)) as u32;
+            aa_pixel_cov(fb, x, y, color, z, zbuffer, coverage, width, 256);
+        }
+    }
+
+    if r_frac_q16 > 0 {
+        let right_cov_q8 = r_frac_q16 >> 8;
+        aa_pixel_cov(fb, r_int, y, color, z_r, zbuffer, coverage, width, right_cov_q8);
+    }
+}
+
 /// Wu's anti-aliased line algorithm.
 ///
 /// Walks the major axis one integer step at a time; at each step writes two
 /// pixels straddling the line with complementary fractional coverage.
+#[cfg(feature = "aa")]
 pub fn draw_line_aa<D>(x0: i32, y0: i32, x1: i32, y1: i32, color: Rgb565, fb: &mut D)
 where
     D: DrawTarget<Color = Rgb565> + ReadPixel,
@@ -997,6 +1396,7 @@ where
     }
 }
 
+#[cfg(feature = "aa")]
 #[inline(always)]
 fn plot_aa<D>(fb: &mut D, x: i32, y: i32, color: Rgb565, coverage_q8: u32)
 where

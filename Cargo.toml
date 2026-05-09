@@ -1,7 +1,7 @@
 workspace = { members = ["load_stl"] }
 [package]
 name = "embedded-3dgfx"
-version = "0.2.2"
+version = "0.2.3"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/leftger/embedded-3dgfx"
@@ -24,12 +24,22 @@ categories = [
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["row_width_240", "std"]
+default = ["row_width_240", "std", "aa-heuristic", "aa-coverage"]
 std = ["perfcounter"]
 perfcounter = []
 row_width_160 = []
 row_width_240 = []
 row_width_320 = []
+# AA infrastructure: ReadPixel trait + Wu's anti-aliased line algorithm.
+# Enabled automatically by either of the triangle-AA features below.
+aa = []
+# Heuristic analytical edge-AA for triangles. Cheaper than aa-coverage
+# (no extra buffer) but leaves a slight color-step seam at coplanar
+# shared edges.
+aa-heuristic = ["aa"]
+# Per-pixel coverage tracking with end-of-frame bg composite. Costs an
+# additional W*H byte buffer; eliminates the shared-edge seam.
+aa-coverage = ["aa"]
 
 [dependencies]
 embedded-graphics-core = "0.4.0"

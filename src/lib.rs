@@ -15,6 +15,7 @@ use nalgebra::Vector3;
 use nalgebra::ComplexField;
 
 pub mod animation;
+pub mod bridge;
 pub mod tween;
 pub mod transform_anim;
 pub mod billboard;
@@ -45,6 +46,12 @@ pub use draw::ReadPixel;
 pub use tween::{apply_easing, lerp, lerp3, scale_rgb565, Easing, Tween, Tween3};
 pub use transform_anim::{
     AnimationPlayer, SampledTransform, TransformKeyframe, TransformTrack,
+};
+pub use bridge::{
+    draw_to,
+    eg_to_nalgebra, nalgebra_to_eg,
+    AsEgPoint, AsNalgebraPoint,
+    render_drawable_to_buffer,
 };
 
 #[derive(Debug, Clone)]

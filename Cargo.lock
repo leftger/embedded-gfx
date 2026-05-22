@@ -128,7 +128,7 @@ dependencies = [
 
 [[package]]
 name = "embedded-3dgfx"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "embassy-time",
  "embedded-graphics",

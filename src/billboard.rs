@@ -20,6 +20,8 @@ pub struct Billboard {
     pub color: Rgb565,
     /// Optional texture coordinates (for future texture mapping)
     pub uv: Option<[[f32; 2]; 4]>,
+    /// In-plane spin (radians) around the camera view axis — visible rotation on screen.
+    pub rotation: f32,
 }
 
 impl Billboard {
@@ -30,6 +32,7 @@ impl Billboard {
             size,
             color,
             uv: None,
+            rotation: 0.0,
         }
     }
 
@@ -47,8 +50,12 @@ impl Billboard {
         // Calculate right vector (perpendicular to both up and forward)
         let right = camera_up.cross(&to_camera).normalize();
 
-        // Recalculate up to ensure orthogonality
-        let up = to_camera.cross(&right).normalize();
+        let up_base = to_camera.cross(&right).normalize();
+
+        // Spin the quad in the plane facing the camera (texture/logo rotation).
+        let (s, c) = self.rotation.sin_cos();
+        let right = right * c + up_base * s;
+        let up = up_base * c - right * s;
 
         let half_size = self.size * 0.5;
 
@@ -114,6 +121,21 @@ mod tests {
         assert!((center_x - pos.x).abs() < 0.01);
         assert!((center_y - pos.y).abs() < 0.01);
         assert!((center_z - pos.z).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_billboard_in_plane_rotation() {
+        let pos = Point3::new(0.0, 0.0, 0.0);
+        let camera_pos = Point3::new(0.0, 0.0, 5.0);
+        let camera_up = Vector3::new(0.0, 1.0, 0.0);
+
+        let flat = Billboard::new(pos, 2.0, Rgb565::CSS_RED);
+        let mut spun = Billboard::new(pos, 2.0, Rgb565::CSS_RED);
+        spun.rotation = core::f32::consts::FRAC_PI_2;
+
+        let q0 = flat.generate_quad(camera_pos, camera_up);
+        let q1 = spun.generate_quad(camera_pos, camera_up);
+        assert_ne!(q0, q1);
     }
 
     #[test]

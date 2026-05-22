@@ -6,13 +6,22 @@ const MAX_ROW_WIDTH: usize = 240;
 #[cfg(all(
     feature = "row_width_160",
     not(feature = "row_width_240"),
-    not(feature = "row_width_320")
+    not(feature = "row_width_320"),
+    not(feature = "row_width_96")
 ))]
 const MAX_ROW_WIDTH: usize = 160;
+#[cfg(all(
+    feature = "row_width_96",
+    not(feature = "row_width_160"),
+    not(feature = "row_width_240"),
+    not(feature = "row_width_320")
+))]
+const MAX_ROW_WIDTH: usize = 96;
 #[cfg(not(any(
     feature = "row_width_320",
     feature = "row_width_240",
-    feature = "row_width_160"
+    feature = "row_width_160",
+    feature = "row_width_96"
 )))]
 const MAX_ROW_WIDTH: usize = 100;
 

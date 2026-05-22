@@ -15,6 +15,8 @@ use nalgebra::Vector3;
 use nalgebra::ComplexField;
 
 pub mod animation;
+pub mod tween;
+pub mod transform_anim;
 pub mod billboard;
 pub mod camera;
 pub mod display_backend;
@@ -39,6 +41,11 @@ pub use embedded_graphics_framebuf::{
 
 #[cfg(feature = "aa")]
 pub use draw::ReadPixel;
+
+pub use tween::{apply_easing, lerp, lerp3, scale_rgb565, Easing, Tween, Tween3};
+pub use transform_anim::{
+    AnimationPlayer, SampledTransform, TransformKeyframe, TransformTrack,
+};
 
 #[derive(Debug, Clone)]
 pub enum DrawPrimitive {

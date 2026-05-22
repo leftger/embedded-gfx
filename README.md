@@ -128,7 +128,8 @@ cargo run --example <name> --features std
 - `dma_rendering_demo` - Double-buffer performance
 - `billboard_demo` - Camera-facing quads
 - `lod_demo` - Level of detail switching
-- `vertex_animation_demo` - Keyframe animation
+- `vertex_animation_demo` - Keyframe vertex morphing
+- `boot_menu` - Boot splash + menu transitions (96×64, tweens + transform tracks)
 - `stl_viewer` - Load and view STL models
 
 ### Physics Examples
@@ -167,6 +168,7 @@ cargo run --example <name> --features std
 - Use with `perfcounter` for embedded performance monitoring
 
 ### `row_width_*` (mutually exclusive)
+- `row_width_96` - Optimize for 96px wide displays (e.g. small OLED)
 - `row_width_160` - Optimize for 160px wide displays
 - `row_width_240` - Optimize for 240px wide displays (default)
 - `row_width_320` - Optimize for 320px wide displays
@@ -247,6 +249,34 @@ if let Some(hit) = world.ray_cast(&ray, 100.0) {
     println!("Point: {:?}, Normal: {:?}", hit.point, hit.normal);
 }
 ```
+
+## 🎬 Boot & UI Animation
+
+Rigid transform animation for splash screens and menus (no vertex morphing):
+
+```rust
+use embedded_3dgfx::{AnimationPlayer, TransformKeyframe, TransformTrack, Tween3, Easing};
+
+const LOGO_INTRO: &[TransformKeyframe] = &[
+    TransformKeyframe::new(0.0, [0.0, -2.0, 0.0], 0.0, 0.0, 0.0, 1.0),
+    TransformKeyframe::new(1.0, [0.0, 0.0, 0.0], 0.0, 0.5, 6.28, 1.0),
+];
+
+let track = TransformTrack::new(LOGO_INTRO, false);
+let mut player = AnimationPlayer::new(track);
+
+// Each frame:
+player.advance(dt);
+player.apply_to(&mut logo_mesh);
+
+// Menu slide-in:
+let mut slide = Tween3::new([-2.5, 0.0, 0.0], [0.0, 0.0, 0.0], 0.35, Easing::Smoothstep);
+slide.advance(dt);
+let p = slide.value();
+menu.set_position(p[0], p[1], p[2]);
+```
+
+See `examples/boot_menu.rs` for a full 96×64 boot → menu flow.
 
 ## 🦴 Skeletal Animation
 

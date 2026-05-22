@@ -42,6 +42,21 @@ Demonstrates three fundamental render modes: Points, Lines, and Solid.
 cargo run --example basic_rendering --features std
 ```
 
+#### `boot_menu` - Boot Splash & Menu Transitions (96×64)
+Bitmap logo (textured billboard), 5 menu items, fade transitions, keyframed intro + slide-in.
+
+**Controls:**
+- `SPACE` - Skip boot, go to menu
+- `UP` / `DOWN` - Change selection (5 items)
+- `R` - Restart full demo
+- `ESC` - Exit
+
+```bash
+cargo run --example boot_menu --features std
+```
+
+For firmware, use `default-features = false` and `features = ["row_width_96"]`.
+
 #### `rotating_cube` - Animated 3D Rotation
 Continuously rotating cube with FPS counter.
 

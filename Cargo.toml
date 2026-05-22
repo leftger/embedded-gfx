@@ -27,6 +27,7 @@ categories = [
 default = ["row_width_240", "std", "aa-heuristic", "aa-coverage"]
 std = ["perfcounter"]
 perfcounter = []
+row_width_96 = []
 row_width_160 = []
 row_width_240 = []
 row_width_320 = []

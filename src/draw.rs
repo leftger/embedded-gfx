@@ -288,6 +288,47 @@ impl Interpolator {
     }
 }
 
+// Fixed-point 16.16 edge stepper — integer-only replacement for f32 invslope.
+const FP_SHIFT: i64 = 16;
+
+#[inline(always)]
+fn fixed_to_i32(value: i64) -> i32 {
+    if value >= 0 {
+        (value >> FP_SHIFT) as i32
+    } else {
+        -((-value) >> FP_SHIFT) as i32
+    }
+}
+
+struct EdgeStepper {
+    x: i64,
+    step: i64,
+}
+
+impl EdgeStepper {
+    fn new(start: Point, end: Point, y: i32) -> Self {
+        let dy = (end.y - start.y) as i64;
+        let (step, x) = if dy != 0 {
+            let s = (((end.x - start.x) as i64) << FP_SHIFT) / dy;
+            let x = ((start.x as i64) << FP_SHIFT) + s * (y - start.y) as i64;
+            (s, x)
+        } else {
+            (0, (start.x as i64) << FP_SHIFT)
+        };
+        Self { x, step }
+    }
+
+    #[inline(always)]
+    fn current_x(&self) -> i32 {
+        fixed_to_i32(self.x)
+    }
+
+    #[inline(always)]
+    fn advance(&mut self) {
+        self.x += self.step;
+    }
+}
+
 #[inline(always)]
 fn fill_triangle<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
     p1: Point,
@@ -370,22 +411,18 @@ fn fill_bottom_flat_triangle<D: DrawTarget<Color = embedded_graphics_core::pixel
 ) where
     <D as DrawTarget>::Error: Debug,
 {
-    let invslope1 = (p2.x - p1.x) as f32 / (p2.y - p1.y) as f32;
-    let invslope2 = (p3.x - p1.x) as f32 / (p3.y - p1.y) as f32;
-
-    let mut curx1 = p1.x as f32;
-    let mut curx2 = p1.x as f32;
+    let mut edge1 = EdgeStepper::new(p1, p2, p1.y);
+    let mut edge2 = EdgeStepper::new(p1, p3, p1.y);
 
     for scanline_y in p1.y..=p2.y {
         draw_horizontal_line(
-            Point::new(curx1 as i32, scanline_y),
-            Point::new(curx2 as i32, scanline_y),
+            Point::new(edge1.current_x(), scanline_y),
+            Point::new(edge2.current_x(), scanline_y),
             color,
             fb,
         );
-
-        curx1 += invslope1;
-        curx2 += invslope2;
+        edge1.advance();
+        edge2.advance();
     }
 }
 
@@ -398,22 +435,19 @@ fn fill_top_flat_triangle<D: DrawTarget<Color = embedded_graphics_core::pixelcol
 ) where
     <D as DrawTarget>::Error: Debug,
 {
-    let invslope1 = (p3.x - p1.x) as f32 / (p3.y - p1.y) as f32;
-    let invslope2 = (p3.x - p2.x) as f32 / (p3.y - p2.y) as f32;
+    // p1.y == p2.y (top flat), p3 is the bottom vertex; iterate top-down.
+    let mut edge1 = EdgeStepper::new(p1, p3, p1.y);
+    let mut edge2 = EdgeStepper::new(p2, p3, p1.y);
 
-    let mut curx1 = p3.x as f32;
-    let mut curx2 = p3.x as f32;
-
-    for scanline_y in (p1.y..=p3.y).rev() {
+    for scanline_y in p1.y..=p3.y {
         draw_horizontal_line(
-            Point::new(curx1 as i32, scanline_y),
-            Point::new(curx2 as i32, scanline_y),
+            Point::new(edge1.current_x(), scanline_y),
+            Point::new(edge2.current_x(), scanline_y),
             color,
             fb,
         );
-
-        curx1 -= invslope1;
-        curx2 -= invslope2;
+        edge1.advance();
+        edge2.advance();
     }
 }
 
@@ -466,6 +500,15 @@ pub fn draw<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
                 Point::new(vertices[2].x, vertices[2].y),
             ];
 
+            // Off-screen culling: skip if all vertices are beyond the same edge.
+            let bounds = fb.bounding_box();
+            let scr_w = bounds.size.width as i32;
+            let scr_h = bounds.size.height as i32;
+            if p1.x < 0 && p2.x < 0 && p3.x < 0 { return; }
+            if p1.x >= scr_w && p2.x >= scr_w && p3.x >= scr_w { return; }
+            if p1.y < 0 && p2.y < 0 && p3.y < 0 { return; }
+            if p1.y >= scr_h && p2.y >= scr_h && p3.y >= scr_h { return; }
+
             fill_triangle(p1, p2, p3, color, fb);
         }
         DrawPrimitive::ColoredTriangleWithDepth {
@@ -492,6 +535,15 @@ pub fn draw<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
                     .unwrap();
             }
             let [p1, p2, p3] = buf.into_array().unwrap();
+
+            // Off-screen culling.
+            let bounds = fb.bounding_box();
+            let scr_w = bounds.size.width as i32;
+            let scr_h = bounds.size.height as i32;
+            if p1.x < 0 && p2.x < 0 && p3.x < 0 { return; }
+            if p1.x >= scr_w && p2.x >= scr_w && p3.x >= scr_w { return; }
+            if p1.y < 0 && p2.y < 0 && p3.y < 0 { return; }
+            if p1.y >= scr_h && p2.y >= scr_h && p3.y >= scr_h { return; }
 
             if p2.y == p3.y {
                 fill_bottom_flat_triangle(p1, p2, p3, color, fb);
@@ -534,6 +586,15 @@ pub fn draw<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
             }
             let [p1, p2, p3] = buf.into_array().unwrap();
             let [c1, c2, c3] = colors;
+
+            // Off-screen culling.
+            let bounds = fb.bounding_box();
+            let scr_w = bounds.size.width as i32;
+            let scr_h = bounds.size.height as i32;
+            if p1.x < 0 && p2.x < 0 && p3.x < 0 { return; }
+            if p1.x >= scr_w && p2.x >= scr_w && p3.x >= scr_w { return; }
+            if p1.y < 0 && p2.y < 0 && p3.y < 0 { return; }
+            if p1.y >= scr_h && p2.y >= scr_h && p3.y >= scr_h { return; }
 
             if p2.y == p3.y {
                 fill_bottom_flat_gouraud(p1, p2, p3, c1, c2, c3, fb);
@@ -608,11 +669,8 @@ fn fill_bottom_flat_gouraud<D: DrawTarget<Color = embedded_graphics_core::pixelc
         return;
     }
 
-    let invslope1 = (p2.x - p1.x) as f32 / height;
-    let invslope2 = (p3.x - p1.x) as f32 / height;
-
-    let mut curx1 = p1.x as f32;
-    let mut curx2 = p1.x as f32;
+    let mut edge1 = EdgeStepper::new(p1, p2, p1.y);
+    let mut edge2 = EdgeStepper::new(p1, p3, p1.y);
 
     for scanline_y in p1.y..=p2.y {
         let t = (scanline_y - p1.y) as f32 / height;
@@ -620,15 +678,15 @@ fn fill_bottom_flat_gouraud<D: DrawTarget<Color = embedded_graphics_core::pixelc
         let color_right = interpolate_color(c1, c3, t);
 
         draw_horizontal_line_gouraud(
-            Point::new(curx1 as i32, scanline_y),
-            Point::new(curx2 as i32, scanline_y),
+            Point::new(edge1.current_x(), scanline_y),
+            Point::new(edge2.current_x(), scanline_y),
             color_left,
             color_right,
             fb,
         );
 
-        curx1 += invslope1;
-        curx2 += invslope2;
+        edge1.advance();
+        edge2.advance();
     }
 }
 
@@ -644,32 +702,30 @@ fn fill_top_flat_gouraud<D: DrawTarget<Color = embedded_graphics_core::pixelcolo
 ) where
     <D as DrawTarget>::Error: Debug,
 {
+    // p1.y == p2.y (top flat), p3 is the bottom vertex; iterate top-down.
     let height = (p3.y - p1.y) as f32;
     if height == 0.0 {
         return;
     }
 
-    let invslope1 = (p3.x - p1.x) as f32 / height;
-    let invslope2 = (p3.x - p2.x) as f32 / height;
+    let mut edge1 = EdgeStepper::new(p1, p3, p1.y);
+    let mut edge2 = EdgeStepper::new(p2, p3, p1.y);
 
-    let mut curx1 = p3.x as f32;
-    let mut curx2 = p3.x as f32;
-
-    for scanline_y in (p1.y..=p3.y).rev() {
+    for scanline_y in p1.y..=p3.y {
         let t = (scanline_y - p1.y) as f32 / height;
         let color_left = interpolate_color(c1, c3, t);
         let color_right = interpolate_color(c2, c3, t);
 
         draw_horizontal_line_gouraud(
-            Point::new(curx1 as i32, scanline_y),
-            Point::new(curx2 as i32, scanline_y),
+            Point::new(edge1.current_x(), scanline_y),
+            Point::new(edge2.current_x(), scanline_y),
             color_left,
             color_right,
             fb,
         );
 
-        curx1 -= invslope1;
-        curx2 -= invslope2;
+        edge1.advance();
+        edge2.advance();
     }
 }
 
@@ -758,6 +814,15 @@ pub fn draw_zbuffered_aa<D>(
             }
             let [p1, p2, p3] = points;
             let [z1, z2, z3] = depths;
+
+            // Off-screen culling.
+            let scr_w = width as i32;
+            let scr_h = (zbuffer.len() / width) as i32;
+            if p1.x < 0 && p2.x < 0 && p3.x < 0 { return; }
+            if p1.x >= scr_w && p2.x >= scr_w && p3.x >= scr_w { return; }
+            if p1.y < 0 && p2.y < 0 && p3.y < 0 { return; }
+            if p1.y >= scr_h && p2.y >= scr_h && p3.y >= scr_h { return; }
+
             fill_triangle_zbuffered_aa(p1, p2, p3, z1, z2, z3, color, fb, zbuffer, width);
         }
         DrawPrimitive::Line([p1, p2], color) => {
@@ -1583,6 +1648,14 @@ pub fn draw_zbuffered_with_effects<
             let [p1, p2, p3] = points;
             let [z1, z2, z3] = depths;
 
+            // Off-screen culling.
+            let scr_w = width as i32;
+            let scr_h = (zbuffer.len() / width) as i32;
+            if p1.x < 0 && p2.x < 0 && p3.x < 0 { return; }
+            if p1.x >= scr_w && p2.x >= scr_w && p3.x >= scr_w { return; }
+            if p1.y < 0 && p2.y < 0 && p3.y < 0 { return; }
+            if p1.y >= scr_h && p2.y >= scr_h && p3.y >= scr_h { return; }
+
             fill_triangle_zbuffered(
                 p1,
                 p2,
@@ -1623,6 +1696,14 @@ pub fn draw_zbuffered_with_effects<
             let [p1, p2, p3] = points;
             let [z1, z2, z3] = depths;
             let [c1, c2, c3] = colors;
+
+            // Off-screen culling.
+            let scr_w = width as i32;
+            let scr_h = (zbuffer.len() / width) as i32;
+            if p1.x < 0 && p2.x < 0 && p3.x < 0 { return; }
+            if p1.x >= scr_w && p2.x >= scr_w && p3.x >= scr_w { return; }
+            if p1.y < 0 && p2.y < 0 && p3.y < 0 { return; }
+            if p1.y >= scr_h && p2.y >= scr_h && p3.y >= scr_h { return; }
 
             fill_triangle_zbuffered_gouraud(
                 p1,
@@ -1697,6 +1778,14 @@ pub fn draw_zbuffered_with_textures<
                 let [p1, p2, p3] = points;
                 let [z1, z2, z3] = depths;
                 let [uv1, uv2, uv3] = uvs;
+
+                // Off-screen culling.
+                let scr_w = width as i32;
+                let scr_h = (zbuffer.len() / width) as i32;
+                if p1.x < 0 && p2.x < 0 && p3.x < 0 { return; }
+                if p1.x >= scr_w && p2.x >= scr_w && p3.x >= scr_w { return; }
+                if p1.y < 0 && p2.y < 0 && p3.y < 0 { return; }
+                if p1.y >= scr_h && p2.y >= scr_h && p3.y >= scr_h { return; }
 
                 fill_triangle_zbuffered_textured(
                     p1,

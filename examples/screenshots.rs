@@ -65,6 +65,7 @@ fn main() {
     gif_suzanne();
     gif_bouncing_balls();
     gif_cloth();
+    gif_newtons_cradle();
     println!("All assets saved to assets/");
 }
 
@@ -991,7 +992,129 @@ fn gif_bouncing_balls() {
     save_gif(&mut frames, W, H, "assets/gif_physics.gif", 4);
 }
 
-// ── GIF 4: cloth simulation ───────────────────────────────────────────────────
+// ── GIF 4: Newton's cradle ────────────────────────────────────────────────────
+
+fn gif_newtons_cradle() {
+    const W: u16 = 320;
+    const H: u16 = 240;
+    let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(W as u32, H as u32));
+    let mut zbuffer = vec![u32::MAX; W as usize * H as usize];
+    let mut engine = K3dengine::new(W, H);
+    engine.camera.set_position(Point3::new(0.0, 3.5, 11.0));
+    engine.camera.set_target(Point3::new(0.0, 2.0, 0.0));
+
+    const NUM: usize = 5;
+    const RADIUS: f32 = 0.5;
+    const CHAIN: f32 = 5.0;
+    const SPACING: f32 = RADIUS * 2.0 + 0.01;
+    let start_x = -(NUM as f32 - 1.0) * SPACING * 0.5;
+
+    let (sv, sf, sn) = make_uv_sphere(10, 16);
+    let colors = [
+        Rgb565::CSS_RED, Rgb565::CSS_ORANGE, Rgb565::CSS_YELLOW,
+        Rgb565::CSS_GREEN, Rgb565::CSS_CYAN,
+    ];
+    let light = Vector3::new(0.5, 1.0, 0.3);
+
+    let mut physics = PhysicsWorld::<16, 16>::new();
+    physics.set_gravity(Vector3::new(0.0, -9.81, 0.0));
+    physics.solver_iterations = 20;
+
+    let mut sphere_ids = Vec::new();
+    let mut meshes: Vec<K3dMesh> = Vec::new();
+
+    for i in 0..NUM {
+        let x = start_x + i as f32 * SPACING;
+
+        let anchor_id = physics
+            .add_body(RigidBody::new_static().with_position(Vector3::new(x, CHAIN, 0.0)))
+            .unwrap();
+
+        let sphere_id = physics
+            .add_body(
+                RigidBody::new(1.0)
+                    .with_position(Vector3::new(x, 0.0, 0.0))
+                    .with_collider(Collider::Sphere { radius: RADIUS })
+                    .with_restitution(0.99)
+                    .with_friction(0.0)
+                    .with_damping(0.0)
+                    .with_inertia_sphere(RADIUS)
+                    .with_angular_damping(0.0),
+            )
+            .unwrap();
+        sphere_ids.push(sphere_id);
+
+        physics
+            .add_distance_constraint(anchor_id, Vector3::zeros(), sphere_id, Vector3::zeros(), 0.0)
+            .unwrap();
+
+        let geom = Geometry {
+            vertices: &sv, faces: &sf, colors: &[], lines: &[],
+            normals: &sn, vertex_normals: &[], uvs: &[], texture_id: None,
+        };
+        let mut m = K3dMesh::new(geom);
+        m.set_render_mode(RenderMode::SolidLightDir(light));
+        m.set_color(colors[i]);
+        m.set_position(x, 0.0, 0.0);
+        meshes.push(m);
+    }
+
+    // Pull sphere 0 back to ~40°
+    {
+        let body = physics.body_mut(sphere_ids[0]).unwrap();
+        body.position.x -= 3.0;
+        body.position.y += 2.0;
+        body.velocity = Vector3::zeros();
+    }
+
+    // String + bar geometry (vertices updated per frame)
+    let mut fverts: Vec<[f32; 3]> = vec![[0.0; 3]; NUM * 2];
+    for i in 0..NUM {
+        fverts[i] = [start_x + i as f32 * SPACING, CHAIN, 0.0];
+    }
+    let flines: Vec<[usize; 2]> = (0..NUM)
+        .map(|i| [i, NUM + i])
+        .chain(std::iter::once([0, NUM - 1]))
+        .collect();
+
+    let dt = 1.0f32 / 60.0;
+    let total = 150u32;
+    let mut frames: Vec<Vec<u8>> = Vec::with_capacity(total as usize);
+
+    for _ in 0..total {
+        physics.step_fixed::<32>(dt, 8);
+
+        for (i, &id) in sphere_ids.iter().enumerate() {
+            let body = physics.body(id).unwrap();
+            sync_body_to_mesh(body, &mut meshes[i]);
+            fverts[NUM + i] = [body.position.x, body.position.y, body.position.z];
+        }
+
+        display.clear(Rgb565::BLACK).unwrap();
+        zbuffer.fill(u32::MAX);
+
+        // Draw strings and top bar
+        let fgeom = Geometry {
+            vertices: &fverts, faces: &[], colors: &[], lines: &flines,
+            normals: &[], vertex_normals: &[], uvs: &[], texture_id: None,
+        };
+        let mut fmesh = K3dMesh::new(fgeom);
+        fmesh.set_render_mode(RenderMode::Lines);
+        fmesh.set_color(Rgb565::new(20, 40, 20));
+        engine.render(std::iter::once(&fmesh), |prim| draw(prim, &mut display));
+
+        // Draw spheres
+        engine.render(meshes.iter(), |prim| {
+            draw_zbuffered(prim, &mut display, &mut zbuffer, W as usize);
+        });
+
+        frames.push(frame_rgb(&display));
+    }
+
+    save_gif(&mut frames, W, H, "assets/gif_newtons_cradle.gif", 4);
+}
+
+// ── GIF 5: cloth simulation ───────────────────────────────────────────────────
 
 fn gif_cloth() {
     const W: u16 = 320;

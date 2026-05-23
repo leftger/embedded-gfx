@@ -48,6 +48,9 @@ A `no_std` 3D graphics and physics engine for embedded systems, optimized for re
     <td align="center"><img src="assets/gif_physics.gif" alt="Bouncing balls physics" width="320"><br><em>Rigid body physics</em></td>
     <td align="center"><img src="assets/gif_cloth.gif" alt="Cloth soft-body simulation" width="320"><br><em>Cloth soft-body simulation</em></td>
   </tr>
+  <tr>
+    <td colspan="2" align="center"><img src="assets/gif_newtons_cradle.gif" alt="Newton's cradle — constraint physics" width="480"><br><em>Newton's cradle (distance constraints)</em></td>
+  </tr>
 </table>
 
 <table>

@@ -60,3 +60,4 @@ test = false
 embedded-graphics-simulator = "0.8"
 embedded-graphics = "0.8"
 load_stl = { path = "load_stl" }
+gif = "0.13"

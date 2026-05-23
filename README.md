@@ -41,16 +41,27 @@ A `no_std` 3D graphics and physics engine for embedded systems, optimized for re
 
 <table>
   <tr>
-    <td align="center"><img src="assets/screenshot_wireframe.png" alt="Wireframe cube" width="320"><br><em>Wireframe rendering</em></td>
-    <td align="center"><img src="assets/screenshot_blinnphong.png" alt="Blinn-Phong shading on Suzanne" width="320"><br><em>Blinn-Phong shading (Suzanne)</em></td>
+    <td align="center"><img src="assets/gif_cube.gif" alt="Rotating wireframe cube" width="320"><br><em>Wireframe rendering</em></td>
+    <td align="center"><img src="assets/gif_suzanne.gif" alt="Blinn-Phong Suzanne rotating" width="320"><br><em>Blinn-Phong shading (Suzanne)</em></td>
   </tr>
   <tr>
-    <td align="center"><img src="assets/screenshot_physics.png" alt="Physics simulation — bouncing balls" width="320"><br><em>Rigid body physics</em></td>
-    <td align="center"><img src="assets/screenshot_cloth.png" alt="Cloth soft-body simulation" width="320"><br><em>Cloth soft-body simulation</em></td>
+    <td align="center"><img src="assets/gif_physics.gif" alt="Bouncing balls physics" width="320"><br><em>Rigid body physics</em></td>
+    <td align="center"><img src="assets/gif_cloth.gif" alt="Cloth soft-body simulation" width="320"><br><em>Cloth soft-body simulation</em></td>
   </tr>
 </table>
 
-To regenerate these screenshots:
+<table>
+  <tr>
+    <td align="center"><img src="assets/screenshot_gouraud.png" alt="Gouraud shading" width="320"><br><em>Gouraud shading (per-vertex color)</em></td>
+    <td align="center"><img src="assets/screenshot_fog_dither.png" alt="Fog and Bayer dithering" width="320"><br><em>Fog + Bayer dithering</em></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="assets/screenshot_newtons_cradle.png" alt="Newton's cradle" width="320"><br><em>Newton's cradle (constraints)</em></td>
+    <td align="center"><img src="assets/screenshot_texture.png" alt="UV texture mapping" width="320"><br><em>UV texture mapping</em></td>
+  </tr>
+</table>
+
+To regenerate all screenshots and GIFs:
 
 ```bash
 cargo run --example screenshots --features std

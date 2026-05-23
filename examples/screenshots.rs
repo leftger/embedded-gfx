@@ -1,15 +1,21 @@
 //! Screenshot capture utility
 //!
-//! Renders one frame per scene and saves to assets/ as PNG.
+//! Renders one frame per scene and saves to assets/ as PNG or GIF.
 //! Run with: cargo run --example screenshots --features std
 
 use std::f32::consts::PI;
+use std::fs::File;
 
+use embedded_3dgfx::DrawPrimitive;
 use embedded_3dgfx::K3dengine;
-use embedded_3dgfx::draw::{draw, draw_zbuffered};
+use embedded_3dgfx::draw::{
+    draw, draw_zbuffered, draw_zbuffered_with_effects, draw_zbuffered_with_textures,
+    DitherConfig, FogConfig,
+};
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
 use embedded_3dgfx::physics::{Collider, PhysicsWorld, RigidBody, sync_body_to_mesh};
 use embedded_3dgfx::softbody::SoftBody;
+use embedded_3dgfx::texture::{Texture, TextureManager};
 use embedded_graphics_core::pixelcolor::{Rgb565, RgbColor};
 use embedded_graphics_core::prelude::*;
 use embedded_graphics_simulator::{OutputSettingsBuilder, SimulatorDisplay};
@@ -26,12 +32,40 @@ fn save(display: &SimulatorDisplay<Rgb565>, path: &str) {
 }
 
 
+fn frame_rgb(display: &SimulatorDisplay<Rgb565>) -> Vec<u8> {
+    let settings = OutputSettingsBuilder::new().scale(1).build();
+    let oi = display.to_rgb_output_image(&settings);
+    oi.as_image_buffer().into_raw().to_vec()
+}
+
+fn save_gif(frames: &mut [Vec<u8>], width: u16, height: u16, path: &str, delay_cs: u16) {
+    let mut file = File::create(path).unwrap();
+    let mut encoder = gif::Encoder::new(&mut file, width, height, &[]).unwrap();
+    encoder.set_repeat(gif::Repeat::Infinite).unwrap();
+    for data in frames.iter_mut() {
+        let mut frame = gif::Frame::from_rgb_speed(width, height, data, 10);
+        frame.delay = delay_cs;
+        encoder.write_frame(&frame).unwrap();
+    }
+    println!("Saved {path}");
+}
+
 fn main() {
+    // PNGs
     capture_wireframe_cube();
     capture_blinn_phong();
     capture_physics();
     capture_cloth();
-    println!("All screenshots saved to assets/");
+    capture_gouraud();
+    capture_fog_dither();
+    capture_newtons_cradle();
+    capture_texture();
+    // GIFs
+    gif_rotating_cube();
+    gif_suzanne();
+    gif_bouncing_balls();
+    gif_cloth();
+    println!("All assets saved to assets/");
 }
 
 // ── Scene 1: wireframe rotating cube ────────────────────────────────────────
@@ -384,3 +418,623 @@ fn capture_cloth() {
     save(&display, "assets/screenshot_cloth.png");
 }
 
+// ── Scene 5: Gouraud shading – per-vertex color interpolation ────────────────
+
+fn capture_gouraud() {
+    let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(800, 600));
+    let mut zbuffer = vec![u32::MAX; 800 * 600];
+    let mut engine = K3dengine::new(800, 600);
+    engine.camera.set_position(Point3::new(0.0, 2.5, 9.0));
+    engine.camera.set_target(Point3::new(0.0, 0.0, 0.0));
+
+    let pyramid_vertices: &[[f32; 3]] = &[
+        [0.0, 1.5, 0.0],
+        [-1.0, -1.0, 1.0],
+        [1.0, -1.0, 1.0],
+        [1.0, -1.0, -1.0],
+        [-1.0, -1.0, -1.0],
+    ];
+    let pyramid_faces: &[[usize; 3]] =
+        &[[0, 1, 2], [0, 2, 3], [0, 3, 4], [0, 4, 1], [1, 4, 3], [1, 3, 2]];
+    let pyramid_colors = [
+        Rgb565::CSS_WHITE,
+        Rgb565::CSS_RED,
+        Rgb565::CSS_GREEN,
+        Rgb565::CSS_BLUE,
+        Rgb565::CSS_YELLOW,
+    ];
+    let pyramid_geom = Geometry {
+        vertices: pyramid_vertices,
+        faces: pyramid_faces,
+        colors: &pyramid_colors,
+        lines: &[],
+        normals: &[],
+        vertex_normals: &[],
+        uvs: &[],
+        texture_id: None,
+    };
+    let mut pyramid = K3dMesh::new(pyramid_geom);
+    pyramid.set_position(-3.0, -0.5, 0.0);
+    pyramid.set_scale(1.5);
+    pyramid.set_attitude(0.3, 1.2, 0.0);
+
+    let cube_vertices: &[[f32; 3]] = &[
+        [-1.0, -1.0, -1.0],
+        [1.0, -1.0, -1.0],
+        [1.0, 1.0, -1.0],
+        [-1.0, 1.0, -1.0],
+        [-1.0, -1.0, 1.0],
+        [1.0, -1.0, 1.0],
+        [1.0, 1.0, 1.0],
+        [-1.0, 1.0, 1.0],
+    ];
+    let cube_faces: &[[usize; 3]] = &[
+        [0, 1, 2], [0, 2, 3],
+        [1, 5, 6], [1, 6, 2],
+        [5, 4, 7], [5, 7, 6],
+        [4, 0, 3], [4, 3, 7],
+        [3, 2, 6], [3, 6, 7],
+        [4, 5, 1], [4, 1, 0],
+    ];
+    let cube_colors = [
+        Rgb565::new(0, 0, 10),
+        Rgb565::new(31, 0, 0),
+        Rgb565::new(31, 63, 0),
+        Rgb565::new(0, 63, 0),
+        Rgb565::new(0, 0, 31),
+        Rgb565::new(31, 0, 31),
+        Rgb565::CSS_WHITE,
+        Rgb565::new(0, 63, 31),
+    ];
+    let cube_geom = Geometry {
+        vertices: cube_vertices,
+        faces: cube_faces,
+        colors: &cube_colors,
+        lines: &[],
+        normals: &[],
+        vertex_normals: &[],
+        uvs: &[],
+        texture_id: None,
+    };
+    let mut cube = K3dMesh::new(cube_geom);
+    cube.set_position(3.0, 0.0, 0.0);
+    cube.set_attitude(0.5, 0.7, 0.3);
+
+    display.clear(Rgb565::BLACK).unwrap();
+    zbuffer.fill(u32::MAX);
+
+    for mesh in [&pyramid as &K3dMesh, &cube] {
+        let dist = (mesh.get_position() - engine.camera.position).norm();
+        let geom = mesh.select_lod(dist);
+        for face in geom.faces {
+            if let Some([p1, p2, p3]) =
+                engine.transform_points(face, geom.vertices, engine.camera.vp_matrix * mesh.model_matrix)
+            {
+                let colors = if !geom.colors.is_empty() {
+                    [geom.colors[face[0]], geom.colors[face[1]], geom.colors[face[2]]]
+                } else {
+                    [mesh.color; 3]
+                };
+                draw_zbuffered(
+                    DrawPrimitive::GouraudTriangleWithDepth {
+                        points: [p1.xy(), p2.xy(), p3.xy()],
+                        depths: [p1.z as f32, p2.z as f32, p3.z as f32],
+                        colors,
+                    },
+                    &mut display,
+                    &mut zbuffer,
+                    800,
+                );
+            }
+        }
+    }
+
+    save(&display, "assets/screenshot_gouraud.png");
+}
+
+// ── Scene 6: Fog + Bayer dithering ──────────────────────────────────────────
+
+fn capture_fog_dither() {
+    let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(800, 600));
+    let mut zbuffer = vec![u32::MAX; 800 * 600];
+    let mut engine = K3dengine::new(800, 600);
+    engine.camera.set_position(Point3::new(0.0, 3.0, 15.0));
+    engine.camera.set_target(Point3::new(0.0, 0.0, 0.0));
+
+    let cube_vertices: &[[f32; 3]] = &[
+        [-1.0, -1.0, -1.0], [1.0, -1.0, -1.0], [1.0, 1.0, -1.0], [-1.0, 1.0, -1.0],
+        [-1.0, -1.0, 1.0],  [1.0, -1.0, 1.0],  [1.0, 1.0, 1.0],  [-1.0, 1.0, 1.0],
+    ];
+    let cube_faces: &[[usize; 3]] = &[
+        [0, 1, 2], [0, 2, 3], [1, 5, 6], [1, 6, 2],
+        [5, 4, 7], [5, 7, 6], [4, 0, 3], [4, 3, 7],
+        [3, 2, 6], [3, 6, 7], [4, 5, 1], [4, 1, 0],
+    ];
+    let cube_colors = [
+        Rgb565::new(0, 0, 10),  Rgb565::new(31, 0, 0),  Rgb565::new(31, 63, 0),
+        Rgb565::new(0, 63, 0),  Rgb565::new(0, 0, 31),  Rgb565::new(31, 0, 31),
+        Rgb565::CSS_WHITE,      Rgb565::new(0, 63, 31),
+    ];
+    let base_geom = Geometry {
+        vertices: cube_vertices,
+        faces: cube_faces,
+        colors: &cube_colors,
+        lines: &[],
+        normals: &[],
+        vertex_normals: &[],
+        uvs: &[],
+        texture_id: None,
+    };
+
+    let cubes: Vec<K3dMesh> = (0..7)
+        .map(|i| {
+            let mut c = K3dMesh::new(base_geom.clone());
+            let x = (i % 3) as f32 * 3.0 - 3.0;
+            let y = (i / 3) as f32 * 3.0 - 1.5;
+            let z = -(i as f32) * 4.0;
+            c.set_position(x, y, z);
+            let off = i as f32 * 0.3;
+            c.set_attitude(0.75 + off, 1.05 + off, 0.45 + off);
+            c
+        })
+        .collect();
+
+    let fog_color = Rgb565::new(4, 8, 12);
+    let fog = Some(FogConfig::new(fog_color, 5.0, 28.0));
+    let dither = Some(DitherConfig::new(40u8));
+
+    display.clear(fog_color).unwrap();
+    zbuffer.fill(u32::MAX);
+
+    for mesh in &cubes {
+        let dist = (mesh.get_position() - engine.camera.position).norm();
+        let geom = mesh.select_lod(dist);
+        for face in geom.faces {
+            if let Some([p1, p2, p3]) =
+                engine.transform_points(face, geom.vertices, engine.camera.vp_matrix * mesh.model_matrix)
+            {
+                let colors = if !geom.colors.is_empty() {
+                    [geom.colors[face[0]], geom.colors[face[1]], geom.colors[face[2]]]
+                } else {
+                    [mesh.color; 3]
+                };
+                draw_zbuffered_with_effects(
+                    DrawPrimitive::GouraudTriangleWithDepth {
+                        points: [p1.xy(), p2.xy(), p3.xy()],
+                        depths: [p1.z as f32, p2.z as f32, p3.z as f32],
+                        colors,
+                    },
+                    &mut display,
+                    &mut zbuffer,
+                    800,
+                    fog.as_ref(),
+                    dither.as_ref(),
+                );
+            }
+        }
+    }
+
+    // Suppress unused-variable warning: cubes is consumed by the iterator above.
+    let _ = &cubes;
+    save(&display, "assets/screenshot_fog_dither.png");
+}
+
+// ── Scene 7: Newton's cradle ──────────────────────────────────────────────────
+
+fn capture_newtons_cradle() {
+    let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(640, 480));
+    let mut zbuffer = vec![u32::MAX; 640 * 480];
+    let mut engine = K3dengine::new(640, 480);
+
+    const NUM: usize = 5;
+    const RADIUS: f32 = 0.5;
+    const CHAIN: f32 = 5.0;
+    const SPACING: f32 = RADIUS * 2.0 + 0.01;
+
+    let start_x = -(NUM as f32 - 1.0) * SPACING * 0.5;
+    let colors = [
+        Rgb565::CSS_RED,
+        Rgb565::CSS_ORANGE,
+        Rgb565::CSS_YELLOW,
+        Rgb565::CSS_GREEN,
+        Rgb565::CSS_CYAN,
+    ];
+    let light = Vector3::new(0.5, 1.0, 0.3);
+
+    let (sv, sf, sn) = make_uv_sphere(10, 16);
+
+    // Pre-compute sphere anchor positions for the string mesh
+    let sphere_positions: Vec<(f32, f32)> = (0..NUM)
+        .map(|i| {
+            let x = start_x + i as f32 * SPACING;
+            match i {
+                0 => {
+                    let a = 45.0_f32.to_radians();
+                    (x - CHAIN * a.sin(), CHAIN - CHAIN * a.cos())
+                }
+                4 => {
+                    let a = 18.0_f32.to_radians();
+                    (x + CHAIN * a.sin(), CHAIN - CHAIN * a.cos())
+                }
+                _ => (x, 0.0),
+            }
+        })
+        .collect();
+
+    // String + frame mesh: 5 anchor vertices + 5 sphere vertices
+    let mut frame_verts: Vec<[f32; 3]> = Vec::new();
+    for i in 0..NUM {
+        let ax = start_x + i as f32 * SPACING;
+        frame_verts.push([ax, CHAIN, 0.0]);
+    }
+    for &(sx, sy) in &sphere_positions {
+        frame_verts.push([sx, sy, 0.0]);
+    }
+    let frame_lines: Vec<[usize; 2]> = (0..NUM)
+        .map(|i| [i, NUM + i])
+        .chain(std::iter::once([0, NUM - 1])) // top bar
+        .collect();
+
+    let frame_geom = Geometry {
+        vertices: &frame_verts,
+        faces: &[],
+        colors: &[],
+        lines: &frame_lines,
+        normals: &[],
+        vertex_normals: &[],
+        uvs: &[],
+        texture_id: None,
+    };
+    let mut frame_mesh = K3dMesh::new(frame_geom);
+    frame_mesh.set_render_mode(RenderMode::Lines);
+    frame_mesh.set_color(Rgb565::new(20, 40, 20));
+
+    // Sphere meshes
+    let sphere_meshes: Vec<K3dMesh> = (0..NUM)
+        .map(|i| {
+            let geom = Geometry {
+                vertices: &sv,
+                faces: &sf,
+                colors: &[],
+                lines: &[],
+                normals: &sn,
+                vertex_normals: &[],
+                uvs: &[],
+                texture_id: None,
+            };
+            let mut m = K3dMesh::new(geom);
+            m.set_render_mode(RenderMode::SolidLightDir(light));
+            m.set_color(colors[i]);
+            let (sx, sy) = sphere_positions[i];
+            m.set_position(sx, sy, 0.0);
+            m
+        })
+        .collect();
+
+    // Camera centred on the scene: sphere0 at x≈-4.6,y≈1.5; sphere4 at x≈3.6,y≈0.3
+    engine.camera.set_position(Point3::new(-0.5, 3.5, 14.0));
+    engine.camera.set_target(Point3::new(-0.5, 2.0, 0.0));
+
+    display.clear(Rgb565::BLACK).unwrap();
+    zbuffer.fill(u32::MAX);
+
+    engine.render(std::iter::once(&frame_mesh), |prim| draw(prim, &mut display));
+    engine.render(sphere_meshes.iter(), |prim| {
+        draw_zbuffered(prim, &mut display, &mut zbuffer, 640);
+    });
+
+    save(&display, "assets/screenshot_newtons_cradle.png");
+}
+
+// ── Scene 8: UV texture mapping ───────────────────────────────────────────────
+
+fn capture_texture() {
+    let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(800, 600));
+    let mut zbuffer = vec![u32::MAX; 800 * 600];
+    let mut engine = K3dengine::new(800, 600);
+    engine.camera.set_position(Point3::new(0.0, 2.0, 8.0));
+    engine.camera.set_target(Point3::new(0.0, 0.0, 0.0));
+
+    // Textures ─────────────────────────────────────────────────────────────────
+    let mut tex_mgr = TextureManager::<4>::new();
+
+    static CB: [Rgb565; 64] = {
+        let mut d = [Rgb565::new(0, 0, 0); 64];
+        let mut i = 0usize;
+        while i < 64 {
+            let x = i % 8;
+            let y = i / 8;
+            d[i] = if (x + y) % 2 == 0 { Rgb565::new(0, 0, 0) } else { Rgb565::new(31, 63, 31) };
+            i += 1;
+        }
+        d
+    };
+    static BRICK: [Rgb565; 256] = {
+        let mut d = [Rgb565::new(20, 8, 4); 256];
+        let mut i = 0usize;
+        while i < 256 {
+            let x = i % 16;
+            let y = i / 16;
+            if y % 4 == 0 || (y % 8 < 4 && x == 7) || (y % 8 >= 4 && x == 15) {
+                d[i] = Rgb565::new(12, 12, 12);
+            }
+            i += 1;
+        }
+        d
+    };
+    static GRAD: [Rgb565; 64] = {
+        let mut d = [Rgb565::new(0, 0, 0); 64];
+        let mut i = 0usize;
+        while i < 64 {
+            let x = (i % 8) as u8;
+            let y = (i / 8) as u8;
+            d[i] = Rgb565::new(x * 4, y * 8, (7 - x) * 4);
+            i += 1;
+        }
+        d
+    };
+
+    let id_cb = tex_mgr.add_texture(Texture::new(&CB, 8, 8)).unwrap();
+    let id_brick = tex_mgr.add_texture(Texture::new(&BRICK, 16, 16)).unwrap();
+    let id_grad = tex_mgr.add_texture(Texture::new(&GRAD, 8, 8)).unwrap();
+
+    // Cube geometry ────────────────────────────────────────────────────────────
+    let cv: &[[f32; 3]] = &[
+        [-1.0, -1.0, -1.0], [1.0, -1.0, -1.0], [1.0, 1.0, -1.0], [-1.0, 1.0, -1.0],
+        [-1.0, -1.0,  1.0], [1.0, -1.0,  1.0], [1.0, 1.0,  1.0], [-1.0, 1.0,  1.0],
+    ];
+    let cf: &[[usize; 3]] = &[
+        [0,1,2],[0,2,3], [1,5,6],[1,6,2], [5,4,7],[5,7,6],
+        [4,0,3],[4,3,7], [3,2,6],[3,6,7], [4,5,1],[4,1,0],
+    ];
+    let cu: &[[f32; 2]] = &[
+        [0.0,0.0],[1.0,0.0],[1.0,1.0],[0.0,1.0],
+        [0.0,0.0],[1.0,0.0],[1.0,1.0],[0.0,1.0],
+    ];
+
+    let make_cube = |tex_id, pos: (f32, f32, f32), att: (f32, f32, f32)| {
+        let geom = Geometry {
+            vertices: cv, faces: cf, colors: &[], lines: &[],
+            normals: &[], vertex_normals: &[], uvs: cu, texture_id: Some(tex_id),
+        };
+        let mut m = K3dMesh::new(geom);
+        m.set_position(pos.0, pos.1, pos.2);
+        m.set_attitude(att.0, att.1, att.2);
+        m.set_scale(1.2);
+        m
+    };
+
+    let cubes = [
+        make_cube(id_cb,   (-3.0, 0.0, 0.0), (0.5,  1.0, 0.3)),
+        make_cube(id_brick, (0.0, 0.0, 0.0), (0.8,  0.6, 0.2)),
+        make_cube(id_grad,  (3.0, 0.0, 0.0), (0.3,  0.9, 0.5)),
+    ];
+
+    display.clear(Rgb565::new(5, 10, 15)).unwrap();
+    zbuffer.fill(u32::MAX);
+
+    for mesh in &cubes {
+        let dist = (mesh.get_position() - engine.camera.position).norm();
+        let geom = mesh.select_lod(dist);
+        for face in geom.faces {
+            if let Some([p1, p2, p3]) =
+                engine.transform_points(face, geom.vertices, engine.camera.vp_matrix * mesh.model_matrix)
+            {
+                if let Some(tid) = geom.texture_id {
+                    if !geom.uvs.is_empty() {
+                        let uvs = [geom.uvs[face[0]], geom.uvs[face[1]], geom.uvs[face[2]]];
+                        draw_zbuffered_with_textures(
+                            DrawPrimitive::TexturedTriangleWithDepth {
+                                points: [p1.xy(), p2.xy(), p3.xy()],
+                                depths: [p1.z as f32, p2.z as f32, p3.z as f32],
+                                uvs,
+                                texture_id: tid,
+                            },
+                            &mut display,
+                            &mut zbuffer,
+                            800,
+                            &tex_mgr,
+                            None,
+                            None,
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    save(&display, "assets/screenshot_texture.png");
+}
+
+// ── GIF 1: rotating wireframe cube ────────────────────────────────────────────
+
+fn gif_rotating_cube() {
+    const W: u16 = 320;
+    const H: u16 = 240;
+    let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(W as u32, H as u32));
+    let mut engine = K3dengine::new(W, H);
+    engine.camera.set_position(Point3::new(0.0, 1.0, 3.5));
+    engine.camera.set_target(Point3::new(0.0, 0.0, 0.0));
+
+    let vertices: &[[f32; 3]] = &[
+        [-1.0, -1.0, 1.0], [1.0, -1.0, 1.0], [1.0, 1.0, 1.0], [-1.0, 1.0, 1.0],
+        [-1.0, -1.0,-1.0], [1.0, -1.0,-1.0], [1.0, 1.0,-1.0], [-1.0, 1.0,-1.0],
+    ];
+    let faces: &[[usize; 3]] = &[
+        [0,1,2],[0,2,3],[5,4,7],[5,7,6],[3,2,6],[3,6,7],
+        [4,5,1],[4,1,0],[1,5,6],[1,6,2],[4,0,3],[4,3,7],
+    ];
+    let geom = Geometry { vertices, faces, colors: &[], lines: &[], normals: &[], vertex_normals: &[], uvs: &[], texture_id: None };
+    let mut cube = K3dMesh::new(geom);
+    cube.set_render_mode(RenderMode::Lines);
+    cube.set_color(Rgb565::CSS_CYAN);
+
+    let total = 72u32;
+    let mut frames: Vec<Vec<u8>> = Vec::with_capacity(total as usize);
+    for i in 0..total {
+        let yaw = i as f32 * (2.0 * PI / total as f32);
+        cube.set_attitude(0.3, yaw, 0.1);
+        display.clear(Rgb565::BLACK).unwrap();
+        engine.render(std::iter::once(&cube), |prim| draw(prim, &mut display));
+        frames.push(frame_rgb(&display));
+    }
+    save_gif(&mut frames, W, H, "assets/gif_cube.gif", 4);
+}
+
+// ── GIF 2: Blinn-Phong Suzanne rotating ──────────────────────────────────────
+
+fn gif_suzanne() {
+    const W: u16 = 320;
+    const H: u16 = 240;
+    let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(W as u32, H as u32));
+    let mut zbuffer = vec![u32::MAX; W as usize * H as usize];
+    let mut engine = K3dengine::new(W, H);
+    engine.camera.set_position(Point3::new(0.0, 0.8, 8.0));
+    engine.camera.set_target(Point3::new(0.0, -0.3, 0.0));
+    let light_dir = Vector3::new(-0.35, 0.75, -0.85).normalize();
+
+    let total = 60u32;
+    let mut frames: Vec<Vec<u8>> = Vec::with_capacity(total as usize);
+    for i in 0..total {
+        let yaw = i as f32 * (2.0 * PI / total as f32);
+        let mut suzanne = K3dMesh::new(embed_stl!("examples/3d_models/Suzanne.stl"));
+        suzanne.set_color(Rgb565::new(26, 30, 4));
+        suzanne.set_scale(2.8);
+        suzanne.set_position(0.0, 0.0, 0.0);
+        suzanne.set_attitude(-PI / 2.0, yaw, 0.0);
+        suzanne.set_render_mode(RenderMode::BlinnPhong { light_dir, specular_intensity: 1.5, shininess: 56.0 });
+
+        display.clear(Rgb565::BLACK).unwrap();
+        zbuffer.fill(u32::MAX);
+        engine.render(std::iter::once(&suzanne), |prim| {
+            draw_zbuffered(prim, &mut display, &mut zbuffer, W as usize);
+        });
+        frames.push(frame_rgb(&display));
+    }
+    save_gif(&mut frames, W, H, "assets/gif_suzanne.gif", 5);
+}
+
+// ── GIF 3: bouncing balls physics ────────────────────────────────────────────
+
+fn gif_bouncing_balls() {
+    const W: u16 = 320;
+    const H: u16 = 240;
+    let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(W as u32, H as u32));
+    let mut zbuffer = vec![u32::MAX; W as usize * H as usize];
+    let mut engine = K3dengine::new(W, H);
+    engine.camera.set_position(Point3::new(0.0, 5.0, 7.0));
+    engine.camera.set_target(Point3::new(0.0, 2.5, 0.0));
+
+    let (sv, sf, sn) = make_uv_sphere(10, 16);
+
+    const NUM_BALLS: usize = 5;
+    const BALL_RADIUS: f32 = 0.7;
+    let mut physics = PhysicsWorld::<16, 8>::new();
+    physics.set_gravity(Vector3::new(0.0, -9.81, 0.0));
+
+    let restitutions = [0.95f32, 0.75, 0.50, 0.25, 0.05];
+    let colors = [Rgb565::CSS_RED, Rgb565::CSS_ORANGE, Rgb565::CSS_YELLOW, Rgb565::CSS_GREEN, Rgb565::CSS_BLUE];
+    let spacing = 2.0f32;
+    let start_x = -(NUM_BALLS as f32 - 1.0) * spacing * 0.5;
+
+    let mut ball_ids = Vec::new();
+    let mut meshes: Vec<K3dMesh> = Vec::new();
+    for i in 0..NUM_BALLS {
+        let x = start_x + i as f32 * spacing;
+        let height = 5.0 + i as f32 * 0.8;
+        let ball = RigidBody::new(1.0)
+            .with_position(Vector3::new(x, height, 0.0))
+            .with_collider(Collider::Sphere { radius: BALL_RADIUS })
+            .with_restitution(restitutions[i])
+            .with_friction(0.3)
+            .with_damping(0.01)
+            .with_inertia_sphere(BALL_RADIUS)
+            .with_angular_damping(0.02);
+        ball_ids.push(physics.add_body(ball).unwrap());
+        let geom = Geometry { vertices: &sv, faces: &sf, colors: &[], lines: &[], normals: &sn, vertex_normals: &[], uvs: &[], texture_id: None };
+        let mut m = K3dMesh::new(geom);
+        m.set_render_mode(RenderMode::SolidLightDir(Vector3::new(0.5, 1.0, 0.3)));
+        m.set_color(colors[i]);
+        m.set_position(x, height, 0.0);
+        meshes.push(m);
+    }
+    physics.add_body(
+        RigidBody::new_static()
+            .with_position(Vector3::new(0.0, -0.1, 0.0))
+            .with_collider(Collider::Aabb { half_extents: Vector3::new(15.0, 0.1, 10.0) })
+            .with_restitution(1.0)
+            .with_friction(0.5),
+    ).unwrap();
+
+    let fv: &[[f32; 3]] = &[[-12.0,0.0,5.0],[12.0,0.0,5.0],[12.0,0.0,-5.0],[-12.0,0.0,-5.0]];
+    let ff: &[[usize; 3]] = &[[0,1,2],[0,2,3]];
+    let fn_: &[[f32; 3]] = &[[0.0,1.0,0.0],[0.0,1.0,0.0]];
+    let fgeom = Geometry { vertices: fv, faces: ff, colors: &[], lines: &[], normals: fn_, vertex_normals: &[], uvs: &[], texture_id: None };
+    let mut floor = K3dMesh::new(fgeom);
+    floor.set_render_mode(RenderMode::SolidLightDir(Vector3::new(0.5, 1.0, 0.3)));
+    floor.set_color(Rgb565::new(8, 16, 8));
+
+    let dt = 1.0f32 / 60.0;
+    let total = 120u32;
+    let mut frames: Vec<Vec<u8>> = Vec::with_capacity(total as usize);
+    for _ in 0..total {
+        physics.step_fixed::<16>(dt, 4);
+        for (i, &id) in ball_ids.iter().enumerate() {
+            sync_body_to_mesh(physics.body(id).unwrap(), &mut meshes[i]);
+        }
+        display.clear(Rgb565::BLACK).unwrap();
+        zbuffer.fill(u32::MAX);
+        let all: Vec<&K3dMesh> = meshes.iter().chain(std::iter::once(&floor)).collect();
+        engine.render(all.into_iter(), |prim| draw_zbuffered(prim, &mut display, &mut zbuffer, W as usize));
+        frames.push(frame_rgb(&display));
+    }
+    save_gif(&mut frames, W, H, "assets/gif_physics.gif", 4);
+}
+
+// ── GIF 4: cloth simulation ───────────────────────────────────────────────────
+
+fn gif_cloth() {
+    const W: u16 = 320;
+    const H: u16 = 240;
+    let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(W as u32, H as u32));
+    let mut engine = K3dengine::new(W, H);
+    engine.camera.set_position(Point3::new(1.0, 3.5, 7.0));
+    engine.camera.set_target(Point3::new(0.0, 2.0, 0.0));
+
+    let cloth_w = 8usize;
+    let cloth_h = 8usize;
+    let mut cloth = SoftBody::<64, 256>::create_cloth(cloth_w, cloth_h, 0.45, 180.0, 1.2).unwrap();
+    for p in cloth.particles.iter_mut() {
+        p.position.y += 4.0;
+        p.previous_position.y += 4.0;
+    }
+    cloth.set_gravity(Vector3::new(0.0, -9.81, 0.0));
+
+    let mut faces: Vec<[usize; 3]> = Vec::new();
+    for y in 0..cloth_h - 1 {
+        for x in 0..cloth_w - 1 {
+            let tl = y * cloth_w + x;
+            let tr = y * cloth_w + (x + 1);
+            let bl = (y + 1) * cloth_w + x;
+            let br = (y + 1) * cloth_w + (x + 1);
+            faces.push([tl, tr, bl]);
+            faces.push([tr, br, bl]);
+        }
+    }
+
+    let total = 90u32;
+    let mut frames: Vec<Vec<u8>> = Vec::with_capacity(total as usize);
+    let mut verts = vec![[0.0f32; 3]; cloth.particles.len()];
+    for _ in 0..total {
+        cloth.step(0.016);
+        cloth.get_vertex_positions(&mut verts);
+        let geom = Geometry { vertices: &verts, faces: &faces, colors: &[], lines: &[], normals: &[], vertex_normals: &[], uvs: &[], texture_id: None };
+        let mut mesh = K3dMesh::new(geom);
+        mesh.set_render_mode(RenderMode::Lines);
+        mesh.set_color(Rgb565::CSS_CYAN);
+        display.clear(Rgb565::BLACK).unwrap();
+        engine.render(std::iter::once(&mesh), |prim| draw(prim, &mut display));
+        frames.push(frame_rgb(&display));
+    }
+    save_gif(&mut frames, W, H, "assets/gif_cloth.gif", 4);
+}

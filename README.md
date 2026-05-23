@@ -37,6 +37,25 @@ A `no_std` 3D graphics and physics engine for embedded systems, optimized for re
 - Rigid transform animation tracks for splash screens and menus
 - Tweening with easing functions (`Tween3`, `Easing`)
 
+## Screenshots
+
+<table>
+  <tr>
+    <td align="center"><img src="assets/screenshot_wireframe.png" alt="Wireframe cube" width="320"><br><em>Wireframe rendering</em></td>
+    <td align="center"><img src="assets/screenshot_blinnphong.png" alt="Blinn-Phong shading on Suzanne" width="320"><br><em>Blinn-Phong shading (Suzanne)</em></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="assets/screenshot_physics.png" alt="Physics simulation — bouncing balls" width="320"><br><em>Rigid body physics</em></td>
+    <td align="center"><img src="assets/screenshot_cloth.png" alt="Cloth soft-body simulation" width="320"><br><em>Cloth soft-body simulation</em></td>
+  </tr>
+</table>
+
+To regenerate these screenshots:
+
+```bash
+cargo run --example screenshots --features std
+```
+
 ## Installation
 
 ```toml

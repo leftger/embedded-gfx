@@ -7,7 +7,9 @@
 //! - Imposters for distant objects
 
 use embedded_graphics_core::pixelcolor::Rgb565;
-use nalgebra::{ComplexField, Point3, Vector3};
+#[cfg(not(feature = "std"))]
+use nalgebra::ComplexField;
+use nalgebra::{Point3, Vector3};
 
 /// A billboard is a 2D quad that always faces the camera
 #[derive(Debug, Clone)]

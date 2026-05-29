@@ -4,9 +4,8 @@ use heapless::index_set::FnvIndexSet;
 use log::error;
 use nalgebra::{Point3, Similarity3, UnitQuaternion, Vector3};
 
-// ComplexField provides sqrt() for f32 in no_std via libm
-#[allow(unused_imports)]
-use nalgebra::ComplexField;
+#[cfg(not(feature = "std"))]
+use micromath::F32Ext;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum RenderMode {

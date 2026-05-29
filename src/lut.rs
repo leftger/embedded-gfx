@@ -4,6 +4,8 @@
 //! ~50-100x faster than f32::sin()/cos() on embedded systems without FPU
 
 use core::f32::consts::PI;
+#[cfg(not(feature = "std"))]
+use micromath::F32Ext;
 
 /// 256-entry sine lookup table covering 0 to 2π
 /// Each entry is scaled by 32768 for fixed-point arithmetic
@@ -60,16 +62,16 @@ pub fn fast_cos_i16(angle: f32) -> i16 {
     fast_sin_i16(angle + PI / 2.0)
 }
 
-/// Fast sine returning f32 (convenience wrapper)
+/// Fast sine returning f32 — uses micromath polynomial (~0.001 error vs 2% for the i16 table).
 #[inline(always)]
 pub fn fast_sin(angle: f32) -> f32 {
-    fast_sin_i16(angle) as f32 / 32768.0
+    angle.sin()
 }
 
-/// Fast cosine returning f32 (convenience wrapper)
+/// Fast cosine returning f32 — uses micromath polynomial (~0.001 error vs 2% for the i16 table).
 #[inline(always)]
 pub fn fast_cos(angle: f32) -> f32 {
-    fast_cos_i16(angle) as f32 / 32768.0
+    angle.cos()
 }
 
 #[cfg(test)]

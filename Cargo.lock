@@ -150,6 +150,7 @@ dependencies = [
  "line_drawing",
  "load_stl",
  "log",
+ "micromath",
  "nalgebra",
 ]
 

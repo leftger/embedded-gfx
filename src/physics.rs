@@ -35,9 +35,8 @@
 
 use nalgebra::{Matrix3, UnitQuaternion, Vector3};
 
-// ComplexField provides sqrt() for f32 in no_std via libm
-#[allow(unused_imports)]
-use nalgebra::ComplexField;
+#[cfg(not(feature = "std"))]
+use micromath::F32Ext;
 
 /// Unique identifier for a rigid body within a [`PhysicsWorld`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

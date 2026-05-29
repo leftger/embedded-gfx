@@ -37,8 +37,8 @@
 use heapless::Vec;
 use nalgebra::Vector3;
 
-#[allow(unused_imports)]
-use nalgebra::ComplexField;
+#[cfg(not(feature = "std"))]
+use micromath::F32Ext;
 
 /// A particle in a soft body system.
 ///

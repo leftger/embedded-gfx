@@ -1,27 +1,30 @@
-pub const FP_SHIFT: i32 = 16;
-pub const FP_ONE: i64 = 1_i64 << FP_SHIFT;
+// Q16.16 fixed-point arithmetic using i32 storage.
+// Multiply uses an i64 intermediate then narrows back to i32 — one instruction
+// on Cortex-M4/M7 (SMULL + shift), cheaper than full i64×i64 on M3.
+pub const FP_SHIFT: u32 = 16;
+pub const FP_ONE: i32 = 1_i32 << FP_SHIFT;
 
 #[inline]
-pub fn to_fp(v: f32) -> i64 {
-    (v * FP_ONE as f32) as i64
+pub fn to_fp(v: f32) -> i32 {
+    (v * FP_ONE as f32) as i32
 }
 
 #[inline]
-pub fn from_fp(v: i64) -> f32 {
+pub fn from_fp(v: i32) -> f32 {
     v as f32 / FP_ONE as f32
 }
 
 #[inline]
-pub fn mul_fp(a: i64, b: i64) -> i64 {
-    (a * b) >> FP_SHIFT
+pub fn mul_fp(a: i32, b: i32) -> i32 {
+    ((a as i64 * b as i64) >> FP_SHIFT) as i32
 }
 
 #[inline]
-pub fn div_fp(a: i64, b: i64) -> Option<i64> {
+pub fn div_fp(a: i32, b: i32) -> Option<i32> {
     if b == 0 {
         return None;
     }
-    Some((a << FP_SHIFT) / b)
+    Some((((a as i64) << FP_SHIFT) / b as i64) as i32)
 }
 
 #[cfg(test)]

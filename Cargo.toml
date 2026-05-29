@@ -58,6 +58,7 @@ itm-trace = []
 embedded-graphics-core = "0.4.0"
 embedded-graphics-framebuf = "0.3"
 log = "0.4"
+micromath = { version = "2", default-features = false }
 nalgebra = { version = "0.34", default-features = false, features = [ "libm" ] }
 line_drawing = "1.0"
 heapless = "0.9"

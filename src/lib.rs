@@ -20,8 +20,11 @@ pub mod tween;
 pub mod transform_anim;
 pub mod billboard;
 pub mod camera;
+pub mod command_buffer;
+pub mod config;
 pub mod display_backend;
 pub mod draw;
+pub mod error;
 pub mod lut;
 pub mod mesh;
 #[cfg(feature = "std")]
@@ -33,6 +36,7 @@ pub mod skeleton;
 pub mod softbody;
 pub mod swapchain;
 pub mod texture;
+pub mod renderer;
 
 // Re-export framebuffer types from external crate for user convenience
 pub use embedded_graphics_framebuf::{
@@ -473,6 +477,60 @@ impl K3dengine {
                 }
             }
         }
+    }
+
+    pub fn record_render_commands<'a, MS, const MAX: usize>(
+        &self,
+        meshes: MS,
+        commands: &mut crate::command_buffer::CommandBuffer<MAX>,
+    ) -> Result<(), crate::error::RenderError>
+    where
+        MS: IntoIterator<Item = &'a K3dMesh<'a>>,
+    {
+        use crate::command_buffer::RenderCommand;
+
+        commands.clear();
+        commands.push(RenderCommand::ClearDepth(u32::MAX))?;
+
+        let mut first_error = None;
+        self.render(meshes, |primitive| {
+            if first_error.is_none() {
+                if let Err(e) = commands.push(RenderCommand::Draw(primitive)) {
+                    first_error = Some(e);
+                }
+            }
+        });
+
+        if let Some(err) = first_error {
+            return Err(err);
+        }
+
+        Ok(())
+    }
+
+    pub fn render_frame<'a, MS, D, const MAX: usize>(
+        &self,
+        meshes: MS,
+        fb: &mut D,
+        zbuffer: &mut [u32],
+        width: usize,
+        height: usize,
+    ) -> Result<(), crate::error::RenderError>
+    where
+        MS: IntoIterator<Item = &'a K3dMesh<'a>>,
+        D: embedded_graphics_core::draw_target::DrawTarget<Color = Rgb565>
+            + embedded_graphics_core::prelude::OriginDimensions,
+        <D as embedded_graphics_core::draw_target::DrawTarget>::Error: core::fmt::Debug,
+    {
+        let mut cmd = crate::command_buffer::CommandBuffer::<MAX>::new();
+        self.record_render_commands(meshes, &mut cmd)?;
+
+        let mut frame = crate::renderer::FrameCtx {
+            zbuffer,
+            width,
+            height,
+        };
+        crate::renderer::execute_commands(fb, &mut frame, &cmd)
     }
 }
 

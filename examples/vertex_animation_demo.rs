@@ -12,6 +12,7 @@
 //! - ESC: Exit
 
 use embedded_3dgfx::K3dengine;
+use embedded_3dgfx::renderer::FrameCtx;
 use embedded_3dgfx::animation::{Keyframe, VertexAnimation};
 use embedded_3dgfx::command_buffer::CommandBuffer;
 use embedded_3dgfx::config::apply_default_caps;
@@ -345,10 +346,11 @@ fn main() {
         zbuffer.fill(u32::MAX);
 
         engine
-            .record_render_commands([&cube, &flag, &morph].iter().copied(), &mut commands)
+            .record([&cube, &flag, &morph].iter().copied(), &mut commands, None)
             .unwrap();
+        let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: WIDTH, height: HEIGHT };
         engine
-            .execute_recorded_frame::<_, 8192>(&mut display, &mut zbuffer, WIDTH, HEIGHT, &commands)
+            .execute::<_, 8192>(&mut display, &mut frame, &commands, None)
             .unwrap();
 
         // Display info

@@ -8,6 +8,7 @@ use std::fs::File;
 
 use embedded_3dgfx::DrawPrimitive;
 use embedded_3dgfx::K3dengine;
+use embedded_3dgfx::renderer::FrameCtx;
 use embedded_3dgfx::command_buffer::CommandBuffer;
 use embedded_3dgfx::config::apply_default_caps;
 use embedded_3dgfx::draw::{
@@ -127,10 +128,11 @@ fn capture_wireframe_cube() {
     display.clear(Rgb565::BLACK).unwrap();
     zbuffer.fill(u32::MAX);
     engine
-        .record_render_commands(std::iter::once(&cube), &mut commands)
+        .record(std::iter::once(&cube), &mut commands, None)
         .unwrap();
+    let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: W, height: H };
     engine
-        .execute_recorded_frame::<_, 4096>(&mut display, &mut zbuffer, W, H, &commands)
+        .execute::<_, 4096>(&mut display, &mut frame, &commands, None)
         .unwrap();
 
     save(&display, "assets/screenshot_wireframe.png");
@@ -171,10 +173,11 @@ fn capture_blinn_phong() {
     zbuffer.fill(u32::MAX);
 
     engine
-        .record_render_commands(std::iter::once(&suzanne), &mut commands)
+        .record(std::iter::once(&suzanne), &mut commands, None)
         .unwrap();
+    let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: 800, height: 600 };
     engine
-        .execute_recorded_frame::<_, 8192>(&mut display, &mut zbuffer, 800, 600, &commands)
+        .execute::<_, 8192>(&mut display, &mut frame, &commands, None)
         .unwrap();
 
     save(&display, "assets/screenshot_blinnphong.png");
@@ -368,10 +371,11 @@ fn capture_physics() {
 
     let all_meshes: Vec<&K3dMesh> = meshes.iter().chain(std::iter::once(&floor_mesh)).collect();
     engine
-        .record_render_commands(all_meshes.iter().copied(), &mut commands)
+        .record(all_meshes.iter().copied(), &mut commands, None)
         .unwrap();
+    let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: 640, height: 480 };
     engine
-        .execute_recorded_frame::<_, 16384>(&mut display, &mut zbuffer, 640, 480, &commands)
+        .execute::<_, 16384>(&mut display, &mut frame, &commands, None)
         .unwrap();
 
     save(&display, "assets/screenshot_physics.png");
@@ -442,10 +446,11 @@ fn capture_cloth() {
     display.clear(Rgb565::BLACK).unwrap();
     zbuffer.fill(u32::MAX);
     engine
-        .record_render_commands(std::iter::once(&mesh), &mut commands)
+        .record(std::iter::once(&mesh), &mut commands, None)
         .unwrap();
+    let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: 640, height: 480 };
     engine
-        .execute_recorded_frame::<_, 8192>(&mut display, &mut zbuffer, 640, 480, &commands)
+        .execute::<_, 8192>(&mut display, &mut frame, &commands, None)
         .unwrap();
 
     save(&display, "assets/screenshot_cloth.png");
@@ -803,10 +808,11 @@ fn capture_newtons_cradle() {
     all_meshes.push(&frame_mesh);
     all_meshes.extend(sphere_meshes.iter());
     engine
-        .record_render_commands(all_meshes.iter().copied(), &mut commands)
+        .record(all_meshes.iter().copied(), &mut commands, None)
         .unwrap();
+    let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: 640, height: 480 };
     engine
-        .execute_recorded_frame::<_, 16384>(&mut display, &mut zbuffer, 640, 480, &commands)
+        .execute::<_, 16384>(&mut display, &mut frame, &commands, None)
         .unwrap();
 
     save(&display, "assets/screenshot_newtons_cradle.png");
@@ -1026,16 +1032,11 @@ fn gif_rotating_cube() {
         display.clear(Rgb565::BLACK).unwrap();
         zbuffer.fill(u32::MAX);
         engine
-            .record_render_commands(std::iter::once(&cube), &mut commands)
+            .record(std::iter::once(&cube), &mut commands, None)
             .unwrap();
+        let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: W as usize, height: H as usize };
         engine
-            .execute_recorded_frame::<_, 4096>(
-                &mut display,
-                &mut zbuffer,
-                W as usize,
-                H as usize,
-                &commands,
-            )
+            .execute::<_, 4096>(&mut display, &mut frame, &commands, None)
             .unwrap();
         frames.push(frame_rgb(&display));
     }
@@ -1074,16 +1075,11 @@ fn gif_suzanne() {
         display.clear(Rgb565::BLACK).unwrap();
         zbuffer.fill(u32::MAX);
         engine
-            .record_render_commands(std::iter::once(&suzanne), &mut commands)
+            .record(std::iter::once(&suzanne), &mut commands, None)
             .unwrap();
+        let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: W as usize, height: H as usize };
         engine
-            .execute_recorded_frame::<_, 8192>(
-                &mut display,
-                &mut zbuffer,
-                W as usize,
-                H as usize,
-                &commands,
-            )
+            .execute::<_, 8192>(&mut display, &mut frame, &commands, None)
             .unwrap();
         frames.push(frame_rgb(&display));
     }
@@ -1199,16 +1195,11 @@ fn gif_bouncing_balls() {
         zbuffer.fill(u32::MAX);
         let all: Vec<&K3dMesh> = meshes.iter().chain(std::iter::once(&floor)).collect();
         engine
-            .record_render_commands(all.iter().copied(), &mut commands)
+            .record(all.iter().copied(), &mut commands, None)
             .unwrap();
+        let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: W as usize, height: H as usize };
         engine
-            .execute_recorded_frame::<_, 16384>(
-                &mut display,
-                &mut zbuffer,
-                W as usize,
-                H as usize,
-                &commands,
-            )
+            .execute::<_, 16384>(&mut display, &mut frame, &commands, None)
             .unwrap();
         frames.push(frame_rgb(&display));
     }
@@ -1351,16 +1342,11 @@ fn gif_newtons_cradle() {
         all_meshes.push(&fmesh);
         all_meshes.extend(meshes.iter());
         engine
-            .record_render_commands(all_meshes.iter().copied(), &mut commands)
+            .record(all_meshes.iter().copied(), &mut commands, None)
             .unwrap();
+        let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: W as usize, height: H as usize };
         engine
-            .execute_recorded_frame::<_, 16384>(
-                &mut display,
-                &mut zbuffer,
-                W as usize,
-                H as usize,
-                &commands,
-            )
+            .execute::<_, 16384>(&mut display, &mut frame, &commands, None)
             .unwrap();
 
         frames.push(frame_rgb(&display));
@@ -1425,16 +1411,11 @@ fn gif_cloth() {
         display.clear(Rgb565::BLACK).unwrap();
         zbuffer.fill(u32::MAX);
         engine
-            .record_render_commands(std::iter::once(&mesh), &mut commands)
+            .record(std::iter::once(&mesh), &mut commands, None)
             .unwrap();
+        let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: W as usize, height: H as usize };
         engine
-            .execute_recorded_frame::<_, 8192>(
-                &mut display,
-                &mut zbuffer,
-                W as usize,
-                H as usize,
-                &commands,
-            )
+            .execute::<_, 8192>(&mut display, &mut frame, &commands, None)
             .unwrap();
         frames.push(frame_rgb(&display));
     }

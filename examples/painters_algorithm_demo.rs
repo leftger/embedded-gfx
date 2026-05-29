@@ -15,6 +15,7 @@
 //! - ESC: Exit
 
 use embedded_3dgfx::K3dengine;
+use embedded_3dgfx::renderer::FrameCtx;
 use embedded_3dgfx::command_buffer::CommandBuffer;
 use embedded_3dgfx::config::apply_default_caps;
 use embedded_3dgfx::draw::draw;
@@ -189,16 +190,11 @@ fn main() {
             // Traditional Z-buffered rendering (for comparison)
             let mut zbuffer = vec![u32::MAX; WIDTH * HEIGHT];
             engine
-                .record_render_commands(meshes.iter().copied(), &mut commands)
+                .record(meshes.iter().copied(), &mut commands, None)
                 .unwrap();
+            let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: WIDTH, height: HEIGHT };
             engine
-                .execute_recorded_frame::<_, 8192>(
-                    &mut display,
-                    &mut zbuffer,
-                    WIDTH,
-                    HEIGHT,
-                    &commands,
-                )
+                .execute::<_, 8192>(&mut display, &mut frame, &commands, None)
                 .unwrap();
 
             triangle_count = triangles.len();

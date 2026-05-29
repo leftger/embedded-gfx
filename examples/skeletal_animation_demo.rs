@@ -17,6 +17,7 @@
 //! - ESC: Exit
 
 use embedded_3dgfx::K3dengine;
+use embedded_3dgfx::renderer::FrameCtx;
 use embedded_3dgfx::command_buffer::CommandBuffer;
 use embedded_3dgfx::config::apply_default_caps;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
@@ -243,10 +244,11 @@ fn main() {
         display.clear(Rgb565::BLACK).unwrap();
         zbuffer.fill(u32::MAX);
         engine
-            .record_render_commands(std::iter::once(&mesh), &mut commands)
+            .record(std::iter::once(&mesh), &mut commands, None)
             .unwrap();
+        let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: WIDTH, height: HEIGHT };
         engine
-            .execute_recorded_frame::<_, 4096>(&mut display, &mut zbuffer, WIDTH, HEIGHT, &commands)
+            .execute::<_, 4096>(&mut display, &mut frame, &commands, None)
             .unwrap();
 
         // Display info

@@ -16,6 +16,7 @@
 //! - ESC: Exit
 
 use embedded_3dgfx::K3dengine;
+use embedded_3dgfx::renderer::FrameCtx;
 use embedded_3dgfx::command_buffer::CommandBuffer;
 use embedded_3dgfx::config::apply_default_caps;
 use embedded_3dgfx::display_backend::SimulatorBackend;
@@ -234,22 +235,16 @@ fn main() {
                 back_buffer.clear(Rgb565::BLACK).unwrap();
                 zbuffer.fill(u32::MAX);
                 engine
-                    .record_render_commands_with_budget_decimation_fallback(
+                    .record_with_fallback(
                         cubes.iter(),
-                        fallback_stride,
+                        cubes.iter().enumerate().filter_map(|(i, m)| (i % fallback_stride == 0).then_some(m)),
                         &mut commands,
                         Some(&mut record_telemetry),
                     )
                     .unwrap();
+                let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: WIDTH, height: HEIGHT };
                 engine
-                    .execute_recorded_frame_with_telemetry::<_, 16384>(
-                        back_buffer,
-                        &mut zbuffer,
-                        WIDTH,
-                        HEIGHT,
-                        &commands,
-                        Some(&mut execute_telemetry),
-                    )
+                    .execute(back_buffer, &mut frame, &commands, Some(&mut execute_telemetry))
                     .unwrap();
 
                 // Copy back buffer to display for visualization BEFORE presenting
@@ -273,22 +268,16 @@ fn main() {
             display.clear(Rgb565::BLACK).unwrap();
             zbuffer.fill(u32::MAX);
             engine
-                .record_render_commands_with_budget_decimation_fallback(
+                .record_with_fallback(
                     cubes.iter(),
-                    fallback_stride,
+                    cubes.iter().enumerate().filter_map(|(i, m)| (i % fallback_stride == 0).then_some(m)),
                     &mut commands,
                     Some(&mut record_telemetry),
                 )
                 .unwrap();
+            let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: WIDTH, height: HEIGHT };
             engine
-                .execute_recorded_frame_with_telemetry::<_, 16384>(
-                    &mut display,
-                    &mut zbuffer,
-                    WIDTH,
-                    HEIGHT,
-                    &commands,
-                    Some(&mut execute_telemetry),
-                )
+                .execute(&mut display, &mut frame, &commands, Some(&mut execute_telemetry))
                 .unwrap();
 
             let render_time = render_start.elapsed().as_secs_f32() * 1000.0;

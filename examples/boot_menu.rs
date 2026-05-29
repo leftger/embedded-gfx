@@ -12,6 +12,7 @@
 
 use embedded_3dgfx::DrawPrimitive;
 use embedded_3dgfx::K3dengine;
+use embedded_3dgfx::renderer::FrameCtx;
 use embedded_3dgfx::billboard::Billboard;
 use embedded_3dgfx::command_buffer::CommandBuffer;
 use embedded_3dgfx::config::apply_default_caps;
@@ -241,11 +242,12 @@ fn render_scene(
         }
         Screen::Transition | Screen::Menu => {
             engine
-                .record_render_commands(menu_items.iter(), commands)
+                .record(menu_items.iter(), commands, None)
                 .unwrap();
+            let mut frame = FrameCtx { zbuffer, width: W as usize, height: H as usize };
             engine
-                .execute_recorded_frame::<_, 1024>(
-                    display, zbuffer, W as usize, H as usize, &commands,
+                .execute::<_, 1024>(
+                    display, &mut frame, &commands, None,
                 )
                 .unwrap();
             render_textured_billboard(

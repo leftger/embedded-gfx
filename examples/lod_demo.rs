@@ -16,6 +16,7 @@
 //! - ESC: Exit
 
 use embedded_3dgfx::K3dengine;
+use embedded_3dgfx::renderer::FrameCtx;
 use embedded_3dgfx::command_buffer::CommandBuffer;
 use embedded_3dgfx::config::apply_default_caps;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, LODLevels, RenderMode};
@@ -327,27 +328,21 @@ fn main() {
             total_triangles += geometry.faces.len();
         }
 
+        let camera_pos = engine.camera.position;
         engine
-            .record_render_commands_with_budget_selector_fallback(
+            .record_with_fallback(
                 spheres.iter(),
-                |_, sphere| {
-                    let distance = (sphere.get_position() - engine.camera.position).norm();
-                    distance < lod_medium_threshold
-                },
+                spheres.iter().filter(move |sphere| {
+                    (sphere.get_position() - camera_pos).norm() < lod_medium_threshold
+                }),
                 &mut commands,
                 Some(&mut record_telemetry),
             )
             .unwrap();
 
+        let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: WIDTH, height: HEIGHT };
         engine
-            .execute_recorded_frame_with_telemetry::<_, 16384>(
-                &mut display,
-                &mut zbuffer,
-                WIDTH,
-                HEIGHT,
-                &commands,
-                Some(&mut execute_telemetry),
-            )
+            .execute(&mut display, &mut frame, &commands, Some(&mut execute_telemetry))
             .unwrap();
 
         // Display info

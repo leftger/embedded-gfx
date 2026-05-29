@@ -13,6 +13,7 @@
 //! - ESC: Exit
 
 use embedded_3dgfx::K3dengine;
+use embedded_3dgfx::renderer::FrameCtx;
 use embedded_3dgfx::command_buffer::CommandBuffer;
 use embedded_3dgfx::config::apply_default_caps;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
@@ -344,16 +345,11 @@ fn main() {
         all_meshes.push(&floor_mesh);
 
         engine
-            .record_render_commands(all_meshes.iter().copied(), &mut commands)
+            .record(all_meshes.iter().copied(), &mut commands, None)
             .unwrap();
+        let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: WIDTH, height: HEIGHT };
         engine
-            .execute_recorded_frame::<_, 16384>(
-                &mut display,
-                &mut zbuffer,
-                WIDTH,
-                HEIGHT,
-                &commands,
-            )
+            .execute::<_, 16384>(&mut display, &mut frame, &commands, None)
             .unwrap();
 
         #[cfg(feature = "perfcounter")]

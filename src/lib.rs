@@ -58,6 +58,8 @@ pub use draw::ReadPixel;
 pub use bridge::{
     AsEgPoint, AsNalgebraPoint, draw_to, eg_to_nalgebra, nalgebra_to_eg, render_drawable_to_buffer,
 };
+pub use renderer::{DirtyRegion, FrameCtx};
+pub use tilebin::{TileBinStats, TileConfig};
 pub use transform_anim::{AnimationPlayer, SampledTransform, TransformKeyframe, TransformTrack};
 pub use tween::{Easing, Tween, Tween3, apply_easing, lerp, lerp3, scale_rgb565};
 
@@ -299,7 +301,7 @@ impl K3dengine {
         Some(ret)
     }
 
-    pub fn render<'a, MS, F>(&self, meshes: MS, mut callback: F)
+    fn render<'a, MS, F>(&self, meshes: MS, mut callback: F)
     where
         MS: IntoIterator<Item = &'a K3dMesh<'a>>,
         F: FnMut(DrawPrimitive),
@@ -600,18 +602,19 @@ impl K3dengine {
         }
     }
 
-    pub fn record_render_commands<'a, MS, const MAX: usize>(
+    pub fn record<'a, MS, const MAX: usize>(
         &self,
         meshes: MS,
         commands: &mut crate::command_buffer::CommandBuffer<MAX>,
+        telemetry: Option<&mut crate::telemetry::RecordTelemetry>,
     ) -> Result<(), crate::error::RenderError>
     where
         MS: IntoIterator<Item = &'a K3dMesh<'a>>,
     {
-        self.record_render_commands_with_telemetry(meshes, commands, None)
+        self.record_impl(meshes, commands, telemetry)
     }
 
-    pub fn record_render_commands_with_telemetry<'a, MS, const MAX: usize>(
+    fn record_impl<'a, MS, const MAX: usize>(
         &self,
         meshes: MS,
         commands: &mut crate::command_buffer::CommandBuffer<MAX>,
@@ -717,39 +720,10 @@ impl K3dengine {
         Ok(())
     }
 
-    /// Records commands from `primary_meshes`, and if that fails with an out-of-budget error,
-    /// retries once using `fallback_meshes`.
-    ///
-    /// Returns `Ok(true)` when fallback was used, `Ok(false)` when primary succeeded.
-    pub fn record_render_commands_with_budget_fallback<'a, MS, FS, const MAX: usize>(
+    pub fn record_with_fallback<'a, MS, FS, const MAX: usize>(
         &self,
-        primary_meshes: MS,
-        fallback_meshes: FS,
-        commands: &mut crate::command_buffer::CommandBuffer<MAX>,
-        telemetry: Option<&mut crate::telemetry::RecordTelemetry>,
-    ) -> Result<bool, crate::error::RenderError>
-    where
-        MS: IntoIterator<Item = &'a K3dMesh<'a>>,
-        FS: IntoIterator<Item = &'a K3dMesh<'a>>,
-    {
-        Ok(self
-            .record_render_commands_with_budget_fallback_report(
-                primary_meshes,
-                fallback_meshes,
-                commands,
-                telemetry,
-            )?
-            .used_fallback)
-    }
-
-    /// Records commands from `primary_meshes`, and if that fails with an out-of-budget error,
-    /// retries once using `fallback_meshes`.
-    ///
-    /// Returns whether fallback was used and, when it was, the primary budget error kind.
-    pub fn record_render_commands_with_budget_fallback_report<'a, MS, FS, const MAX: usize>(
-        &self,
-        primary_meshes: MS,
-        fallback_meshes: FS,
+        primary: MS,
+        fallback: FS,
         commands: &mut crate::command_buffer::CommandBuffer<MAX>,
         telemetry: Option<&mut crate::telemetry::RecordTelemetry>,
     ) -> Result<BudgetFallbackOutcome, crate::error::RenderError>
@@ -760,11 +734,7 @@ impl K3dengine {
         use crate::error::RenderError;
 
         let mut local_telemetry = crate::telemetry::RecordTelemetry::default();
-        match self.record_render_commands_with_telemetry(
-            primary_meshes,
-            commands,
-            Some(&mut local_telemetry),
-        ) {
+        match self.record_impl(primary, commands, Some(&mut local_telemetry)) {
             Ok(()) => {
                 if let Some(t) = telemetry {
                     *t = local_telemetry;
@@ -777,11 +747,7 @@ impl K3dengine {
             }
             Err(RenderError::OutOfBudget(kind)) => {
                 let mut fallback_telemetry = crate::telemetry::RecordTelemetry::default();
-                self.record_render_commands_with_telemetry(
-                    fallback_meshes,
-                    commands,
-                    Some(&mut fallback_telemetry),
-                )?;
+                self.record_impl(fallback, commands, Some(&mut fallback_telemetry))?;
                 if let Some(t) = telemetry {
                     *t = fallback_telemetry;
                     t.fallback_used = true;
@@ -795,69 +761,6 @@ impl K3dengine {
         }
     }
 
-    /// Records commands from `meshes`, and if that fails with out-of-budget,
-    /// retries once using a selector predicate over `(index, mesh)`.
-    ///
-    /// Returns `Ok(true)` when fallback was used, `Ok(false)` when primary succeeded.
-    pub fn record_render_commands_with_budget_selector_fallback<
-        'a,
-        MS,
-        Selector,
-        const MAX: usize,
-    >(
-        &self,
-        meshes: MS,
-        mut fallback_selector: Selector,
-        commands: &mut crate::command_buffer::CommandBuffer<MAX>,
-        telemetry: Option<&mut crate::telemetry::RecordTelemetry>,
-    ) -> Result<bool, crate::error::RenderError>
-    where
-        MS: IntoIterator<Item = &'a K3dMesh<'a>> + Clone,
-        Selector: FnMut(usize, &'a K3dMesh<'a>) -> bool,
-    {
-        self.record_render_commands_with_budget_fallback(
-            meshes.clone(),
-            meshes.into_iter().enumerate().filter_map(|(idx, mesh)| {
-                if fallback_selector(idx, mesh) {
-                    Some(mesh)
-                } else {
-                    None
-                }
-            }),
-            commands,
-            telemetry,
-        )
-    }
-
-    /// Records commands from `meshes`, and if that fails with out-of-budget,
-    /// retries once with a decimated stream that keeps every `keep_every` mesh.
-    ///
-    /// Returns `Ok(true)` when fallback was used, `Ok(false)` when primary succeeded.
-    /// If `keep_every` is `0`, fallback returns `InvalidInput`.
-    pub fn record_render_commands_with_budget_decimation_fallback<'a, MS, const MAX: usize>(
-        &self,
-        meshes: MS,
-        keep_every: usize,
-        commands: &mut crate::command_buffer::CommandBuffer<MAX>,
-        telemetry: Option<&mut crate::telemetry::RecordTelemetry>,
-    ) -> Result<bool, crate::error::RenderError>
-    where
-        MS: IntoIterator<Item = &'a K3dMesh<'a>> + Clone,
-    {
-        if keep_every == 0 {
-            return Err(crate::error::RenderError::InvalidInput(
-                "keep_every must be >= 1",
-            ));
-        }
-
-        self.record_render_commands_with_budget_selector_fallback(
-            meshes,
-            move |idx, _| idx % keep_every == 0,
-            commands,
-            telemetry,
-        )
-    }
-
     fn downgraded_quality_tier(tier: crate::config::QualityTier) -> crate::config::QualityTier {
         use crate::config::QualityTier;
         match tier {
@@ -867,7 +770,7 @@ impl K3dengine {
         }
     }
 
-    pub fn record_render_commands_with_degradation_policy<'a, const MAX: usize>(
+    pub fn record_with_degradation<'a, const MAX: usize>(
         &mut self,
         meshes: &[&'a K3dMesh<'a>],
         commands: &mut crate::command_buffer::CommandBuffer<MAX>,
@@ -889,11 +792,7 @@ impl K3dengine {
         };
 
         let mut local_telemetry = crate::telemetry::RecordTelemetry::default();
-        match self.record_render_commands_with_telemetry(
-            meshes.iter().copied(),
-            commands,
-            Some(&mut local_telemetry),
-        ) {
+        match self.record_impl(meshes.iter().copied(), commands, Some(&mut local_telemetry)) {
             Ok(()) => {
                 if let Some(t) = telemetry {
                     *t = local_telemetry;
@@ -950,11 +849,8 @@ impl K3dengine {
             }
 
             let mut step_telemetry = crate::telemetry::RecordTelemetry::default();
-            let attempt = self.record_render_commands_with_telemetry(
-                selected.iter().copied(),
-                commands,
-                Some(&mut step_telemetry),
-            );
+            let attempt =
+                self.record_impl(selected.iter().copied(), commands, Some(&mut step_telemetry));
 
             if let Ok(()) = attempt {
                 outcome.final_quality_tier = self.quality_tier;
@@ -981,31 +877,13 @@ impl K3dengine {
         })
     }
 
-    pub fn execute_recorded_frame<D, const MAX: usize>(
+    pub fn execute<D, const MAX: usize>(
         &self,
         fb: &mut D,
-        zbuffer: &mut [u32],
-        width: usize,
-        height: usize,
-        commands: &crate::command_buffer::CommandBuffer<MAX>,
-    ) -> Result<(), crate::error::RenderError>
-    where
-        D: embedded_graphics_core::draw_target::DrawTarget<Color = Rgb565>
-            + embedded_graphics_core::prelude::OriginDimensions,
-        <D as embedded_graphics_core::draw_target::DrawTarget>::Error: core::fmt::Debug,
-    {
-        self.execute_recorded_frame_with_telemetry(fb, zbuffer, width, height, commands, None)
-    }
-
-    pub fn execute_recorded_frame_with_telemetry<D, const MAX: usize>(
-        &self,
-        fb: &mut D,
-        zbuffer: &mut [u32],
-        width: usize,
-        height: usize,
+        frame: &mut crate::renderer::FrameCtx<'_>,
         commands: &crate::command_buffer::CommandBuffer<MAX>,
         telemetry: Option<&mut crate::telemetry::ExecuteTelemetry>,
-    ) -> Result<(), crate::error::RenderError>
+    ) -> Result<Option<crate::renderer::DirtyRegion>, crate::error::RenderError>
     where
         D: embedded_graphics_core::draw_target::DrawTarget<Color = Rgb565>
             + embedded_graphics_core::prelude::OriginDimensions,
@@ -1026,61 +904,13 @@ impl K3dengine {
                 .filter(|cmd| matches!(cmd, crate::command_buffer::RenderCommand::ClearDepth(_)))
                 .count();
         }
-
-        let mut frame = crate::renderer::FrameCtx {
-            zbuffer,
-            width,
-            height,
-        };
-        crate::renderer::execute_commands(fb, &mut frame, commands)
+        crate::renderer::execute_commands_with_dirty_region(fb, frame, commands)
     }
 
-    pub fn execute_recorded_frame_with_dirty_region<D, const MAX: usize>(
+    pub fn execute_tiled<D, const MAX: usize, const BIN_CAP: usize>(
         &self,
         fb: &mut D,
-        zbuffer: &mut [u32],
-        width: usize,
-        height: usize,
-        commands: &crate::command_buffer::CommandBuffer<MAX>,
-    ) -> Result<Option<crate::renderer::DirtyRegion>, crate::error::RenderError>
-    where
-        D: embedded_graphics_core::draw_target::DrawTarget<Color = Rgb565>
-            + embedded_graphics_core::prelude::OriginDimensions,
-        <D as embedded_graphics_core::draw_target::DrawTarget>::Error: core::fmt::Debug,
-    {
-        let mut frame = crate::renderer::FrameCtx {
-            zbuffer,
-            width,
-            height,
-        };
-        crate::renderer::execute_commands_with_dirty_region(fb, &mut frame, commands)
-    }
-
-    pub fn build_tile_bins<const MAX: usize, const BIN_CAP: usize>(
-        &self,
-        commands: &crate::command_buffer::CommandBuffer<MAX>,
-        tile: crate::tilebin::TileConfig,
-    ) -> Result<
-        (
-            heapless::Vec<heapless::Vec<usize, BIN_CAP>, BIN_CAP>,
-            crate::tilebin::TileBinStats,
-        ),
-        crate::error::RenderError,
-    > {
-        crate::tilebin::build_bins::<MAX, BIN_CAP>(
-            commands,
-            self.width as usize,
-            self.height as usize,
-            tile,
-        )
-    }
-
-    pub fn execute_recorded_frame_tiled<D, const MAX: usize, const BIN_CAP: usize>(
-        &self,
-        fb: &mut D,
-        zbuffer: &mut [u32],
-        width: usize,
-        height: usize,
+        frame: &mut crate::renderer::FrameCtx<'_>,
         commands: &crate::command_buffer::CommandBuffer<MAX>,
         tile: crate::tilebin::TileConfig,
     ) -> Result<crate::tilebin::TileBinStats, crate::error::RenderError>
@@ -1089,12 +919,7 @@ impl K3dengine {
             + embedded_graphics_core::prelude::OriginDimensions,
         <D as embedded_graphics_core::draw_target::DrawTarget>::Error: core::fmt::Debug,
     {
-        let mut frame = crate::renderer::FrameCtx {
-            zbuffer,
-            width,
-            height,
-        };
-        crate::renderer::execute_commands_tiled::<D, MAX, BIN_CAP>(fb, &mut frame, commands, tile)
+        crate::renderer::execute_commands_tiled::<D, MAX, BIN_CAP>(fb, frame, commands, tile)
     }
 }
 

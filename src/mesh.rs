@@ -19,6 +19,9 @@ pub enum RenderMode {
         shininess: f32,
     },
     GouraudLightDir(Vector3<f32>),
+    /// Flat-shaded with a uniform brightness level (0=black, 255=full color).
+    /// Used for Doom-style sector-based lighting.
+    SectorBright(u8),
 }
 #[derive(Debug, Default, Copy, Clone)]
 pub struct Geometry<'a> {

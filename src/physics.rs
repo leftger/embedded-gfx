@@ -777,6 +777,8 @@ pub struct RayCastHit {
     pub normal: Vector3<f32>,
     /// Distance along the ray to the hit point
     pub distance: f32,
+    /// UV texture coordinates at the hit point, if computable for this collider type
+    pub uv: Option<[f32; 2]>,
 }
 
 /// Ray vs Sphere intersection test.
@@ -1155,12 +1157,58 @@ impl<const N: usize, const M: usize> PhysicsWorld<N, M> {
                         }
                     };
 
+                    let uv = match collider {
+                        Collider::Sphere { .. } => {
+                            // Spherical UV from surface normal
+                            let theta = normal.z.atan2(normal.x); // -PI..PI
+                            let phi = normal.y.clamp(-1.0, 1.0).asin(); // -PI/2..PI/2
+                            let u = theta / (2.0 * core::f32::consts::PI) + 0.5;
+                            let v = 0.5 - phi / core::f32::consts::PI;
+                            Some([u, v])
+                        }
+                        Collider::Aabb { half_extents } => {
+                            // Box UV: determine face from dominant normal axis, then planar project
+                            let abs_n = [normal.x.abs(), normal.y.abs(), normal.z.abs()];
+                            let (u, v) = if abs_n[0] >= abs_n[1] && abs_n[0] >= abs_n[2] {
+                                // X face: project on YZ
+                                (
+                                    0.5 + (point.y - body.position.y) / (2.0 * half_extents.y),
+                                    0.5 + (point.z - body.position.z) / (2.0 * half_extents.z),
+                                )
+                            } else if abs_n[1] >= abs_n[0] && abs_n[1] >= abs_n[2] {
+                                // Y face: project on XZ
+                                (
+                                    0.5 + (point.x - body.position.x) / (2.0 * half_extents.x),
+                                    0.5 + (point.z - body.position.z) / (2.0 * half_extents.z),
+                                )
+                            } else {
+                                // Z face: project on XY
+                                (
+                                    0.5 + (point.x - body.position.x) / (2.0 * half_extents.x),
+                                    0.5 + (point.y - body.position.y) / (2.0 * half_extents.y),
+                                )
+                            };
+                            Some([u.clamp(0.0, 1.0), v.clamp(0.0, 1.0)])
+                        }
+                        Collider::Capsule { height, .. } => {
+                            // Cylindrical UV: theta for U, normalized height for V
+                            let half_height = height * 0.5;
+                            let local_y =
+                                (point.y - body.position.y).clamp(-half_height, half_height);
+                            let theta = normal.z.atan2(normal.x);
+                            let u = theta / (2.0 * core::f32::consts::PI) + 0.5;
+                            let v = (local_y + half_height) / height;
+                            Some([u, v])
+                        }
+                    };
+
                     min_distance = dist;
                     nearest_hit = Some(RayCastHit {
                         body_id: BodyId(i),
                         point,
                         normal,
                         distance: dist,
+                        uv,
                     });
                 }
             }

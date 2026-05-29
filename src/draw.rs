@@ -1831,30 +1831,35 @@ pub fn draw_zbuffered_with_textures<
         DrawPrimitive::TexturedTriangleWithDepth {
             mut points,
             mut depths,
+            mut ws,
             mut uvs,
             texture_id,
         } => {
             // Get texture from manager
             if let Some(texture) = texture_manager.get(texture_id) {
-                // Sort vertices by y coordinate (and corresponding depths and UVs)
+                // Sort vertices by y coordinate (and corresponding depths, ws, and UVs)
                 if points[0].y > points[1].y {
                     points.swap(0, 1);
                     depths.swap(0, 1);
+                    ws.swap(0, 1);
                     uvs.swap(0, 1);
                 }
                 if points[0].y > points[2].y {
                     points.swap(0, 2);
                     depths.swap(0, 2);
+                    ws.swap(0, 2);
                     uvs.swap(0, 2);
                 }
                 if points[1].y > points[2].y {
                     points.swap(1, 2);
                     depths.swap(1, 2);
+                    ws.swap(1, 2);
                     uvs.swap(1, 2);
                 }
 
                 let [p1, p2, p3] = points;
                 let [z1, z2, z3] = depths;
+                let [w1, w2, w3] = ws;
                 let [uv1, uv2, uv3] = uvs;
 
                 // Off-screen culling.
@@ -1880,6 +1885,9 @@ pub fn draw_zbuffered_with_textures<
                     z1,
                     z2,
                     z3,
+                    w1,
+                    w2,
+                    w3,
                     uv1,
                     uv2,
                     uv3,
@@ -2527,6 +2535,9 @@ fn fill_triangle_zbuffered_textured<
     z1: f32,
     z2: f32,
     z3: f32,
+    w1: f32,
+    w2: f32,
+    w3: f32,
     uv1: [f32; 2],
     uv2: [f32; 2],
     uv3: [f32; 2],
@@ -2558,6 +2569,9 @@ fn fill_triangle_zbuffered_textured<
             z1_int,
             z2_int,
             z3_int,
+            w1,
+            w2,
+            w3,
             uv1,
             uv2,
             uv3,
@@ -2576,6 +2590,9 @@ fn fill_triangle_zbuffered_textured<
             z1_int,
             z2_int,
             z3_int,
+            w1,
+            w2,
+            w3,
             uv1,
             uv2,
             uv3,
@@ -2594,6 +2611,8 @@ fn fill_triangle_zbuffered_textured<
             p2_eg.y,
         );
         let z4_int = (z1_int as i64 + (t * (z3_int as i64 - z1_int as i64) as f32) as i64) as u32;
+        // Interpolate W at split point
+        let w4 = w1 + t * (w3 - w1);
         // Interpolate UV at split point
         let uv4 = [
             uv1[0] + t * (uv3[0] - uv1[0]),
@@ -2607,6 +2626,9 @@ fn fill_triangle_zbuffered_textured<
             z1_int,
             z2_int,
             z4_int,
+            w1,
+            w2,
+            w4,
             uv1,
             uv2,
             uv4,
@@ -2624,6 +2646,9 @@ fn fill_triangle_zbuffered_textured<
             z2_int,
             z4_int,
             z3_int,
+            w2,
+            w4,
+            w3,
             uv2,
             uv4,
             uv3,
@@ -2648,6 +2673,9 @@ fn fill_bottom_flat_triangle_zbuffered_textured<
     z1: u32,
     z2: u32,
     z3: u32,
+    w1: f32,
+    w2: f32,
+    w3: f32,
     uv1: [f32; 2],
     uv2: [f32; 2],
     uv3: [f32; 2],
@@ -2687,6 +2715,10 @@ fn fill_bottom_flat_triangle_zbuffered_textured<
             z1
         };
 
+        // Interpolate W values
+        let w_left  = w1 + t * (w2 - w1);
+        let w_right = w1 + t * (w3 - w1);
+
         // Interpolate UVs
         let uv_left = [
             uv1[0] + t * (uv2[0] - uv1[0]),
@@ -2703,6 +2735,8 @@ fn fill_bottom_flat_triangle_zbuffered_textured<
             scanline_y,
             z_left,
             z_right,
+            w_left,
+            w_right,
             uv_left,
             uv_right,
             texture,
@@ -2729,6 +2763,9 @@ fn fill_top_flat_triangle_zbuffered_textured<
     z1: u32,
     z2: u32,
     z3: u32,
+    w1: f32,
+    w2: f32,
+    w3: f32,
     uv1: [f32; 2],
     uv2: [f32; 2],
     uv3: [f32; 2],
@@ -2768,6 +2805,10 @@ fn fill_top_flat_triangle_zbuffered_textured<
             z2
         };
 
+        // Interpolate W values
+        let w_left  = w1 + t * (w3 - w1);
+        let w_right = w2 + t * (w3 - w2);
+
         // Interpolate UVs
         let uv_left = [
             uv1[0] + t * (uv3[0] - uv1[0]),
@@ -2784,6 +2825,8 @@ fn fill_top_flat_triangle_zbuffered_textured<
             scanline_y,
             z_left,
             z_right,
+            w_left,
+            w_right,
             uv_left,
             uv_right,
             texture,
@@ -2809,6 +2852,8 @@ fn draw_scanline_zbuffered_textured<
     y: i32,
     z1: u32,
     z2: u32,
+    w1: f32,
+    w2: f32,
     uv1: [f32; 2],
     uv2: [f32; 2],
     texture: &crate::texture::Texture,
@@ -2851,9 +2896,12 @@ fn draw_scanline_zbuffered_textured<
         if z < zbuffer[zbuffer_idx].saturating_add(DEPTH_EPSILON) {
             zbuffer[zbuffer_idx] = z;
 
-            // Interpolate UV
-            let u = uv1[0] + t * (uv2[0] - uv1[0]);
-            let v = uv1[1] + t * (uv2[1] - uv1[1]);
+            // Perspective-correct UV interpolation
+            let ow1 = 1.0 / w1;
+            let ow2 = 1.0 / w2;
+            let one_over_w = ow1 + t * (ow2 - ow1);
+            let u = (uv1[0] * ow1 + t * (uv2[0] * ow2 - uv1[0] * ow1)) / one_over_w;
+            let v = (uv1[1] * ow1 + t * (uv2[1] * ow2 - uv1[1] * ow1)) / one_over_w;
 
             // Sample texture
             let mut final_color = texture.sample(u, v);

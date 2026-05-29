@@ -27,6 +27,7 @@ pub mod draw;
 pub mod error;
 pub mod fixed_math;
 pub mod hardware_profile;
+pub mod hud;
 pub mod lut;
 pub mod mesh;
 #[cfg(feature = "std")]
@@ -90,6 +91,7 @@ pub enum DrawPrimitive {
     TexturedTriangleWithDepth {
         points: [Point2<i32>; 3],
         depths: [f32; 3],
+        ws: [f32; 3],
         uvs: [[f32; 2]; 3],
         texture_id: u32,
     },
@@ -299,6 +301,51 @@ impl K3dengine {
         }
 
         Some(ret)
+    }
+
+    /// Like `transform_point` but also returns the clip-space W for perspective-correct interpolation.
+    /// Returns (screen_point, w_clip). w_clip is the clip-space W before perspective division.
+    fn transform_point_with_w(
+        &self,
+        point: &[f32; 3],
+        model_matrix: Matrix4<f32>,
+    ) -> Option<(Point3<i32>, f32)> {
+        let v = nalgebra::Vector4::new(point[0], point[1], point[2], 1.0);
+        let clip = model_matrix * v;
+        if clip.w <= 0.0 {
+            return None;
+        }
+        let ndc_x = clip.x / clip.w;
+        let ndc_y = clip.y / clip.w;
+        let ndc_z = clip.z / clip.w;
+        if ndc_z < self.camera.near || ndc_z > self.camera.far {
+            return None;
+        }
+        let x = ((1.0 + ndc_x) * 0.5 * self.width as f32) as i32;
+        let y = ((1.0 - ndc_y) * 0.5 * self.height as f32) as i32;
+        if x < 0 || x >= self.width as i32 || y < 0 || y >= self.height as i32 {
+            return None;
+        }
+        let z = (ndc_z * (self.camera.far - self.camera.near) + self.camera.near) as i32;
+        Some((Point3::new(x, y, z), clip.w))
+    }
+
+    /// Like `transform_points` but also returns clip-space W values for perspective-correct UV.
+    #[inline(always)]
+    pub fn transform_points_with_w<const N: usize>(
+        &self,
+        indices: &[usize; N],
+        vertices: &[[f32; 3]],
+        model_matrix: Matrix4<f32>,
+    ) -> Option<([Point3<i32>; N], [f32; N])> {
+        let mut pts = [Point3::new(0, 0, 0); N];
+        let mut ws = [1.0f32; N];
+        for i in 0..N {
+            let (p, w) = self.transform_point_with_w(&vertices[indices[i]], model_matrix)?;
+            pts[i] = p;
+            ws[i] = w;
+        }
+        Some((pts, ws))
     }
 
     fn render<'a, MS, F>(&self, meshes: MS, mut callback: F)
@@ -593,6 +640,49 @@ impl K3dengine {
                                     points: [p1.xy(), p2.xy(), p3.xy()],
                                     depths: [p1.z as f32, p2.z as f32, p3.z as f32],
                                     color: mesh.color,
+                                });
+                            }
+                        }
+                    }
+                }
+
+                RenderMode::SectorBright(brightness) => {
+                    // Scale mesh color by brightness factor (Doom-style sector lighting)
+                    let factor = brightness as f32 / 255.0;
+                    let scaled_r = (mesh.color.r() as f32 * factor) as u8;
+                    let scaled_g = (mesh.color.g() as f32 * factor) as u8;
+                    let scaled_b = (mesh.color.b() as f32 * factor) as u8;
+                    let scaled_color = Rgb565::new(scaled_r, scaled_g, scaled_b);
+
+                    if geometry.normals.is_empty() {
+                        for face in geometry.faces.iter() {
+                            if let Some([p1, p2, p3]) =
+                                self.transform_points(face, geometry.vertices, transform_matrix)
+                            {
+                                callback(DrawPrimitive::ColoredTriangleWithDepth {
+                                    points: [p1.xy(), p2.xy(), p3.xy()],
+                                    depths: [p1.z as f32, p2.z as f32, p3.z as f32],
+                                    color: scaled_color,
+                                });
+                            }
+                        }
+                    } else {
+                        for (face, normal) in geometry.faces.iter().zip(geometry.normals) {
+                            // Backface culling
+                            let normal = Vector3::new(normal[0], normal[1], normal[2]);
+                            let transformed_normal = mesh.model_matrix.transform_vector(&normal);
+
+                            if self.camera.get_direction().dot(&transformed_normal) < 0.0 {
+                                continue;
+                            }
+
+                            if let Some([p1, p2, p3]) =
+                                self.transform_points(face, geometry.vertices, transform_matrix)
+                            {
+                                callback(DrawPrimitive::ColoredTriangleWithDepth {
+                                    points: [p1.xy(), p2.xy(), p3.xy()],
+                                    depths: [p1.z as f32, p2.z as f32, p3.z as f32],
+                                    color: scaled_color,
                                 });
                             }
                         }
@@ -921,6 +1011,116 @@ impl K3dengine {
     {
         crate::renderer::execute_commands_tiled::<D, MAX, BIN_CAP>(fb, frame, commands, tile)
     }
+}
+
+/// Result of a ray cast against triangle geometry.
+#[derive(Debug, Clone, Copy)]
+pub struct MeshRayCastHit {
+    /// Distance along the ray to the hit point
+    pub distance: f32,
+    /// Hit point in world space
+    pub point: Vector3<f32>,
+    /// Face normal (from cross product of edges, not per-vertex normals)
+    pub normal: Vector3<f32>,
+    /// Index of the triangle face that was hit
+    pub face_index: usize,
+    /// Barycentric-interpolated UV at the hit point (or [0.0, 0.0] if no UVs present)
+    pub uv: [f32; 2],
+}
+
+/// Ray-cast against triangle geometry using Möller–Trumbore intersection.
+///
+/// `ray_origin` and `ray_dir` are in world space. `model_matrix` transforms mesh
+/// vertices to world space. Returns the closest hit within `max_distance`, or `None`.
+pub fn mesh_ray_cast(
+    ray_origin: Vector3<f32>,
+    ray_dir: Vector3<f32>,
+    geometry: &mesh::Geometry<'_>,
+    model_matrix: &Matrix4<f32>,
+    max_distance: f32,
+) -> Option<MeshRayCastHit> {
+    let mut nearest: Option<MeshRayCastHit> = None;
+    let mut min_dist = max_distance;
+
+    for (face_index, face) in geometry.faces.iter().enumerate() {
+        let raw_v0 = geometry.vertices[face[0]];
+        let raw_v1 = geometry.vertices[face[1]];
+        let raw_v2 = geometry.vertices[face[2]];
+
+        // Transform vertices to world space
+        let v0 = model_matrix
+            .transform_point(&Point3::new(raw_v0[0], raw_v0[1], raw_v0[2]))
+            .coords;
+        let v1 = model_matrix
+            .transform_point(&Point3::new(raw_v1[0], raw_v1[1], raw_v1[2]))
+            .coords;
+        let v2 = model_matrix
+            .transform_point(&Point3::new(raw_v2[0], raw_v2[1], raw_v2[2]))
+            .coords;
+
+        // Möller–Trumbore
+        let edge1 = v1 - v0;
+        let edge2 = v2 - v0;
+        let h = ray_dir.cross(&edge2);
+        let det = edge1.dot(&h);
+
+        // Parallel ray: skip
+        if det.abs() < 1e-6 {
+            continue;
+        }
+
+        let inv_det = 1.0 / det;
+        let s = ray_origin - v0;
+        let bary_u = inv_det * s.dot(&h);
+        if bary_u < 0.0 || bary_u > 1.0 {
+            continue;
+        }
+
+        let q = s.cross(&edge1);
+        let bary_v = inv_det * ray_dir.dot(&q);
+        if bary_v < 0.0 || bary_u + bary_v > 1.0 {
+            continue;
+        }
+
+        let t = inv_det * edge2.dot(&q);
+        if t <= 0.0 || t >= min_dist {
+            continue;
+        }
+
+        // Face normal from edge cross product
+        let normal = edge1.cross(&edge2).normalize();
+
+        // Barycentric weights: w0 = 1 - u - v, w1 = u, w2 = v
+        let bary_w = 1.0 - bary_u - bary_v;
+
+        // Interpolate UV if available
+        let uv = if geometry.uvs.len() > face[0]
+            && geometry.uvs.len() > face[1]
+            && geometry.uvs.len() > face[2]
+        {
+            let uv0 = geometry.uvs[face[0]];
+            let uv1 = geometry.uvs[face[1]];
+            let uv2 = geometry.uvs[face[2]];
+            [
+                bary_w * uv0[0] + bary_u * uv1[0] + bary_v * uv2[0],
+                bary_w * uv0[1] + bary_u * uv1[1] + bary_v * uv2[1],
+            ]
+        } else {
+            [0.0, 0.0]
+        };
+
+        let point = ray_origin + ray_dir * t;
+        min_dist = t;
+        nearest = Some(MeshRayCastHit {
+            distance: t,
+            point,
+            normal,
+            face_index,
+            uv,
+        });
+    }
+
+    nearest
 }
 
 #[cfg(test)]

@@ -278,6 +278,7 @@ fn main() {
                                 DrawPrimitive::TexturedTriangleWithDepth {
                                     points: [p1.xy(), p2.xy(), p3.xy()],
                                     depths: [p1.z as f32, p2.z as f32, p3.z as f32],
+                                    ws: [1.0, 1.0, 1.0],
                                     uvs,
                                     texture_id,
                                 },

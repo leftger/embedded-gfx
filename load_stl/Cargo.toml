@@ -9,5 +9,5 @@ edition = "2024"
 proc-macro = true
 
 [dependencies]
-stl_io = "0.8.5"
+stl_io = "0.8.6"
 embedded-3dgfx = {path = ".."}

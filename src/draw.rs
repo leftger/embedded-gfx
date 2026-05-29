@@ -2716,7 +2716,7 @@ fn fill_bottom_flat_triangle_zbuffered_textured<
         };
 
         // Interpolate W values
-        let w_left  = w1 + t * (w2 - w1);
+        let w_left = w1 + t * (w2 - w1);
         let w_right = w1 + t * (w3 - w1);
 
         // Interpolate UVs
@@ -2806,7 +2806,7 @@ fn fill_top_flat_triangle_zbuffered_textured<
         };
 
         // Interpolate W values
-        let w_left  = w1 + t * (w3 - w1);
+        let w_left = w1 + t * (w3 - w1);
         let w_right = w2 + t * (w3 - w2);
 
         // Interpolate UVs

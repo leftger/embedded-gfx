@@ -17,12 +17,12 @@
 //! - ESC: Exit
 
 use embedded_3dgfx::K3dengine;
-use embedded_3dgfx::renderer::FrameCtx;
 use embedded_3dgfx::command_buffer::CommandBuffer;
 use embedded_3dgfx::config::apply_default_caps;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
 #[cfg(feature = "perfcounter")]
 use embedded_3dgfx::perfcounter::PerformanceCounter;
+use embedded_3dgfx::renderer::FrameCtx;
 use embedded_3dgfx::skeleton::{Bone, Skeleton, SkinningData, VertexSkinning, apply_skinning};
 use embedded_graphics::mono_font::{MonoTextStyle, ascii::FONT_6X10};
 use embedded_graphics::text::Text;
@@ -246,7 +246,11 @@ fn main() {
         engine
             .record(std::iter::once(&mesh), &mut commands, None)
             .unwrap();
-        let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: WIDTH, height: HEIGHT };
+        let mut frame = FrameCtx {
+            zbuffer: &mut zbuffer,
+            width: WIDTH,
+            height: HEIGHT,
+        };
         engine
             .execute::<_, 4096>(&mut display, &mut frame, &commands, None)
             .unwrap();

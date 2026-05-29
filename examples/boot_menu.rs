@@ -12,12 +12,12 @@
 
 use embedded_3dgfx::DrawPrimitive;
 use embedded_3dgfx::K3dengine;
-use embedded_3dgfx::renderer::FrameCtx;
 use embedded_3dgfx::billboard::Billboard;
 use embedded_3dgfx::command_buffer::CommandBuffer;
 use embedded_3dgfx::config::apply_default_caps;
 use embedded_3dgfx::draw::draw_zbuffered_with_textures as draw_tex;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
+use embedded_3dgfx::renderer::FrameCtx;
 use embedded_3dgfx::texture::{Texture, TextureManager};
 use embedded_3dgfx::transform_anim::{AnimationPlayer, TransformKeyframe, TransformTrack};
 use embedded_3dgfx::tween::{Easing, Tween, scale_rgb565};
@@ -242,14 +242,14 @@ fn render_scene(
             );
         }
         Screen::Transition | Screen::Menu => {
+            engine.record(menu_items.iter(), commands, None).unwrap();
+            let mut frame = FrameCtx {
+                zbuffer,
+                width: W as usize,
+                height: H as usize,
+            };
             engine
-                .record(menu_items.iter(), commands, None)
-                .unwrap();
-            let mut frame = FrameCtx { zbuffer, width: W as usize, height: H as usize };
-            engine
-                .execute::<_, 1024>(
-                    display, &mut frame, &commands, None,
-                )
+                .execute::<_, 1024>(display, &mut frame, &commands, None)
                 .unwrap();
             render_textured_billboard(
                 engine,

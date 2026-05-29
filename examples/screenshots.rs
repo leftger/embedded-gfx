@@ -9,7 +9,6 @@ use std::time::Instant;
 
 use embedded_3dgfx::DrawPrimitive;
 use embedded_3dgfx::K3dengine;
-use embedded_3dgfx::renderer::FrameCtx;
 use embedded_3dgfx::command_buffer::CommandBuffer;
 use embedded_3dgfx::draw::{
     DitherConfig, FogConfig, draw_zbuffered, draw_zbuffered_with_effects,
@@ -17,9 +16,10 @@ use embedded_3dgfx::draw::{
 };
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
 use embedded_3dgfx::physics::{Collider, PhysicsWorld, RigidBody, sync_body_to_mesh};
+use embedded_3dgfx::renderer::FrameCtx;
 use embedded_3dgfx::softbody::SoftBody;
 use embedded_3dgfx::texture::{Texture, TextureManager};
-use embedded_graphics::mono_font::{ascii::FONT_6X10, MonoTextStyle};
+use embedded_graphics::mono_font::{MonoTextStyle, ascii::FONT_6X10};
 use embedded_graphics::prelude::Primitive;
 use embedded_graphics::primitives::{PrimitiveStyleBuilder, Rectangle};
 use embedded_graphics::text::Text;
@@ -67,12 +67,20 @@ fn draw_hud(display: &mut SimulatorDisplay<Rgb565>, line1: &str, line2: &str) {
         .into_styled(bg_style)
         .draw(display)
         .unwrap();
-    Text::new(line1, Point::new(4, 10), MonoTextStyle::new(&FONT_6X10, Rgb565::CSS_WHITE))
-        .draw(display)
-        .unwrap();
-    Text::new(line2, Point::new(4, 22), MonoTextStyle::new(&FONT_6X10, Rgb565::CSS_YELLOW))
-        .draw(display)
-        .unwrap();
+    Text::new(
+        line1,
+        Point::new(4, 10),
+        MonoTextStyle::new(&FONT_6X10, Rgb565::CSS_WHITE),
+    )
+    .draw(display)
+    .unwrap();
+    Text::new(
+        line2,
+        Point::new(4, 22),
+        MonoTextStyle::new(&FONT_6X10, Rgb565::CSS_YELLOW),
+    )
+    .draw(display)
+    .unwrap();
 }
 
 fn main() {
@@ -155,7 +163,11 @@ fn capture_wireframe_cube() {
     engine
         .record(std::iter::once(&cube), &mut commands, None)
         .unwrap();
-    let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: W, height: H };
+    let mut frame = FrameCtx {
+        zbuffer: &mut zbuffer,
+        width: W,
+        height: H,
+    };
     engine
         .execute::<_, 4096>(&mut display, &mut frame, &commands, None)
         .unwrap();
@@ -200,7 +212,11 @@ fn capture_blinn_phong() {
     engine
         .record(std::iter::once(&suzanne), &mut commands, None)
         .unwrap();
-    let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: 800, height: 600 };
+    let mut frame = FrameCtx {
+        zbuffer: &mut zbuffer,
+        width: 800,
+        height: 600,
+    };
     engine
         .execute::<_, 8192>(&mut display, &mut frame, &commands, None)
         .unwrap();
@@ -398,7 +414,11 @@ fn capture_physics() {
     engine
         .record(all_meshes.iter().copied(), &mut commands, None)
         .unwrap();
-    let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: 640, height: 480 };
+    let mut frame = FrameCtx {
+        zbuffer: &mut zbuffer,
+        width: 640,
+        height: 480,
+    };
     engine
         .execute::<_, 16384>(&mut display, &mut frame, &commands, None)
         .unwrap();
@@ -473,7 +493,11 @@ fn capture_cloth() {
     engine
         .record(std::iter::once(&mesh), &mut commands, None)
         .unwrap();
-    let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: 640, height: 480 };
+    let mut frame = FrameCtx {
+        zbuffer: &mut zbuffer,
+        width: 640,
+        height: 480,
+    };
     engine
         .execute::<_, 8192>(&mut display, &mut frame, &commands, None)
         .unwrap();
@@ -835,7 +859,11 @@ fn capture_newtons_cradle() {
     engine
         .record(all_meshes.iter().copied(), &mut commands, None)
         .unwrap();
-    let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: 640, height: 480 };
+    let mut frame = FrameCtx {
+        zbuffer: &mut zbuffer,
+        width: 640,
+        height: 480,
+    };
     engine
         .execute::<_, 16384>(&mut display, &mut frame, &commands, None)
         .unwrap();
@@ -1062,7 +1090,11 @@ fn gif_rotating_cube() {
         engine
             .record(std::iter::once(&cube), &mut commands, None)
             .unwrap();
-        let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: W as usize, height: H as usize };
+        let mut frame = FrameCtx {
+            zbuffer: &mut zbuffer,
+            width: W as usize,
+            height: H as usize,
+        };
         engine
             .execute::<_, 4096>(&mut display, &mut frame, &commands, None)
             .unwrap();
@@ -1116,7 +1148,11 @@ fn gif_suzanne() {
         engine
             .record(std::iter::once(&suzanne), &mut commands, None)
             .unwrap();
-        let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: W as usize, height: H as usize };
+        let mut frame = FrameCtx {
+            zbuffer: &mut zbuffer,
+            width: W as usize,
+            height: H as usize,
+        };
         engine
             .execute::<_, 8192>(&mut display, &mut frame, &commands, None)
             .unwrap();
@@ -1250,14 +1286,26 @@ fn gif_bouncing_balls() {
         engine
             .record(all.iter().copied(), &mut commands, None)
             .unwrap();
-        let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: W as usize, height: H as usize };
+        let mut frame = FrameCtx {
+            zbuffer: &mut zbuffer,
+            width: W as usize,
+            height: H as usize,
+        };
         engine
             .execute::<_, 16384>(&mut display, &mut frame, &commands, None)
             .unwrap();
         let render_ms = tr.elapsed().as_secs_f64() * 1000.0;
 
-        avg_sim    = if i == 0 { sim_ms }    else { 0.2 * sim_ms    + 0.8 * avg_sim };
-        avg_render = if i == 0 { render_ms } else { 0.2 * render_ms + 0.8 * avg_render };
+        avg_sim = if i == 0 {
+            sim_ms
+        } else {
+            0.2 * sim_ms + 0.8 * avg_sim
+        };
+        avg_render = if i == 0 {
+            render_ms
+        } else {
+            0.2 * render_ms + 0.8 * avg_render
+        };
         draw_hud(
             &mut display,
             &format!("rigid body | {NUM_BALLS} bodies {total_tris} tris"),
@@ -1409,17 +1457,32 @@ fn gif_newtons_cradle() {
         engine
             .record(all_meshes.iter().copied(), &mut commands, None)
             .unwrap();
-        let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: W as usize, height: H as usize };
+        let mut frame = FrameCtx {
+            zbuffer: &mut zbuffer,
+            width: W as usize,
+            height: H as usize,
+        };
         engine
             .execute::<_, 16384>(&mut display, &mut frame, &commands, None)
             .unwrap();
         let render_ms = tr.elapsed().as_secs_f64() * 1000.0;
 
-        avg_sim    = if i == 0 { sim_ms }    else { 0.2 * sim_ms    + 0.8 * avg_sim };
-        avg_render = if i == 0 { render_ms } else { 0.2 * render_ms + 0.8 * avg_render };
+        avg_sim = if i == 0 {
+            sim_ms
+        } else {
+            0.2 * sim_ms + 0.8 * avg_sim
+        };
+        avg_render = if i == 0 {
+            render_ms
+        } else {
+            0.2 * render_ms + 0.8 * avg_render
+        };
         draw_hud(
             &mut display,
-            &format!("constraints | {NUM} chains {tris} tris", tris = NUM * sphere_tris),
+            &format!(
+                "constraints | {NUM} chains {tris} tris",
+                tris = NUM * sphere_tris
+            ),
             &format!("sim {avg_sim:.2}ms  render {avg_render:.2}ms"),
         );
         frames.push(frame_rgb(&display));
@@ -1493,14 +1556,26 @@ fn gif_cloth() {
         engine
             .record(std::iter::once(&mesh), &mut commands, None)
             .unwrap();
-        let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: W as usize, height: H as usize };
+        let mut frame = FrameCtx {
+            zbuffer: &mut zbuffer,
+            width: W as usize,
+            height: H as usize,
+        };
         engine
             .execute::<_, 8192>(&mut display, &mut frame, &commands, None)
             .unwrap();
         let render_ms = tr.elapsed().as_secs_f64() * 1000.0;
 
-        avg_sim    = if i == 0 { sim_ms }    else { 0.2 * sim_ms    + 0.8 * avg_sim };
-        avg_render = if i == 0 { render_ms } else { 0.2 * render_ms + 0.8 * avg_render };
+        avg_sim = if i == 0 {
+            sim_ms
+        } else {
+            0.2 * sim_ms + 0.8 * avg_sim
+        };
+        avg_render = if i == 0 {
+            render_ms
+        } else {
+            0.2 * render_ms + 0.8 * avg_render
+        };
         draw_hud(
             &mut display,
             &format!("soft body | {particles} particles {cloth_tris} tris"),
@@ -1538,8 +1613,15 @@ fn benchmark() {
     const H: usize = 240;
     const ITERS: u32 = 200;
 
-    let profile = if cfg!(debug_assertions) { "debug" } else { "release" };
-    println!("\n── Performance benchmark ({}×{}, {} iters, profile={}) ──", W, H, ITERS, profile);
+    let profile = if cfg!(debug_assertions) {
+        "debug"
+    } else {
+        "release"
+    };
+    println!(
+        "\n── Performance benchmark ({}×{}, {} iters, profile={}) ──",
+        W, H, ITERS, profile
+    );
 
     // --- Scene A: wireframe cube ---
     {
@@ -1552,14 +1634,39 @@ fn benchmark() {
         engine.camera.set_target(Point3::new(0.0, 0.0, 0.0));
 
         let vertices: &[[f32; 3]] = &[
-            [-1.0, -1.0, 1.0], [1.0, -1.0, 1.0], [1.0, 1.0, 1.0], [-1.0, 1.0, 1.0],
-            [-1.0, -1.0, -1.0], [1.0, -1.0, -1.0], [1.0, 1.0, -1.0], [-1.0, 1.0, -1.0],
+            [-1.0, -1.0, 1.0],
+            [1.0, -1.0, 1.0],
+            [1.0, 1.0, 1.0],
+            [-1.0, 1.0, 1.0],
+            [-1.0, -1.0, -1.0],
+            [1.0, -1.0, -1.0],
+            [1.0, 1.0, -1.0],
+            [-1.0, 1.0, -1.0],
         ];
         let faces: &[[usize; 3]] = &[
-            [0,1,2],[0,2,3],[5,4,7],[5,7,6],[3,2,6],[3,6,7],
-            [4,5,1],[4,1,0],[1,5,6],[1,6,2],[4,0,3],[4,3,7],
+            [0, 1, 2],
+            [0, 2, 3],
+            [5, 4, 7],
+            [5, 7, 6],
+            [3, 2, 6],
+            [3, 6, 7],
+            [4, 5, 1],
+            [4, 1, 0],
+            [1, 5, 6],
+            [1, 6, 2],
+            [4, 0, 3],
+            [4, 3, 7],
         ];
-        let geom = Geometry { vertices, faces, colors: &[], lines: &[], normals: &[], vertex_normals: &[], uvs: &[], texture_id: None };
+        let geom = Geometry {
+            vertices,
+            faces,
+            colors: &[],
+            lines: &[],
+            normals: &[],
+            vertex_normals: &[],
+            uvs: &[],
+            texture_id: None,
+        };
         let mut cube = K3dMesh::new(geom);
         cube.set_render_mode(RenderMode::Lines);
         cube.set_color(Rgb565::CSS_CYAN);
@@ -1570,9 +1677,17 @@ fn benchmark() {
             cube.set_attitude(0.3, yaw, 0.1);
             display.clear(Rgb565::BLACK).unwrap();
             zbuffer.fill(u32::MAX);
-            engine.record(std::iter::once(&cube), &mut commands, None).unwrap();
-            let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: W, height: H };
-            engine.execute::<_, 4096>(&mut display, &mut frame, &commands, None).unwrap();
+            engine
+                .record(std::iter::once(&cube), &mut commands, None)
+                .unwrap();
+            let mut frame = FrameCtx {
+                zbuffer: &mut zbuffer,
+                width: W,
+                height: H,
+            };
+            engine
+                .execute::<_, 4096>(&mut display, &mut frame, &commands, None)
+                .unwrap();
         });
     }
 
@@ -1595,12 +1710,24 @@ fn benchmark() {
             suzanne.set_scale(2.8);
             suzanne.set_position(0.0, 0.0, 0.0);
             suzanne.set_attitude(-PI / 2.0, yaw, 0.0);
-            suzanne.set_render_mode(RenderMode::BlinnPhong { light_dir, specular_intensity: 1.5, shininess: 56.0 });
+            suzanne.set_render_mode(RenderMode::BlinnPhong {
+                light_dir,
+                specular_intensity: 1.5,
+                shininess: 56.0,
+            });
             display.clear(Rgb565::BLACK).unwrap();
             zbuffer.fill(u32::MAX);
-            engine.record(std::iter::once(&suzanne), &mut commands, None).unwrap();
-            let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: W, height: H };
-            engine.execute::<_, 8192>(&mut display, &mut frame, &commands, None).unwrap();
+            engine
+                .record(std::iter::once(&suzanne), &mut commands, None)
+                .unwrap();
+            let mut frame = FrameCtx {
+                zbuffer: &mut zbuffer,
+                width: W,
+                height: H,
+            };
+            engine
+                .execute::<_, 8192>(&mut display, &mut frame, &commands, None)
+                .unwrap();
         });
     }
 
@@ -1621,7 +1748,13 @@ fn benchmark() {
         physics.set_gravity(Vector3::new(0.0, -9.81, 0.0));
         let spacing = 2.0f32;
         let start_x = -(NUM as f32 - 1.0) * spacing * 0.5;
-        let colors = [Rgb565::CSS_RED, Rgb565::CSS_ORANGE, Rgb565::CSS_YELLOW, Rgb565::CSS_GREEN, Rgb565::CSS_BLUE];
+        let colors = [
+            Rgb565::CSS_RED,
+            Rgb565::CSS_ORANGE,
+            Rgb565::CSS_YELLOW,
+            Rgb565::CSS_GREEN,
+            Rgb565::CSS_BLUE,
+        ];
         let mut ball_ids = Vec::new();
         let mut meshes: Vec<K3dMesh> = Vec::new();
         for i in 0..NUM {
@@ -1629,21 +1762,56 @@ fn benchmark() {
             let ball = RigidBody::new(1.0)
                 .with_position(Vector3::new(x, 5.0 + i as f32 * 0.8, 0.0))
                 .with_collider(Collider::Sphere { radius: R })
-                .with_restitution(0.8).with_friction(0.3).with_damping(0.01)
-                .with_inertia_sphere(R).with_angular_damping(0.02);
+                .with_restitution(0.8)
+                .with_friction(0.3)
+                .with_damping(0.01)
+                .with_inertia_sphere(R)
+                .with_angular_damping(0.02);
             ball_ids.push(physics.add_body(ball).unwrap());
-            let geom = Geometry { vertices: &sv, faces: &sf, colors: &[], lines: &[], normals: &sn, vertex_normals: &[], uvs: &[], texture_id: None };
+            let geom = Geometry {
+                vertices: &sv,
+                faces: &sf,
+                colors: &[],
+                lines: &[],
+                normals: &sn,
+                vertex_normals: &[],
+                uvs: &[],
+                texture_id: None,
+            };
             let mut m = K3dMesh::new(geom);
             m.set_render_mode(RenderMode::SolidLightDir(Vector3::new(0.5, 1.0, 0.3)));
             m.set_color(colors[i]);
             meshes.push(m);
         }
-        physics.add_body(RigidBody::new_static().with_position(Vector3::new(0.0, -0.1, 0.0)).with_collider(Collider::Aabb { half_extents: Vector3::new(15.0, 0.1, 10.0) }).with_restitution(1.0)).unwrap();
+        physics
+            .add_body(
+                RigidBody::new_static()
+                    .with_position(Vector3::new(0.0, -0.1, 0.0))
+                    .with_collider(Collider::Aabb {
+                        half_extents: Vector3::new(15.0, 0.1, 10.0),
+                    })
+                    .with_restitution(1.0),
+            )
+            .unwrap();
 
-        let fv: &[[f32; 3]] = &[[-12.0,0.0,5.0],[12.0,0.0,5.0],[12.0,0.0,-5.0],[-12.0,0.0,-5.0]];
-        let ff: &[[usize; 3]] = &[[0,1,2],[0,2,3]];
-        let fn_: &[[f32; 3]] = &[[0.0,1.0,0.0],[0.0,1.0,0.0]];
-        let fgeom = Geometry { vertices: fv, faces: ff, colors: &[], lines: &[], normals: fn_, vertex_normals: &[], uvs: &[], texture_id: None };
+        let fv: &[[f32; 3]] = &[
+            [-12.0, 0.0, 5.0],
+            [12.0, 0.0, 5.0],
+            [12.0, 0.0, -5.0],
+            [-12.0, 0.0, -5.0],
+        ];
+        let ff: &[[usize; 3]] = &[[0, 1, 2], [0, 2, 3]];
+        let fn_: &[[f32; 3]] = &[[0.0, 1.0, 0.0], [0.0, 1.0, 0.0]];
+        let fgeom = Geometry {
+            vertices: fv,
+            faces: ff,
+            colors: &[],
+            lines: &[],
+            normals: fn_,
+            vertex_normals: &[],
+            uvs: &[],
+            texture_id: None,
+        };
         let mut floor = K3dMesh::new(fgeom);
         floor.set_render_mode(RenderMode::SolidLightDir(Vector3::new(0.5, 1.0, 0.3)));
         floor.set_color(Rgb565::new(8, 16, 8));
@@ -1657,9 +1825,17 @@ fn benchmark() {
             display.clear(Rgb565::BLACK).unwrap();
             zbuffer.fill(u32::MAX);
             let all: Vec<&K3dMesh> = meshes.iter().chain(std::iter::once(&floor)).collect();
-            engine.record(all.iter().copied(), &mut commands, None).unwrap();
-            let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: W, height: H };
-            engine.execute::<_, 16384>(&mut display, &mut frame, &commands, None).unwrap();
+            engine
+                .record(all.iter().copied(), &mut commands, None)
+                .unwrap();
+            let mut frame = FrameCtx {
+                zbuffer: &mut zbuffer,
+                width: W,
+                height: H,
+            };
+            engine
+                .execute::<_, 16384>(&mut display, &mut frame, &commands, None)
+                .unwrap();
         });
     }
 

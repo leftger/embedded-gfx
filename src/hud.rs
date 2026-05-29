@@ -1,4 +1,4 @@
-use embedded_graphics_core::{draw_target::DrawTarget, geometry::Point, pixelcolor::Rgb565, Pixel};
+use embedded_graphics_core::{Pixel, draw_target::DrawTarget, geometry::Point, pixelcolor::Rgb565};
 use heapless::Vec;
 
 /// A single HUD element drawn as a 2D overlay after the 3D scene.
@@ -80,8 +80,7 @@ impl<const N: usize> HudLayer<N> {
             match *elem {
                 HudElement::FillRect { x, y, w, h, color } => {
                     let _ = target.draw_iter(
-                        rect_pixels(x, y, w, h)
-                            .map(|(px, py)| Pixel(Point::new(px, py), color)),
+                        rect_pixels(x, y, w, h).map(|(px, py)| Pixel(Point::new(px, py), color)),
                     );
                 }
                 HudElement::ProgressBar {
@@ -109,8 +108,7 @@ impl<const N: usize> HudLayer<N> {
                 }
                 HudElement::Border { x, y, w, h, color } => {
                     let _ = target.draw_iter(
-                        border_pixels(x, y, w, h)
-                            .map(|(px, py)| Pixel(Point::new(px, py), color)),
+                        border_pixels(x, y, w, h).map(|(px, py)| Pixel(Point::new(px, py), color)),
                     );
                 }
             }

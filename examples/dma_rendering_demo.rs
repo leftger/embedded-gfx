@@ -16,13 +16,13 @@
 //! - ESC: Exit
 
 use embedded_3dgfx::K3dengine;
-use embedded_3dgfx::renderer::FrameCtx;
 use embedded_3dgfx::command_buffer::CommandBuffer;
 use embedded_3dgfx::config::apply_default_caps;
 use embedded_3dgfx::display_backend::SimulatorBackend;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
 #[cfg(feature = "perfcounter")]
 use embedded_3dgfx::perfcounter::PerformanceCounter;
+use embedded_3dgfx::renderer::FrameCtx;
 use embedded_3dgfx::swapchain::StandardSwapChain;
 use embedded_3dgfx::telemetry::{ExecuteTelemetry, RecordTelemetry};
 use embedded_graphics::mono_font::{MonoTextStyle, ascii::FONT_6X10};
@@ -237,14 +237,26 @@ fn main() {
                 engine
                     .record_with_fallback(
                         cubes.iter(),
-                        cubes.iter().enumerate().filter_map(|(i, m)| (i % fallback_stride == 0).then_some(m)),
+                        cubes
+                            .iter()
+                            .enumerate()
+                            .filter_map(|(i, m)| (i % fallback_stride == 0).then_some(m)),
                         &mut commands,
                         Some(&mut record_telemetry),
                     )
                     .unwrap();
-                let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: WIDTH, height: HEIGHT };
+                let mut frame = FrameCtx {
+                    zbuffer: &mut zbuffer,
+                    width: WIDTH,
+                    height: HEIGHT,
+                };
                 engine
-                    .execute(back_buffer, &mut frame, &commands, Some(&mut execute_telemetry))
+                    .execute(
+                        back_buffer,
+                        &mut frame,
+                        &commands,
+                        Some(&mut execute_telemetry),
+                    )
                     .unwrap();
 
                 // Copy back buffer to display for visualization BEFORE presenting
@@ -270,14 +282,26 @@ fn main() {
             engine
                 .record_with_fallback(
                     cubes.iter(),
-                    cubes.iter().enumerate().filter_map(|(i, m)| (i % fallback_stride == 0).then_some(m)),
+                    cubes
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(i, m)| (i % fallback_stride == 0).then_some(m)),
                     &mut commands,
                     Some(&mut record_telemetry),
                 )
                 .unwrap();
-            let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: WIDTH, height: HEIGHT };
+            let mut frame = FrameCtx {
+                zbuffer: &mut zbuffer,
+                width: WIDTH,
+                height: HEIGHT,
+            };
             engine
-                .execute(&mut display, &mut frame, &commands, Some(&mut execute_telemetry))
+                .execute(
+                    &mut display,
+                    &mut frame,
+                    &commands,
+                    Some(&mut execute_telemetry),
+                )
                 .unwrap();
 
             let render_time = render_start.elapsed().as_secs_f32() * 1000.0;

@@ -939,8 +939,11 @@ impl K3dengine {
             }
 
             let mut step_telemetry = crate::telemetry::RecordTelemetry::default();
-            let attempt =
-                self.record_impl(selected.iter().copied(), commands, Some(&mut step_telemetry));
+            let attempt = self.record_impl(
+                selected.iter().copied(),
+                commands,
+                Some(&mut step_telemetry),
+            );
 
             if let Ok(()) = attempt {
                 outcome.final_quality_tier = self.quality_tier;

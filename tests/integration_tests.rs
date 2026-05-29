@@ -105,8 +105,14 @@ fn test_full_rendering_pipeline_points() {
     let mut fb = TestFramebuffer::new(640, 480);
     let mut zbuffer = vec![u32::MAX; 640 * 480];
     let mut cmd = CommandBuffer::<64>::new();
-    engine.record(std::iter::once(&mesh), &mut cmd, None).unwrap();
-    let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: 640, height: 480 };
+    engine
+        .record(std::iter::once(&mesh), &mut cmd, None)
+        .unwrap();
+    let mut frame = FrameCtx {
+        zbuffer: &mut zbuffer,
+        width: 640,
+        height: 480,
+    };
     engine.execute(&mut fb, &mut frame, &cmd, None).unwrap();
 
     // Should have rendered some points
@@ -139,8 +145,14 @@ fn test_full_rendering_pipeline_lines() {
     let mut fb = TestFramebuffer::new(640, 480);
     let mut zbuffer = vec![u32::MAX; 640 * 480];
     let mut cmd = CommandBuffer::<128>::new();
-    engine.record(std::iter::once(&mesh), &mut cmd, None).unwrap();
-    let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: 640, height: 480 };
+    engine
+        .record(std::iter::once(&mesh), &mut cmd, None)
+        .unwrap();
+    let mut frame = FrameCtx {
+        zbuffer: &mut zbuffer,
+        width: 640,
+        height: 480,
+    };
     engine.execute(&mut fb, &mut frame, &cmd, None).unwrap();
 
     // Should have rendered line segments
@@ -173,8 +185,14 @@ fn test_full_rendering_pipeline_solid() {
     let mut fb = TestFramebuffer::new(640, 480);
     let mut zbuffer = vec![u32::MAX; 640 * 480];
     let mut cmd = CommandBuffer::<128>::new();
-    engine.record(std::iter::once(&mesh), &mut cmd, None).unwrap();
-    let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: 640, height: 480 };
+    engine
+        .record(std::iter::once(&mesh), &mut cmd, None)
+        .unwrap();
+    let mut frame = FrameCtx {
+        zbuffer: &mut zbuffer,
+        width: 640,
+        height: 480,
+    };
     engine.execute(&mut fb, &mut frame, &cmd, None).unwrap();
 
     // Should have rendered filled triangle
@@ -216,8 +234,14 @@ fn test_multiple_meshes() {
     let mut fb = TestFramebuffer::new(640, 480);
     let mut zbuffer = vec![u32::MAX; 640 * 480];
     let mut cmd = CommandBuffer::<64>::new();
-    engine.record([&mesh1, &mesh2].iter().copied(), &mut cmd, None).unwrap();
-    let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: 640, height: 480 };
+    engine
+        .record([&mesh1, &mesh2].iter().copied(), &mut cmd, None)
+        .unwrap();
+    let mut frame = FrameCtx {
+        zbuffer: &mut zbuffer,
+        width: 640,
+        height: 480,
+    };
     engine.execute(&mut fb, &mut frame, &cmd, None).unwrap();
 
     // Should have rendered points from both meshes
@@ -247,8 +271,14 @@ fn test_mesh_transformation() {
     let mut fb = TestFramebuffer::new(640, 480);
     let mut zbuffer = vec![u32::MAX; 640 * 480];
     let mut cmd = CommandBuffer::<64>::new();
-    engine.record(std::iter::once(&mesh), &mut cmd, None).unwrap();
-    let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: 640, height: 480 };
+    engine
+        .record(std::iter::once(&mesh), &mut cmd, None)
+        .unwrap();
+    let mut frame = FrameCtx {
+        zbuffer: &mut zbuffer,
+        width: 640,
+        height: 480,
+    };
     engine.execute(&mut fb, &mut frame, &cmd, None).unwrap();
 
     // Transformed mesh should still render
@@ -278,8 +308,14 @@ fn test_mesh_scaling() {
     let mut fb = TestFramebuffer::new(640, 480);
     let mut zbuffer = vec![u32::MAX; 640 * 480];
     let mut cmd = CommandBuffer::<64>::new();
-    engine.record(std::iter::once(&mesh), &mut cmd, None).unwrap();
-    let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: 640, height: 480 };
+    engine
+        .record(std::iter::once(&mesh), &mut cmd, None)
+        .unwrap();
+    let mut frame = FrameCtx {
+        zbuffer: &mut zbuffer,
+        width: 640,
+        height: 480,
+    };
     engine.execute(&mut fb, &mut frame, &cmd, None).unwrap();
 
     // Scaled mesh should still render
@@ -314,8 +350,14 @@ fn test_backface_culling() {
     let mut fb = TestFramebuffer::new(640, 480);
     let mut zbuffer = vec![u32::MAX; 640 * 480];
     let mut cmd = CommandBuffer::<64>::new();
-    engine.record(std::iter::once(&mesh), &mut cmd, None).unwrap();
-    let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: 640, height: 480 };
+    engine
+        .record(std::iter::once(&mesh), &mut cmd, None)
+        .unwrap();
+    let mut frame = FrameCtx {
+        zbuffer: &mut zbuffer,
+        width: 640,
+        height: 480,
+    };
     engine.execute(&mut fb, &mut frame, &cmd, None).unwrap();
 
     // Back faces should be culled, so very few or no pixels
@@ -350,8 +392,14 @@ fn test_camera_movement() {
     let mut fb = TestFramebuffer::new(640, 480);
     let mut zbuffer = vec![u32::MAX; 640 * 480];
     let mut cmd = CommandBuffer::<64>::new();
-    engine.record(std::iter::once(&mesh), &mut cmd, None).unwrap();
-    let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: 640, height: 480 };
+    engine
+        .record(std::iter::once(&mesh), &mut cmd, None)
+        .unwrap();
+    let mut frame = FrameCtx {
+        zbuffer: &mut zbuffer,
+        width: 640,
+        height: 480,
+    };
     engine.execute(&mut fb, &mut frame, &cmd, None).unwrap();
 
     // Point may or may not be visible depending on camera frustum
@@ -381,8 +429,14 @@ fn test_out_of_view_culling() {
     let mut fb = TestFramebuffer::new(640, 480);
     let mut zbuffer = vec![u32::MAX; 640 * 480];
     let mut cmd = CommandBuffer::<64>::new();
-    engine.record(std::iter::once(&mesh), &mut cmd, None).unwrap();
-    let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: 640, height: 480 };
+    engine
+        .record(std::iter::once(&mesh), &mut cmd, None)
+        .unwrap();
+    let mut frame = FrameCtx {
+        zbuffer: &mut zbuffer,
+        width: 640,
+        height: 480,
+    };
     engine.execute(&mut fb, &mut frame, &cmd, None).unwrap();
 
     // Out of view vertices should not render
@@ -417,8 +471,14 @@ fn test_lighting_mode() {
     let mut fb = TestFramebuffer::new(640, 480);
     let mut zbuffer = vec![u32::MAX; 640 * 480];
     let mut cmd = CommandBuffer::<128>::new();
-    engine.record(std::iter::once(&mesh), &mut cmd, None).unwrap();
-    let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: 640, height: 480 };
+    engine
+        .record(std::iter::once(&mesh), &mut cmd, None)
+        .unwrap();
+    let mut frame = FrameCtx {
+        zbuffer: &mut zbuffer,
+        width: 640,
+        height: 480,
+    };
     engine.execute(&mut fb, &mut frame, &cmd, None).unwrap();
 
     // Lighting mode should work (may or may not render depending on culling)
@@ -450,8 +510,14 @@ fn test_colored_vertices() {
     let mut fb = TestFramebuffer::new(640, 480);
     let mut zbuffer = vec![u32::MAX; 640 * 480];
     let mut cmd = CommandBuffer::<64>::new();
-    engine.record(std::iter::once(&mesh), &mut cmd, None).unwrap();
-    let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: 640, height: 480 };
+    engine
+        .record(std::iter::once(&mesh), &mut cmd, None)
+        .unwrap();
+    let mut frame = FrameCtx {
+        zbuffer: &mut zbuffer,
+        width: 640,
+        height: 480,
+    };
     engine.execute(&mut fb, &mut frame, &cmd, None).unwrap();
 
     // Should render colored points
@@ -483,8 +549,14 @@ fn test_lines_from_explicit_edges() {
     let mut fb = TestFramebuffer::new(640, 480);
     let mut zbuffer = vec![u32::MAX; 640 * 480];
     let mut cmd = CommandBuffer::<128>::new();
-    engine.record(std::iter::once(&mesh), &mut cmd, None).unwrap();
-    let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: 640, height: 480 };
+    engine
+        .record(std::iter::once(&mesh), &mut cmd, None)
+        .unwrap();
+    let mut frame = FrameCtx {
+        zbuffer: &mut zbuffer,
+        width: 640,
+        height: 480,
+    };
     engine.execute(&mut fb, &mut frame, &cmd, None).unwrap();
 
     // Should render explicit line segments
@@ -546,7 +618,11 @@ fn test_execute_recorded_frame_rejects_invalid_zbuffer_len() {
         .record(std::iter::once(&mesh), &mut commands, None)
         .unwrap();
 
-    let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: 640, height: 480 };
+    let mut frame = FrameCtx {
+        zbuffer: &mut zbuffer,
+        width: 640,
+        height: 480,
+    };
     let err = engine
         .execute::<_, 64>(&mut fb, &mut frame, &commands, None)
         .unwrap_err();
@@ -615,9 +691,17 @@ fn test_legacy_render_count_matches_recorded_draw_count() {
     let mut fb = TestFramebuffer::new(640, 480);
     let mut zbuffer_legacy = vec![u32::MAX; 640 * 480];
     let mut cmd_legacy = CommandBuffer::<128>::new();
-    engine.record(std::iter::once(&mesh), &mut cmd_legacy, None).unwrap();
-    let mut frame_legacy = FrameCtx { zbuffer: &mut zbuffer_legacy, width: 640, height: 480 };
-    engine.execute(&mut fb, &mut frame_legacy, &cmd_legacy, None).unwrap();
+    engine
+        .record(std::iter::once(&mesh), &mut cmd_legacy, None)
+        .unwrap();
+    let mut frame_legacy = FrameCtx {
+        zbuffer: &mut zbuffer_legacy,
+        width: 640,
+        height: 480,
+    };
+    engine
+        .execute(&mut fb, &mut frame_legacy, &cmd_legacy, None)
+        .unwrap();
     let legacy_count = fb.pixel_count();
 
     let mut cmd = CommandBuffer::<128>::new();
@@ -972,7 +1056,11 @@ fn test_record_budget_decimation_fallback_uses_stride_subset() {
     let outcome = engine
         .record_with_fallback(
             meshes.iter().copied(),
-            meshes.iter().copied().enumerate().filter_map(|(i, m)| (i % stride == 0).then_some(m)),
+            meshes
+                .iter()
+                .copied()
+                .enumerate()
+                .filter_map(|(i, m)| (i % stride == 0).then_some(m)),
             &mut cmd,
             Some(&mut rec),
         )
@@ -1061,7 +1149,11 @@ fn test_record_budget_selector_fallback_uses_predicate_subset() {
     let outcome = engine
         .record_with_fallback(
             meshes.iter().copied(),
-            meshes.iter().copied().enumerate().filter_map(|(idx, m)| (idx == 0).then_some(m)),
+            meshes
+                .iter()
+                .copied()
+                .enumerate()
+                .filter_map(|(idx, m)| (idx == 0).then_some(m)),
             &mut cmd,
             Some(&mut rec),
         )
@@ -1141,7 +1233,11 @@ fn test_record_and_execute_telemetry_reports_counts() {
     let mut fb = TestFramebuffer::new(640, 480);
     let mut zbuffer = vec![u32::MAX; 640 * 480];
     let mut exec = ExecuteTelemetry::default();
-    let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: 640, height: 480 };
+    let mut frame = FrameCtx {
+        zbuffer: &mut zbuffer,
+        width: 640,
+        height: 480,
+    };
     engine
         .execute(&mut fb, &mut frame, &cmd, Some(&mut exec))
         .unwrap();
@@ -1175,7 +1271,11 @@ fn test_golden_hash_points_scene_record_execute() {
 
     let mut fb = TestFramebuffer::new(640, 480);
     let mut zbuffer = vec![u32::MAX; 640 * 480];
-    let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: 640, height: 480 };
+    let mut frame = FrameCtx {
+        zbuffer: &mut zbuffer,
+        width: 640,
+        height: 480,
+    };
     engine
         .execute::<_, 64>(&mut fb, &mut frame, &cmd, None)
         .unwrap();
@@ -1211,7 +1311,11 @@ fn test_golden_hash_lines_scene_record_execute() {
 
     let mut fb = TestFramebuffer::new(640, 480);
     let mut zbuffer = vec![u32::MAX; 640 * 480];
-    let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: 640, height: 480 };
+    let mut frame = FrameCtx {
+        zbuffer: &mut zbuffer,
+        width: 640,
+        height: 480,
+    };
     engine
         .execute::<_, 128>(&mut fb, &mut frame, &cmd, None)
         .unwrap();
@@ -1248,7 +1352,11 @@ fn test_golden_hash_solid_scene_record_execute() {
 
     let mut fb = TestFramebuffer::new(640, 480);
     let mut zbuffer = vec![u32::MAX; 640 * 480];
-    let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: 640, height: 480 };
+    let mut frame = FrameCtx {
+        zbuffer: &mut zbuffer,
+        width: 640,
+        height: 480,
+    };
     engine
         .execute::<_, 128>(&mut fb, &mut frame, &cmd, None)
         .unwrap();
@@ -1288,7 +1396,11 @@ fn test_golden_hash_gouraud_scene_record_execute() {
 
     let mut fb = TestFramebuffer::new(640, 480);
     let mut zbuffer = vec![u32::MAX; 640 * 480];
-    let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: 640, height: 480 };
+    let mut frame = FrameCtx {
+        zbuffer: &mut zbuffer,
+        width: 640,
+        height: 480,
+    };
     engine
         .execute::<_, 128>(&mut fb, &mut frame, &cmd, None)
         .unwrap();
@@ -1325,7 +1437,11 @@ fn test_ci_telemetry_snapshot_record_execute() {
     let mut fb = TestFramebuffer::new(640, 480);
     let mut zbuffer = vec![u32::MAX; 640 * 480];
     let mut exec = ExecuteTelemetry::default();
-    let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: 640, height: 480 };
+    let mut frame = FrameCtx {
+        zbuffer: &mut zbuffer,
+        width: 640,
+        height: 480,
+    };
     engine
         .execute(&mut fb, &mut frame, &cmd, Some(&mut exec))
         .unwrap();
@@ -1371,7 +1487,11 @@ fn test_ci_telemetry_snapshot_lines_record_execute() {
     let mut fb = TestFramebuffer::new(640, 480);
     let mut zbuffer = vec![u32::MAX; 640 * 480];
     let mut exec = ExecuteTelemetry::default();
-    let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: 640, height: 480 };
+    let mut frame = FrameCtx {
+        zbuffer: &mut zbuffer,
+        width: 640,
+        height: 480,
+    };
     engine
         .execute(&mut fb, &mut frame, &cmd, Some(&mut exec))
         .unwrap();
@@ -1421,7 +1541,11 @@ fn test_ci_telemetry_snapshot_stress_points_record_execute() {
     let mut fb = TestFramebuffer::new(640, 480);
     let mut zbuffer = vec![u32::MAX; 640 * 480];
     let mut exec = ExecuteTelemetry::default();
-    let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: 640, height: 480 };
+    let mut frame = FrameCtx {
+        zbuffer: &mut zbuffer,
+        width: 640,
+        height: 480,
+    };
     engine
         .execute(&mut fb, &mut frame, &cmd, Some(&mut exec))
         .unwrap();
@@ -1491,7 +1615,11 @@ fn test_ci_telemetry_snapshot_failsoft_record_execute() {
     let mut fb = TestFramebuffer::new(640, 480);
     let mut zbuffer = vec![u32::MAX; 640 * 480];
     let mut exec = ExecuteTelemetry::default();
-    let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: 640, height: 480 };
+    let mut frame = FrameCtx {
+        zbuffer: &mut zbuffer,
+        width: 640,
+        height: 480,
+    };
     engine
         .execute(&mut fb, &mut frame, &cmd, Some(&mut exec))
         .unwrap();
@@ -1541,7 +1669,11 @@ fn test_execute_recorded_frame_reports_dirty_region() {
 
     let mut fb = TestFramebuffer::new(64, 64);
     let mut zbuffer = vec![u32::MAX; 64 * 64];
-    let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: 64, height: 64 };
+    let mut frame = FrameCtx {
+        zbuffer: &mut zbuffer,
+        width: 64,
+        height: 64,
+    };
     let dirty = engine
         .execute::<_, 32>(&mut fb, &mut frame, &cmd, None)
         .unwrap();
@@ -1608,14 +1740,22 @@ fn test_tiled_execute_matches_non_tiled_pixel_count() {
 
     let mut fb_a = TestFramebuffer::new(96, 64);
     let mut zb_a = vec![u32::MAX; 96 * 64];
-    let mut frame_a = FrameCtx { zbuffer: &mut zb_a, width: 96, height: 64 };
+    let mut frame_a = FrameCtx {
+        zbuffer: &mut zb_a,
+        width: 96,
+        height: 64,
+    };
     engine
         .execute::<_, 64>(&mut fb_a, &mut frame_a, &cmd, None)
         .unwrap();
 
     let mut fb_b = TestFramebuffer::new(96, 64);
     let mut zb_b = vec![u32::MAX; 96 * 64];
-    let mut frame_b = FrameCtx { zbuffer: &mut zb_b, width: 96, height: 64 };
+    let mut frame_b = FrameCtx {
+        zbuffer: &mut zb_b,
+        width: 96,
+        height: 64,
+    };
     let stats = engine
         .execute_tiled::<_, 64, 64>(
             &mut fb_b,
@@ -1655,7 +1795,11 @@ fn test_dirty_region_smaller_than_full_frame_for_small_scene() {
         .unwrap();
     let mut fb = TestFramebuffer::new(160, 120);
     let mut zb = vec![u32::MAX; 160 * 120];
-    let mut frame = FrameCtx { zbuffer: &mut zb, width: 160, height: 120 };
+    let mut frame = FrameCtx {
+        zbuffer: &mut zb,
+        width: 160,
+        height: 120,
+    };
     let dirty = engine
         .execute::<_, 32>(&mut fb, &mut frame, &cmd, None)
         .unwrap()

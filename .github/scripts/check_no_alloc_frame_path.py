@@ -8,11 +8,10 @@ import sys
 from pathlib import Path
 
 FRAME_FUNCS = (
-    "render",
-    "record_render_commands",
-    "record_render_commands_with_telemetry",
-    "execute_recorded_frame",
-    "execute_recorded_frame_with_telemetry",
+    "record",
+    "record_with_fallback",
+    "record_with_degradation",
+    "execute",
 )
 
 FORBIDDEN_PATTERNS = (

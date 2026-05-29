@@ -19,6 +19,10 @@ use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
 use embedded_3dgfx::physics::{Collider, PhysicsWorld, RigidBody, sync_body_to_mesh};
 use embedded_3dgfx::softbody::SoftBody;
 use embedded_3dgfx::texture::{Texture, TextureManager};
+use embedded_graphics::mono_font::{ascii::FONT_6X10, MonoTextStyle};
+use embedded_graphics::prelude::Primitive;
+use embedded_graphics::primitives::{PrimitiveStyleBuilder, Rectangle};
+use embedded_graphics::text::Text;
 use embedded_graphics_core::pixelcolor::{Rgb565, RgbColor};
 use embedded_graphics_core::prelude::*;
 use embedded_graphics_simulator::{OutputSettingsBuilder, SimulatorDisplay};
@@ -50,6 +54,25 @@ fn save_gif(frames: &mut [Vec<u8>], width: u16, height: u16, path: &str, delay_c
         encoder.write_frame(&frame).unwrap();
     }
     println!("Saved {path}");
+}
+
+// Draws a two-line stats panel in the top-left corner of the display.
+// line1 (white): scene name + triangle count.
+// line2 (yellow): timing.
+fn draw_hud(display: &mut SimulatorDisplay<Rgb565>, line1: &str, line2: &str) {
+    let bg_style = PrimitiveStyleBuilder::new()
+        .fill_color(Rgb565::new(0, 0, 0))
+        .build();
+    Rectangle::new(Point::new(0, 0), Size::new(210, 28))
+        .into_styled(bg_style)
+        .draw(display)
+        .unwrap();
+    Text::new(line1, Point::new(4, 10), MonoTextStyle::new(&FONT_6X10, Rgb565::CSS_WHITE))
+        .draw(display)
+        .unwrap();
+    Text::new(line2, Point::new(4, 22), MonoTextStyle::new(&FONT_6X10, Rgb565::CSS_YELLOW))
+        .draw(display)
+        .unwrap();
 }
 
 fn main() {
@@ -1028,11 +1051,13 @@ fn gif_rotating_cube() {
 
     let total = 72u32;
     let mut frames: Vec<Vec<u8>> = Vec::with_capacity(total as usize);
+    let mut avg_ms = 0.0f64;
     for i in 0..total {
         let yaw = i as f32 * (2.0 * PI / total as f32);
         cube.set_attitude(0.3, yaw, 0.1);
         display.clear(Rgb565::BLACK).unwrap();
         zbuffer.fill(u32::MAX);
+        let t = Instant::now();
         engine
             .record(std::iter::once(&cube), &mut commands, None)
             .unwrap();
@@ -1040,6 +1065,13 @@ fn gif_rotating_cube() {
         engine
             .execute::<_, 4096>(&mut display, &mut frame, &commands, None)
             .unwrap();
+        let ms = t.elapsed().as_secs_f64() * 1000.0;
+        avg_ms = if i == 0 { ms } else { 0.2 * ms + 0.8 * avg_ms };
+        draw_hud(
+            &mut display,
+            "wireframe cube | 12 tris",
+            &format!("render {avg_ms:.2}ms"),
+        );
         frames.push(frame_rgb(&display));
     }
     save_gif(&mut frames, W, H, "assets/gif_cube.gif", 4);
@@ -1059,23 +1091,27 @@ fn gif_suzanne() {
     engine.camera.set_target(Point3::new(0.0, -0.3, 0.0));
     let light_dir = Vector3::new(-0.35, 0.75, -0.85).normalize();
 
+    let mut suzanne = K3dMesh::new(embed_stl!("examples/3d_models/Suzanne.stl"));
+    suzanne.set_color(Rgb565::new(26, 30, 4));
+    suzanne.set_scale(2.8);
+    suzanne.set_position(0.0, 0.0, 0.0);
+    suzanne.set_render_mode(RenderMode::BlinnPhong {
+        light_dir,
+        specular_intensity: 1.5,
+        shininess: 56.0,
+    });
+    let suzanne_tris = embed_stl!("examples/3d_models/Suzanne.stl").faces.len();
+
     let total = 60u32;
     let mut frames: Vec<Vec<u8>> = Vec::with_capacity(total as usize);
+    let mut avg_ms = 0.0f64;
     for i in 0..total {
         let yaw = i as f32 * (2.0 * PI / total as f32);
-        let mut suzanne = K3dMesh::new(embed_stl!("examples/3d_models/Suzanne.stl"));
-        suzanne.set_color(Rgb565::new(26, 30, 4));
-        suzanne.set_scale(2.8);
-        suzanne.set_position(0.0, 0.0, 0.0);
         suzanne.set_attitude(-PI / 2.0, yaw, 0.0);
-        suzanne.set_render_mode(RenderMode::BlinnPhong {
-            light_dir,
-            specular_intensity: 1.5,
-            shininess: 56.0,
-        });
 
         display.clear(Rgb565::BLACK).unwrap();
         zbuffer.fill(u32::MAX);
+        let t = Instant::now();
         engine
             .record(std::iter::once(&suzanne), &mut commands, None)
             .unwrap();
@@ -1083,6 +1119,13 @@ fn gif_suzanne() {
         engine
             .execute::<_, 8192>(&mut display, &mut frame, &commands, None)
             .unwrap();
+        let ms = t.elapsed().as_secs_f64() * 1000.0;
+        avg_ms = if i == 0 { ms } else { 0.2 * ms + 0.8 * avg_ms };
+        draw_hud(
+            &mut display,
+            &format!("Blinn-Phong | {suzanne_tris} tris"),
+            &format!("render {avg_ms:.2}ms"),
+        );
         frames.push(frame_rgb(&display));
     }
     save_gif(&mut frames, W, H, "assets/gif_suzanne.gif", 5);
@@ -1186,16 +1229,23 @@ fn gif_bouncing_balls() {
     floor.set_color(Rgb565::new(8, 16, 8));
 
     let dt = 1.0f32 / 60.0;
+    let sphere_tris = sf.len();
+    let total_tris = NUM_BALLS * sphere_tris + 2; // +2 for floor quad
     let total = 120u32;
     let mut frames: Vec<Vec<u8>> = Vec::with_capacity(total as usize);
-    for _ in 0..total {
+    let (mut avg_sim, mut avg_render) = (0.0f64, 0.0f64);
+    for i in 0..total {
+        let ts = Instant::now();
         physics.step_fixed::<16>(dt, 4);
-        for (i, &id) in ball_ids.iter().enumerate() {
-            sync_body_to_mesh(physics.body(id).unwrap(), &mut meshes[i]);
+        for (j, &id) in ball_ids.iter().enumerate() {
+            sync_body_to_mesh(physics.body(id).unwrap(), &mut meshes[j]);
         }
+        let sim_ms = ts.elapsed().as_secs_f64() * 1000.0;
+
         display.clear(Rgb565::BLACK).unwrap();
         zbuffer.fill(u32::MAX);
         let all: Vec<&K3dMesh> = meshes.iter().chain(std::iter::once(&floor)).collect();
+        let tr = Instant::now();
         engine
             .record(all.iter().copied(), &mut commands, None)
             .unwrap();
@@ -1203,6 +1253,15 @@ fn gif_bouncing_balls() {
         engine
             .execute::<_, 16384>(&mut display, &mut frame, &commands, None)
             .unwrap();
+        let render_ms = tr.elapsed().as_secs_f64() * 1000.0;
+
+        avg_sim    = if i == 0 { sim_ms }    else { 0.2 * sim_ms    + 0.8 * avg_sim };
+        avg_render = if i == 0 { render_ms } else { 0.2 * render_ms + 0.8 * avg_render };
+        draw_hud(
+            &mut display,
+            &format!("rigid body | {NUM_BALLS} bodies {total_tris} tris"),
+            &format!("sim {avg_sim:.2}ms  render {avg_render:.2}ms"),
+        );
         frames.push(frame_rgb(&display));
     }
     save_gif(&mut frames, W, H, "assets/gif_physics.gif", 4);
@@ -1310,23 +1369,25 @@ fn gif_newtons_cradle() {
         .chain(std::iter::once([0, NUM - 1]))
         .collect();
 
+    let sphere_tris = sf.len();
     let dt = 1.0f32 / 60.0;
     let total = 150u32;
     let mut frames: Vec<Vec<u8>> = Vec::with_capacity(total as usize);
+    let (mut avg_sim, mut avg_render) = (0.0f64, 0.0f64);
 
-    for _ in 0..total {
+    for i in 0..total {
+        let ts = Instant::now();
         physics.step_fixed::<32>(dt, 8);
-
-        for (i, &id) in sphere_ids.iter().enumerate() {
+        for (j, &id) in sphere_ids.iter().enumerate() {
             let body = physics.body(id).unwrap();
-            sync_body_to_mesh(body, &mut meshes[i]);
-            fverts[NUM + i] = [body.position.x, body.position.y, body.position.z];
+            sync_body_to_mesh(body, &mut meshes[j]);
+            fverts[NUM + j] = [body.position.x, body.position.y, body.position.z];
         }
+        let sim_ms = ts.elapsed().as_secs_f64() * 1000.0;
 
         display.clear(Rgb565::BLACK).unwrap();
         zbuffer.fill(u32::MAX);
 
-        // Draw strings and top bar
         let fgeom = Geometry {
             vertices: &fverts,
             faces: &[],
@@ -1343,6 +1404,7 @@ fn gif_newtons_cradle() {
         let mut all_meshes: Vec<&K3dMesh> = Vec::new();
         all_meshes.push(&fmesh);
         all_meshes.extend(meshes.iter());
+        let tr = Instant::now();
         engine
             .record(all_meshes.iter().copied(), &mut commands, None)
             .unwrap();
@@ -1350,7 +1412,15 @@ fn gif_newtons_cradle() {
         engine
             .execute::<_, 16384>(&mut display, &mut frame, &commands, None)
             .unwrap();
+        let render_ms = tr.elapsed().as_secs_f64() * 1000.0;
 
+        avg_sim    = if i == 0 { sim_ms }    else { 0.2 * sim_ms    + 0.8 * avg_sim };
+        avg_render = if i == 0 { render_ms } else { 0.2 * render_ms + 0.8 * avg_render };
+        draw_hud(
+            &mut display,
+            &format!("constraints | {NUM} chains {tris} tris", tris = NUM * sphere_tris),
+            &format!("sim {avg_sim:.2}ms  render {avg_render:.2}ms"),
+        );
         frames.push(frame_rgb(&display));
     }
 
@@ -1391,12 +1461,18 @@ fn gif_cloth() {
         }
     }
 
+    let particles = cloth.particles.len();
+    let cloth_tris = faces.len();
     let total = 90u32;
     let mut frames: Vec<Vec<u8>> = Vec::with_capacity(total as usize);
-    let mut verts = vec![[0.0f32; 3]; cloth.particles.len()];
-    for _ in 0..total {
+    let mut verts = vec![[0.0f32; 3]; particles];
+    let (mut avg_sim, mut avg_render) = (0.0f64, 0.0f64);
+    for i in 0..total {
+        let ts = Instant::now();
         cloth.step(0.016);
         cloth.get_vertex_positions(&mut verts);
+        let sim_ms = ts.elapsed().as_secs_f64() * 1000.0;
+
         let geom = Geometry {
             vertices: &verts,
             faces: &faces,
@@ -1412,6 +1488,7 @@ fn gif_cloth() {
         mesh.set_color(Rgb565::CSS_CYAN);
         display.clear(Rgb565::BLACK).unwrap();
         zbuffer.fill(u32::MAX);
+        let tr = Instant::now();
         engine
             .record(std::iter::once(&mesh), &mut commands, None)
             .unwrap();
@@ -1419,6 +1496,15 @@ fn gif_cloth() {
         engine
             .execute::<_, 8192>(&mut display, &mut frame, &commands, None)
             .unwrap();
+        let render_ms = tr.elapsed().as_secs_f64() * 1000.0;
+
+        avg_sim    = if i == 0 { sim_ms }    else { 0.2 * sim_ms    + 0.8 * avg_sim };
+        avg_render = if i == 0 { render_ms } else { 0.2 * render_ms + 0.8 * avg_render };
+        draw_hud(
+            &mut display,
+            &format!("soft body | {particles} particles {cloth_tris} tris"),
+            &format!("sim {avg_sim:.2}ms  render {avg_render:.2}ms"),
+        );
         frames.push(frame_rgb(&display));
     }
     save_gif(&mut frames, W, H, "assets/gif_cloth.gif", 4);

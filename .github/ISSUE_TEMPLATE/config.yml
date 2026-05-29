@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Architecture or roadmap discussion
+    url: https://github.com/leftger/embedded-3dgfx/discussions
+    about: Use discussions for design tradeoffs and long-form planning.

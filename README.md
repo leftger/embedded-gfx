@@ -7,26 +7,41 @@ A `no_std` 3D graphics and physics engine for embedded systems, optimized for re
 
 > This is a fork of [embedded-gfx](https://github.com/Kezii/embedded-gfx) by [Kezii](https://github.com/Kezii). This fork adds texture mapping, fog/dithering effects, DMA rendering, Z-buffer improvements, anti-aliasing, and a complete physics engine.
 
+## What's new in 0.3.0
+
+- **Perspective-correct textures** — clip-space W is propagated through the rasterizer; UV coordinates are now divided by W per pixel, eliminating the affine swim on non-axis-aligned surfaces
+- **Sector lighting** — Doom-style per-sector brightness scaling applied at mesh level, zero per-vertex cost
+- **UV ray-casting** — `mesh_ray_cast` now returns barycentric-interpolated UV at the hit point alongside distance, world position, and face normal
+- **HUD overlay** — `hud` module provides a fixed-capacity overlay for text and icon elements drawn after the scene pass
+- **record/execute pipeline** (introduced in 0.2, stabilized in 0.3) — scene traversal and rasterization are explicit separate phases; command buffers can be replayed without re-traversing the scene graph
+
 ## Features
 
 **3D Rendering**
-- Full MVP pipeline — Model-View-Projection with perspective projection
+- Full MVP pipeline with perspective projection and frustum/backface culling
 - Z-buffering with 16.16 fixed-point depth testing
 - Flat and Gouraud shading, directional lighting, Blinn-Phong specular
-- Affine UV texture mapping with multi-texture support and RGB565 format
-- Fog, dithering (4x4 Bayer), billboards, vertex animation
+- Perspective-correct UV texture mapping with multi-texture support (RGB565)
+- Sector lighting (Doom-style per-mesh brightness scaling)
+- Fog, dithering (4×4 Bayer), billboards, vertex animation
 - Anti-aliased lines and triangles (heuristic and per-pixel coverage modes)
 - LOD system with distance-based mesh switching
-- Frustum and backface culling, DMA double-buffer rendering
+- DMA double-buffer rendering via `swapchain`
+- HUD overlay with text and icon elements
+
+**Record/Execute Pipeline**
+- `engine.record(meshes, &mut cmd_buf, telemetry)` — traverse scene graph, emit draw commands
+- `engine.execute(fb, &mut frame, &cmd_buf, telemetry)` — rasterize commands to framebuffer
+- `engine.execute_tiled(...)` — tile-binned execution for partial display updates
 
 **Physics Engine**
 - Rigid body dynamics — linear/angular motion, forces, torques
 - Sphere, AABB, and capsule colliders with impulse-based collision response
 - Distance, ball-socket, and fixed joint constraints
-- Ray casting with hit point and normal
+- Ray casting with hit point, face normal, and UV coordinate
 
 **Skeletal Animation**
-- Parent-child bone hierarchies with linear blend skinning (SSD)
+- Parent-child bone hierarchies with linear blend skinning (LBS/SSD)
 - Up to 4 bone influences per vertex
 
 **Soft Body Physics**
@@ -60,7 +75,7 @@ A `no_std` 3D graphics and physics engine for embedded systems, optimized for re
   </tr>
   <tr>
     <td align="center"><img src="assets/screenshot_newtons_cradle.png" alt="Newton's cradle" width="320"><br><em>Newton's cradle (constraints)</em></td>
-    <td align="center"><img src="assets/screenshot_texture.png" alt="UV texture mapping" width="320"><br><em>UV texture mapping</em></td>
+    <td align="center"><img src="assets/screenshot_blinnphong.png" alt="Blinn-Phong shading" width="320"><br><em>Blinn-Phong specular</em></td>
   </tr>
 </table>
 
@@ -75,10 +90,10 @@ cargo run --example screenshots --features std
 ```toml
 [dependencies]
 # Embedded (no_std)
-embedded-3dgfx = { version = "0.2", default-features = false }
+embedded-3dgfx = { version = "0.3", default-features = false }
 
 # Desktop / simulator with all features
-embedded-3dgfx = { version = "0.2", features = ["std"] }
+embedded-3dgfx = { version = "0.3", features = ["std"] }
 ```
 
 ## Basic Example
@@ -94,9 +109,10 @@ let geometry = Geometry { vertices: &CUBE_VERTS, faces: &CUBE_FACES, /* ... */ }
 let mut mesh = K3dMesh::new(geometry);
 mesh.set_render_mode(RenderMode::Lines);
 
-engine.render(std::iter::once(&mesh), |primitive| {
-    draw(primitive, &mut display);
-});
+// Record draw commands, then rasterize to framebuffer
+let mut commands = embedded_3dgfx::command_buffer::CommandBuffer::<512>::new();
+engine.record(core::iter::once(&mesh), &mut commands, None).unwrap();
+engine.execute(&mut display, &mut frame_ctx, &commands, None).unwrap();
 ```
 
 ## Physics Example
@@ -108,62 +124,183 @@ use nalgebra::Vector3;
 let mut world = PhysicsWorld::<16, 4>::new();
 world.set_gravity(Vector3::new(0.0, -9.81, 0.0));
 
-let sphere = RigidBody::new(1.0)
-    .with_collider(Collider::Sphere { radius: 0.5 })
-    .with_position(Vector3::new(0.0, 10.0, 0.0));
-world.add_body(sphere);
+// Dynamic sphere
+let sphere_id = world.add_body(
+    RigidBody::new(1.0)
+        .with_collider(Collider::Sphere { radius: 0.5 })
+        .with_position(Vector3::new(0.0, 10.0, 0.0))
+        .with_restitution(0.7)
+        .with_inertia_sphere(0.5),
+).unwrap();
 
-let ground = RigidBody::new_static()
-    .with_collider(Collider::Aabb { half_extents: Vector3::new(10.0, 0.5, 10.0) });
-world.add_body(ground);
+// Static floor
+world.add_body(
+    RigidBody::new_static()
+        .with_collider(Collider::Aabb { half_extents: Vector3::new(10.0, 0.5, 10.0) })
+        .with_friction(0.6),
+).unwrap();
 
+// Advance simulation (8 constraint-solver iterations)
 world.step::<8>(0.016);
 
+// UV-aware ray cast
 let ray = Ray::new(Vector3::zeros(), Vector3::new(0.0, -1.0, 0.0));
 if let Some(hit) = world.ray_cast(&ray, 100.0) {
-    println!("Hit at distance: {}", hit.distance);
+    // hit.distance, hit.point, hit.normal, hit.uv
 }
 ```
 
+## Skeletal Animation
+
+```rust
+use embedded_3dgfx::skeleton::{Skeleton, Bone, SkinningData, VertexSkinning, apply_skinning};
+use nalgebra::Vector3;
+
+let mut skeleton = Skeleton::<8>::new();
+let root = skeleton.add_bone(Bone::new("root"), None).unwrap();
+let arm  = skeleton.add_bone(
+    Bone::new("arm").with_position(Vector3::new(0.0, 1.0, 0.0)),
+    Some(root),
+).unwrap();
+
+skeleton.update_transforms();
+skeleton.compute_inverse_bind_poses();
+
+let mut skinning = SkinningData::new();
+skinning.add_vertex(VertexSkinning::two_bones(root.0, 0.7, arm.0, 0.3)).unwrap();
+
+// Animate, then deform mesh
+skeleton.get_bone_mut(arm).unwrap().set_rotation(rotation);
+skeleton.update_transforms();
+apply_skinning(&skeleton, &skinning, &bind_vertices, &mut deformed_vertices);
+```
+
+## Soft Body
+
+```rust
+use embedded_3dgfx::softbody::SoftBody;
+
+// Pre-built cloth pinned at the top edge
+let mut cloth = SoftBody::<64, 256>::create_cloth(8, 6, 0.2, 100.0, 0.5).unwrap();
+cloth.set_gravity(nalgebra::Vector3::new(0.0, -9.81, 0.0));
+cloth.ground_plane = Some(0.0);
+
+cloth.step(0.016);
+
+let mut positions = [[0.0f32; 3]; 64];
+cloth.get_vertex_positions(&mut positions);
+```
+
+Available pre-built shapes: `create_cloth`, `create_jelly_cube`, `create_soft_sphere`.
+
 ## Examples
 
-The project includes 26 interactive examples. Run with:
+28 interactive examples — run any with:
 
 ```bash
 cargo run --example <name> --features std
 ```
 
-**Rendering:**
-- `basic_rendering` — render mode cycling (points, lines, solid)
-- `rotating_cube` — animated 3D transformations
-- `scene_viewer` — interactive multi-mesh scene
-- `lighting_demo` — directional lighting with ambient
-- `gouraud_demo` — smooth color interpolation
-- `blinn_phong_demo` — specular highlights
-- `fog_dithering_demo` — atmospheric effects
-- `texture_mapping_demo` — UV-mapped textures
-- `dma_rendering_demo` — double-buffer performance
-- `billboard_demo` — camera-facing quads
-- `lod_demo` — level-of-detail switching
-- `vertex_animation_demo` — keyframe vertex morphing
-- `painters_algorithm_demo` — painter's algorithm rendering
-- `boot_menu` — boot splash and menu transitions (96x64, tweens + transform tracks)
-- `stl_viewer` — load and view STL models
+**Rendering**
+| Example | Description |
+|---------|-------------|
+| `basic_rendering` | Render mode cycling: points, lines, solid |
+| `rotating_cube` | Animated 3D transformations |
+| `scene_viewer` | Interactive multi-mesh scene |
+| `lighting_demo` | Directional lighting with ambient |
+| `gouraud_demo` | Smooth per-vertex color interpolation |
+| `blinn_phong_demo` | Specular highlights |
+| `fog_dithering_demo` | Atmospheric fog + Bayer dithering |
+| `texture_mapping_demo` | Perspective-correct UV textures |
+| `dma_rendering_demo` | Double-buffer DMA performance |
+| `billboard_demo` | Camera-facing quads |
+| `lod_demo` | Distance-based mesh LOD switching |
+| `vertex_animation_demo` | Keyframe vertex morphing |
+| `painters_algorithm_demo` | Painter's algorithm ordering |
+| `boot_menu` | Boot splash + menu transitions (96×64, tweens) |
+| `stl_viewer` | Load and view STL models |
 
-**Physics:**
-- `physics_rolling_ball` — beginner-friendly intro
-- `physics_bouncing_balls` — multiple colliding spheres
-- `physics_pendulum` — swinging pendulum with constraints
-- `physics_newtons_cradle` — chain constraints
-- `physics_stack_tower` — stacking boxes with friction
-- `physics_domino_chain` — domino effect simulation
-- `physics_wrecking_ball` — wrecking ball demolition
-- `physics_demo` — comprehensive physics showcase
-- `capsule_physics_demo` — capsule collider interactions
-- `skeletal_animation_demo` — bone hierarchy and skinning
-- `cloth_simulation` — hanging cloth with wind
-- `jelly_cube_demo` — soft deformable cube
-- `raycast_demo` — ray casting and hit detection
+**Physics**
+| Example | Description |
+|---------|-------------|
+| `physics_rolling_ball` | Beginner intro — gravity, friction, ramps |
+| `physics_bouncing_balls` | Restitution coefficients compared |
+| `physics_pendulum` | Constraint-based swinging |
+| `physics_newtons_cradle` | Momentum conservation via distance constraints |
+| `physics_stack_tower` | Stacking stability with friction |
+| `physics_domino_chain` | Chain-reaction angular dynamics |
+| `physics_wrecking_ball` | Heavy ball vs light boxes |
+| `physics_demo` | Comprehensive physics showcase |
+| `capsule_physics_demo` | Capsule collider interactions |
+| `skeletal_animation_demo` | Bone hierarchy and linear blend skinning |
+| `cloth_simulation` | Hanging cloth with wind |
+| `jelly_cube_demo` | Deformable cube with volume preservation |
+| `raycast_demo` | Ray casting, hit detection, UV lookup |
+
+## Physics Reference
+
+### Creating bodies
+
+```rust
+// Dynamic body
+let id = physics.add_body(
+    RigidBody::new(mass)
+        .with_position(Vector3::new(x, y, z))
+        .with_velocity(Vector3::new(vx, vy, vz))
+        .with_collider(Collider::Sphere { radius })
+        .with_restitution(0.5)
+        .with_friction(0.5)
+        .with_inertia_sphere(radius),
+).unwrap();
+
+// Static body (floor, wall)
+physics.add_body(
+    RigidBody::new_static()
+        .with_position(Vector3::new(0.0, 0.0, 0.0))
+        .with_collider(Collider::Aabb { half_extents: Vector3::new(10.0, 0.1, 10.0) })
+        .with_friction(0.6),
+).unwrap();
+```
+
+### Distance constraints
+
+```rust
+physics.add_distance_constraint(
+    anchor_id,
+    Vector3::zeros(), // anchor attachment point
+    body_id,
+    Vector3::zeros(), // body attachment point
+    0.0,              // compliance (0.0 = rigid)
+).unwrap();
+```
+
+### Stepping and sync
+
+```rust
+// Step with 8 constraint-solver iterations
+physics.step::<8>(1.0 / 60.0);
+
+// Sync physics state to render meshes
+for &id in &body_ids {
+    let body = physics.body(id).unwrap();
+    sync_body_to_mesh(body, &mut mesh);
+}
+```
+
+### Capacity
+
+```rust
+PhysicsWorld::<16, 8>::new()  // 16 bodies, 8 constraints (const generics, no heap)
+```
+
+### Troubleshooting
+
+| Symptom | Fix |
+|---------|-----|
+| Bodies fall through floor | Increase solver iterations; check collider types match |
+| Constraints are stretchy | Increase solver iterations; set compliance to 0.0 |
+| Simulation explodes | Reduce timestep; add damping; verify inertia tensors |
+| Poor performance | Reduce max contacts; fewer substeps; prefer sphere colliders |
 
 ## Feature Flags
 
@@ -172,38 +309,27 @@ cargo run --example <name> --features std
 | `std` | on | Enables painter's algorithm (`Vec`) and includes `perfcounter` |
 | `perfcounter` | off | FPS/timing measurements (requires `std` or `embassy-time`) |
 | `embassy-time` | off | Timing source for embedded targets |
-| `aa-heuristic` | on | Heuristic analytical edge anti-aliasing for triangles, no extra buffer |
-| `aa-coverage` | on | Per-pixel coverage AA with end-of-frame composite; eliminates shared-edge seam at cost of a W×H byte buffer |
-| `row_width_96` | — | Optimize row buffers for 96px-wide displays |
-| `row_width_160` | — | Optimize row buffers for 160px-wide displays |
-| `row_width_240` | — | Optimize row buffers for 240px-wide displays (default) |
-| `row_width_320` | — | Optimize row buffers for 320px-wide displays |
+| `aa-heuristic` | on | Heuristic edge AA for triangles, no extra buffer |
+| `aa-coverage` | on | Per-pixel coverage AA; eliminates shared-edge seam at cost of a W×H byte buffer |
+| `row_width_96` | — | Optimize row buffers for 96 px wide displays |
+| `row_width_160` | — | Optimize row buffers for 160 px wide displays |
+| `row_width_240` | — | Optimize row buffers for 240 px wide displays (default) |
+| `row_width_320` | — | Optimize row buffers for 320 px wide displays |
+| `fixed-transform` | off | Fixed-point screen-space projection path |
+| `dwt-profiler` | off | DWT cycle-counter profiling hooks |
+| `triple-buffering` | off | Triple-buffered swapchain APIs |
 
-The `row_width_*` flags are mutually exclusive. `aa` is an internal flag enabled automatically by either AA feature.
+`row_width_*` flags are mutually exclusive. `aa` is an internal flag enabled automatically by either AA feature.
 
 ## Caps and Telemetry
 
-For command-buffer budgeting, profile-cap selection, and record/execute telemetry usage, see:
+Technical reference docs in `docs/`:
 
-- `docs/caps-and-telemetry.md`
-
-For validated target/profile/backend coverage, see:
-
-- `docs/compatibility-matrix.md`
-
-For backend bring-up and deployment checklists, see:
-
-- `docs/backend-integration-checklist.md`
-- `docs/memory-sizing-guide.md`
-- `docs/no-std-architecture.md`
-
-For CI telemetry/perf baseline policy, see:
-
-- `docs/perf-baselines.md`
-- `docs/rendering-performance-evidence.md`
-- `docs/hardware-profiling.md`
-- `docs/hardware-smoke-tests.md`
-- `docs/asset-pipeline.md`
+| Doc | Topic |
+|-----|-------|
+| `caps-and-telemetry.md` | Record/execute pipeline, profile caps, telemetry API, CI budget enforcement |
+| `backend-integration.md` | Board bring-up checklist, memory sizing, hardware profiling, smoke tests, compatibility matrix |
+| `asset-pipeline.md` | Offline converter CLI, chunked scene format, cooperative streaming loader, CI budget reporting |
 
 ## System Requirements
 
@@ -217,7 +343,7 @@ For CI telemetry/perf baseline policy, see:
 - 512 KB+ RAM (double buffer + Z-buffer + physics)
 - 512 KB+ Flash
 
-**Memory usage at 240x135:**
+**Memory at 240×135:**
 
 | Feature | Cost |
 |---------|------|
@@ -228,60 +354,65 @@ For CI telemetry/perf baseline policy, see:
 | Soft body (64 particles) | ~2 KB |
 | Skeleton (8 bones) | ~1 KB |
 
-**Performance budget at 240x135 @ 60 FPS:**
-- Rendering: ~10-13 ms/frame
-- Physics (16 bodies): ~2-3 ms/frame
+**Budget at 240×135 @ 60 FPS:**
+- Rendering: ~10–13 ms/frame
+- Physics (16 bodies): ~2–3 ms/frame
 - DMA display transfer: ~3 ms (parallel)
 
 ## Performance
 
-Frame times measured on the desktop simulator at 320×240 (`cargo run --release --example screenshots --features std`). Numbers reflect the **record + execute** pipeline introduced in v0.2 — scene traversal and rasterization are separate phases, making per-frame costs explicit and predictable.
+Desktop benchmarks at 320×240 (`cargo run --release --example screenshots --features std`):
 
-| Scene | Resolution | Triangles | p50 (release) | p50 (debug) |
-|-------|-----------|-----------|--------------|-------------|
-| Wireframe cube | 320×240 | 12 | **0.05 ms** | 3.6 ms |
-| Blinn-Phong Suzanne | 320×240 | ~960 | **0.09 ms** | 6.6 ms |
-| Physics (5 balls + floor) + render | 320×240 | ~800 | **0.08 ms** | 8.2 ms |
+| Scene | Triangles | p50 release | p50 debug |
+|-------|-----------|-------------|-----------|
+| Wireframe cube | 12 | **0.05 ms** | 3.6 ms |
+| Blinn-Phong Suzanne | ~960 | **0.09 ms** | 6.6 ms |
+| Physics (5 balls + floor) + render | ~800 | **0.08 ms** | 8.2 ms |
 
-> Desktop figures are on a modern x86-64 CPU and will not match embedded hardware directly. On ARM Cortex-M33 @ 64 MHz expect roughly 10–13 ms/frame for mid-complexity scenes at 240×135 (see [System Requirements](#system-requirements)).
+Desktop figures are on a modern x86-64 CPU. On ARM Cortex-M33 @ 64 MHz expect roughly 10–13 ms/frame for mid-complexity scenes at 240×135.
 
-**What changed in v0.2:**
-- **micromath transcendentals** — `sin`/`cos`/`atan2` are now routed through [micromath](https://crates.io/crates/micromath) on `no_std` targets, replacing soft-float libm. Measured ~15–25% reduction in per-frame transform cost on Cortex-M4 targets.
-- **record/execute pipeline** — scene traversal (record) and rasterization (execute) are now explicit separate phases. This eliminates hidden double-work and allows command-buffer replay without re-traversing the scene graph.
-- **16.16 fixed-point storage** — depth values use `u32` fixed-point storage throughout the z-buffer path, cutting memory bandwidth on 32-bit bus targets.
-
-To reproduce the benchmark locally:
-
-```bash
-cargo run --release --example screenshots --features std
-```
+Key optimizations in the record/execute pipeline:
+- **micromath transcendentals** — `sin`/`cos`/`atan2` routed through [micromath](https://crates.io/crates/micromath) on `no_std`, replacing soft-float libm; ~15–25% reduction in per-frame transform cost on Cortex-M4
+- **16.16 fixed-point z-buffer** — depth values stored as `u32`, cutting memory bandwidth on 32-bit bus targets
+- **Separate record/execute phases** — command-buffer replay avoids re-traversing the scene graph on unchanged frames
 
 ## Architecture
 
 ```
 src/
-  lib.rs              # Main engine and rendering loop
+  lib.rs              # Engine entry point: K3dengine, record/execute API
   camera.rs           # View/projection matrices
-  mesh.rs             # Geometry, LOD
+  mesh.rs             # Geometry, LOD, render modes
   draw.rs             # Rasterization, shading, effects
+  renderer.rs         # FrameCtx, execute_commands, tiled execution
+  command_buffer.rs   # Fixed-capacity command buffer
+  config.rs           # ProfileCaps, QualityTier, DegradationPolicy
+  error.rs            # RenderError, BudgetKind
   physics.rs          # Rigid body dynamics
-  skeleton.rs         # Skeletal animation
-  softbody.rs         # Soft body physics
-  texture.rs          # Texture management
+  skeleton.rs         # Skeletal animation, linear blend skinning
+  softbody.rs         # Mass-spring soft body physics
+  texture.rs          # Texture management, RGB565
   billboard.rs        # Camera-facing quads
-  animation.rs        # Keyframe animation
+  animation.rs        # Keyframe vertex animation
   transform_anim.rs   # Rigid transform animation tracks
-  tween.rs            # Tweening and easing
-  swapchain.rs        # DMA double-buffering
-  display_backend.rs  # Display abstraction
+  tween.rs            # Tweening and easing functions
+  swapchain.rs        # DMA double/triple buffering
+  display_backend.rs  # Display abstraction layer
   bridge.rs           # embedded-graphics bridge
-  painters.rs         # Painter's algorithm
-  perfcounter.rs      # Performance monitoring
-  lut.rs              # Lookup tables
+  painters.rs         # Painter's algorithm (std only)
+  hud.rs              # HUD overlay elements
+  scene_format.rs     # Serialized scene chunk format
+  scene_stream.rs     # Cooperative chunk streaming
+  hardware_profile.rs # Target hardware profile definitions
+  perfcounter.rs      # FPS/timing measurements
+  fixed_math.rs       # Fixed-point math helpers
+  telemetry.rs        # Record/execute telemetry types
+  tilebin.rs          # Tile-bin stats and config
+  lut.rs              # Precomputed lookup tables
 
 load_stl/             # STL file embedding macro
-examples/             # 26 interactive demos
-tests/                # 196 unit tests
+examples/             # 28 interactive demos
+tests/                # 210 unit tests
 ```
 
 ## Testing
@@ -295,9 +426,8 @@ cargo test --lib --all-features
 
 Contributions welcome. Priority areas:
 - Hardware-specific display backends (ESP32, STM32, RP2040)
-- Spatial partitioning (octree/BVH for broad-phase)
+- Spatial partitioning (octree/BVH for broad-phase collision)
 - Additional joint types (hinge, slider, prismatic)
-- Perspective-correct texture mapping
 - Mesh colliders (convex hulls)
 
 ## References

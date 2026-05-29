@@ -1,6 +1,6 @@
 # embedded-3dgfx Examples
 
-This directory contains 23+ interactive examples demonstrating the full capabilities of embedded-3dgfx: 3D rendering, physics, skeletal animation, and soft body dynamics.
+This directory contains 28 interactive examples demonstrating the full capabilities of embedded-3dgfx: 3D rendering, physics, skeletal animation, and soft body dynamics.
 
 ## Prerequisites
 

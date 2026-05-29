@@ -13,7 +13,8 @@
 //! - ESC: Exit
 
 use embedded_3dgfx::K3dengine;
-use embedded_3dgfx::draw::draw;
+use embedded_3dgfx::config::apply_default_caps;
+use embedded_3dgfx::command_buffer::CommandBuffer;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
 #[cfg(feature = "perfcounter")]
 #[cfg(feature = "perfcounter")]
@@ -68,7 +69,11 @@ const CHAIN_LENGTH: f32 = 5.0;
 const SPACING: f32 = SPHERE_RADIUS * 2.0 + 0.01;
 
 fn main() {
+    const WIDTH: usize = 640;
+    const HEIGHT: usize = 480;
     let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(640, 480));
+    let mut zbuffer = vec![u32::MAX; WIDTH * HEIGHT];
+    let mut commands = CommandBuffer::<8192>::new();
     let output_settings = OutputSettingsBuilder::new().scale(1).build();
     let mut window = Window::new(
         "Newton's Cradle - 1-5=pull SPACE=release R=reset ESC=exit",
@@ -76,6 +81,7 @@ fn main() {
     );
 
     let mut engine = K3dengine::new(640, 480);
+    apply_default_caps(&mut engine);
     engine.camera.set_position(Point3::new(0.0, 0.0, 15.0));
     engine.camera.set_target(Point3::new(0.0, 0.0, 0.0));
 
@@ -261,10 +267,15 @@ fn main() {
 
         // Render
         display.clear(Rgb565::BLACK).unwrap();
+        zbuffer.fill(u32::MAX);
 
-        engine.render(meshes.iter(), |prim| {
-            draw(prim, &mut display);
-        });
+        engine
+            .record_render_commands(meshes.iter(), &mut commands)
+            .unwrap();
+        engine
+            .execute_recorded_frame::<_, 8192>(&mut display, &mut zbuffer, WIDTH, HEIGHT, &commands)
+
+            .unwrap();
 
         // HUD
         #[cfg(feature = "perfcounter")]

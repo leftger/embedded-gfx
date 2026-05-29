@@ -4,7 +4,8 @@
 //! Use arrow keys to rotate the scene and +/- to zoom.
 
 use embedded_3dgfx::K3dengine;
-use embedded_3dgfx::draw::draw;
+use embedded_3dgfx::config::apply_default_caps;
+use embedded_3dgfx::command_buffer::CommandBuffer;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
 #[cfg(feature = "perfcounter")]
 use embedded_3dgfx::perfcounter::PerformanceCounter;
@@ -87,7 +88,11 @@ fn make_grid() -> Vec<[f32; 3]> {
 }
 
 fn main() {
+    const WIDTH: usize = 800;
+    const HEIGHT: usize = 600;
     let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(800, 600));
+    let mut zbuffer = vec![u32::MAX; WIDTH * HEIGHT];
+    let mut commands = CommandBuffer::<8192>::new();
 
     let output_settings = OutputSettingsBuilder::new().scale(1).build();
 
@@ -98,6 +103,7 @@ fn main() {
 
     // Create 3D engine
     let mut engine = K3dengine::new(800, 600);
+    apply_default_caps(&mut engine);
 
     // Create objects
     let grid_vertices = make_grid();
@@ -220,11 +226,15 @@ fn main() {
 
         // Clear display
         display.clear(Rgb565::BLACK).unwrap();
+        zbuffer.fill(u32::MAX);
 
-        // Render scene
-        engine.render([&grid, &cube1, &cube2, &pyramid].iter().copied(), |prim| {
-            draw(prim, &mut display);
-        });
+        engine
+            .record_render_commands([&grid, &cube1, &cube2, &pyramid].iter().copied(), &mut commands)
+            .unwrap();
+        engine
+            .execute_recorded_frame::<_, 8192>(&mut display, &mut zbuffer, WIDTH, HEIGHT, &commands)
+
+            .unwrap();
 
         // Display info
         perf.print();

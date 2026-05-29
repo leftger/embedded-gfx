@@ -181,6 +181,16 @@ cargo run --example <name> --features std
 
 The `row_width_*` flags are mutually exclusive. `aa` is an internal flag enabled automatically by either AA feature.
 
+## Caps and Telemetry
+
+For command-buffer budgeting, profile-cap selection, and record/execute telemetry usage, see:
+
+- `docs/caps-and-telemetry.md`
+
+For validated target/profile/backend coverage, see:
+
+- `docs/compatibility-matrix.md`
+
 ## System Requirements
 
 **Minimum:**

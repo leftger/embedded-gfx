@@ -1,4 +1,6 @@
 #![no_std]
+#[cfg(feature = "std")]
+extern crate std;
 use camera::Camera;
 use embedded_graphics_core::pixelcolor::Rgb565;
 use embedded_graphics_core::pixelcolor::RgbColor;
@@ -35,6 +37,7 @@ pub mod physics;
 pub mod skeleton;
 pub mod softbody;
 pub mod swapchain;
+pub mod telemetry;
 pub mod texture;
 pub mod renderer;
 
@@ -94,6 +97,13 @@ pub struct K3dengine {
     pub camera: Camera,
     width: u16,
     height: u16,
+    caps: Option<crate::config::ProfileCaps>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BudgetFallbackOutcome {
+    pub used_fallback: bool,
+    pub primary_budget_error: Option<crate::error::BudgetKind>,
 }
 
 impl K3dengine {
@@ -102,7 +112,16 @@ impl K3dengine {
             camera: Camera::new(width as f32 / height as f32),
             width,
             height,
+            caps: None,
         }
+    }
+
+    pub fn set_caps(&mut self, caps: crate::config::ProfileCaps) {
+        self.caps = Some(caps);
+    }
+
+    pub fn clear_caps(&mut self) {
+        self.caps = None;
     }
 
     /// Fast frustum culling check using bounding sphere.
@@ -487,50 +506,309 @@ impl K3dengine {
     where
         MS: IntoIterator<Item = &'a K3dMesh<'a>>,
     {
+        self.record_render_commands_with_telemetry(meshes, commands, None)
+    }
+
+    pub fn record_render_commands_with_telemetry<'a, MS, const MAX: usize>(
+        &self,
+        meshes: MS,
+        commands: &mut crate::command_buffer::CommandBuffer<MAX>,
+        telemetry: Option<&mut crate::telemetry::RecordTelemetry>,
+    ) -> Result<(), crate::error::RenderError>
+    where
+        MS: IntoIterator<Item = &'a K3dMesh<'a>>,
+    {
         use crate::command_buffer::RenderCommand;
+        use crate::error::{BudgetKind, RenderError};
 
         commands.clear();
         commands.push(RenderCommand::ClearDepth(u32::MAX))?;
+        if let Some(caps) = self.caps {
+            caps.validate_framebuffer(self.width as usize, self.height as usize)?;
+        }
 
         let mut first_error = None;
-        self.render(meshes, |primitive| {
-            if first_error.is_none() {
-                if let Err(e) = commands.push(RenderCommand::Draw(primitive)) {
-                    first_error = Some(e);
+        let mut visible_meshes = 0usize;
+        let mut used_texture_ids: heapless::Vec<u32, 64> = heapless::Vec::new();
+        let mut meshes_total = 0usize;
+
+        for mesh in meshes {
+            meshes_total += 1;
+            if mesh.geometry.vertices.is_empty() {
+                continue;
+            }
+            if self.should_cull_mesh(mesh) {
+                continue;
+            }
+
+            let distance = (mesh.get_position() - self.camera.position).norm();
+            let geometry = mesh.select_lod(distance);
+
+            if let Some(caps) = self.caps {
+                visible_meshes += 1;
+                if visible_meshes > caps.max_meshes_per_frame {
+                    return Err(RenderError::OutOfBudget(BudgetKind::MeshesPerFrame {
+                        attempted: visible_meshes,
+                        max: caps.max_meshes_per_frame,
+                    }));
+                }
+
+                if geometry.vertices.len() > caps.max_vertices_per_mesh {
+                    return Err(RenderError::OutOfBudget(BudgetKind::VerticesPerMesh {
+                        attempted: geometry.vertices.len(),
+                        max: caps.max_vertices_per_mesh,
+                    }));
+                }
+
+                if geometry.faces.len() > caps.max_triangles_per_mesh {
+                    return Err(RenderError::OutOfBudget(BudgetKind::TrianglesPerMesh {
+                        attempted: geometry.faces.len(),
+                        max: caps.max_triangles_per_mesh,
+                    }));
+                }
+
+                if let Some(texture_id) = geometry.texture_id
+                    && !used_texture_ids.iter().any(|id| *id == texture_id)
+                {
+                    let attempted = used_texture_ids.len() + 1;
+                    if attempted > caps.max_textures {
+                        return Err(RenderError::OutOfBudget(BudgetKind::Textures {
+                            attempted,
+                            max: caps.max_textures,
+                        }));
+                    }
+
+                    if used_texture_ids.push(texture_id).is_err() {
+                        return Err(RenderError::OutOfBudget(BudgetKind::Textures {
+                            attempted,
+                            max: caps.max_textures,
+                        }));
+                    }
                 }
             }
-        });
 
-        if let Some(err) = first_error {
-            return Err(err);
+            self.render(core::iter::once(mesh), |primitive| {
+                if first_error.is_none() && let Err(e) = commands.push(RenderCommand::Draw(primitive))
+                {
+                    first_error = Some(e);
+                }
+            });
+            if let Some(err) = first_error {
+                return Err(err);
+            }
+        }
+
+        if let Some(t) = telemetry {
+            t.meshes_total = meshes_total;
+            t.meshes_visible = visible_meshes;
+            t.unique_textures = used_texture_ids.len();
+            t.draw_commands = commands
+                .iter()
+                .filter(|cmd| matches!(cmd, RenderCommand::Draw(_)))
+                .count();
+            t.fallback_used = false;
         }
 
         Ok(())
     }
 
-    pub fn render_frame<'a, MS, D, const MAX: usize>(
+    /// Records commands from `primary_meshes`, and if that fails with an out-of-budget error,
+    /// retries once using `fallback_meshes`.
+    ///
+    /// Returns `Ok(true)` when fallback was used, `Ok(false)` when primary succeeded.
+    pub fn record_render_commands_with_budget_fallback<'a, MS, FS, const MAX: usize>(
+        &self,
+        primary_meshes: MS,
+        fallback_meshes: FS,
+        commands: &mut crate::command_buffer::CommandBuffer<MAX>,
+        telemetry: Option<&mut crate::telemetry::RecordTelemetry>,
+    ) -> Result<bool, crate::error::RenderError>
+    where
+        MS: IntoIterator<Item = &'a K3dMesh<'a>>,
+        FS: IntoIterator<Item = &'a K3dMesh<'a>>,
+    {
+        Ok(self
+            .record_render_commands_with_budget_fallback_report(
+                primary_meshes,
+                fallback_meshes,
+                commands,
+                telemetry,
+            )?
+            .used_fallback)
+    }
+
+    /// Records commands from `primary_meshes`, and if that fails with an out-of-budget error,
+    /// retries once using `fallback_meshes`.
+    ///
+    /// Returns whether fallback was used and, when it was, the primary budget error kind.
+    pub fn record_render_commands_with_budget_fallback_report<'a, MS, FS, const MAX: usize>(
+        &self,
+        primary_meshes: MS,
+        fallback_meshes: FS,
+        commands: &mut crate::command_buffer::CommandBuffer<MAX>,
+        telemetry: Option<&mut crate::telemetry::RecordTelemetry>,
+    ) -> Result<BudgetFallbackOutcome, crate::error::RenderError>
+    where
+        MS: IntoIterator<Item = &'a K3dMesh<'a>>,
+        FS: IntoIterator<Item = &'a K3dMesh<'a>>,
+    {
+        use crate::error::RenderError;
+
+        let mut local_telemetry = crate::telemetry::RecordTelemetry::default();
+        match self.record_render_commands_with_telemetry(
+            primary_meshes,
+            commands,
+            Some(&mut local_telemetry),
+        ) {
+            Ok(()) => {
+                if let Some(t) = telemetry {
+                    *t = local_telemetry;
+                    t.fallback_used = false;
+                }
+                Ok(BudgetFallbackOutcome {
+                    used_fallback: false,
+                    primary_budget_error: None,
+                })
+            }
+            Err(RenderError::OutOfBudget(kind)) => {
+                let mut fallback_telemetry = crate::telemetry::RecordTelemetry::default();
+                self.record_render_commands_with_telemetry(
+                    fallback_meshes,
+                    commands,
+                    Some(&mut fallback_telemetry),
+                )?;
+                if let Some(t) = telemetry {
+                    *t = fallback_telemetry;
+                    t.fallback_used = true;
+                }
+                Ok(BudgetFallbackOutcome {
+                    used_fallback: true,
+                    primary_budget_error: Some(kind),
+                })
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Records commands from `meshes`, and if that fails with out-of-budget,
+    /// retries once using a selector predicate over `(index, mesh)`.
+    ///
+    /// Returns `Ok(true)` when fallback was used, `Ok(false)` when primary succeeded.
+    pub fn record_render_commands_with_budget_selector_fallback<
+        'a,
+        MS,
+        Selector,
+        const MAX: usize,
+    >(
         &self,
         meshes: MS,
+        mut fallback_selector: Selector,
+        commands: &mut crate::command_buffer::CommandBuffer<MAX>,
+        telemetry: Option<&mut crate::telemetry::RecordTelemetry>,
+    ) -> Result<bool, crate::error::RenderError>
+    where
+        MS: IntoIterator<Item = &'a K3dMesh<'a>> + Clone,
+        Selector: FnMut(usize, &'a K3dMesh<'a>) -> bool,
+    {
+        self.record_render_commands_with_budget_fallback(
+            meshes.clone(),
+            meshes.into_iter().enumerate().filter_map(|(idx, mesh)| {
+                if fallback_selector(idx, mesh) {
+                    Some(mesh)
+                } else {
+                    None
+                }
+            }),
+            commands,
+            telemetry,
+        )
+    }
+
+    /// Records commands from `meshes`, and if that fails with out-of-budget,
+    /// retries once with a decimated stream that keeps every `keep_every` mesh.
+    ///
+    /// Returns `Ok(true)` when fallback was used, `Ok(false)` when primary succeeded.
+    /// If `keep_every` is `0`, fallback returns `InvalidInput`.
+    pub fn record_render_commands_with_budget_decimation_fallback<'a, MS, const MAX: usize>(
+        &self,
+        meshes: MS,
+        keep_every: usize,
+        commands: &mut crate::command_buffer::CommandBuffer<MAX>,
+        telemetry: Option<&mut crate::telemetry::RecordTelemetry>,
+    ) -> Result<bool, crate::error::RenderError>
+    where
+        MS: IntoIterator<Item = &'a K3dMesh<'a>> + Clone,
+    {
+        if keep_every == 0 {
+            return Err(crate::error::RenderError::InvalidInput(
+                "keep_every must be >= 1",
+            ));
+        }
+
+        self.record_render_commands_with_budget_selector_fallback(
+            meshes,
+            move |idx, _| idx % keep_every == 0,
+            commands,
+            telemetry,
+        )
+    }
+
+    pub fn execute_recorded_frame<D, const MAX: usize>(
+        &self,
         fb: &mut D,
         zbuffer: &mut [u32],
         width: usize,
         height: usize,
+        commands: &crate::command_buffer::CommandBuffer<MAX>,
     ) -> Result<(), crate::error::RenderError>
     where
-        MS: IntoIterator<Item = &'a K3dMesh<'a>>,
         D: embedded_graphics_core::draw_target::DrawTarget<Color = Rgb565>
             + embedded_graphics_core::prelude::OriginDimensions,
         <D as embedded_graphics_core::draw_target::DrawTarget>::Error: core::fmt::Debug,
     {
-        let mut cmd = crate::command_buffer::CommandBuffer::<MAX>::new();
-        self.record_render_commands(meshes, &mut cmd)?;
+        self.execute_recorded_frame_with_telemetry(fb, zbuffer, width, height, commands, None)
+    }
+
+    pub fn execute_recorded_frame_with_telemetry<D, const MAX: usize>(
+        &self,
+        fb: &mut D,
+        zbuffer: &mut [u32],
+        width: usize,
+        height: usize,
+        commands: &crate::command_buffer::CommandBuffer<MAX>,
+        telemetry: Option<&mut crate::telemetry::ExecuteTelemetry>,
+    ) -> Result<(), crate::error::RenderError>
+    where
+        D: embedded_graphics_core::draw_target::DrawTarget<Color = Rgb565>
+            + embedded_graphics_core::prelude::OriginDimensions,
+        <D as embedded_graphics_core::draw_target::DrawTarget>::Error: core::fmt::Debug,
+    {
+        if let Some(t) = telemetry {
+            t.commands_total = commands.len();
+            t.draw_commands = commands
+                .iter()
+                .filter(|cmd| matches!(cmd, crate::command_buffer::RenderCommand::Draw(_)))
+                .count();
+            t.clear_color_commands = commands
+                .iter()
+                .filter(
+                    |cmd| matches!(cmd, crate::command_buffer::RenderCommand::ClearColor(_)),
+                )
+                .count();
+            t.clear_depth_commands = commands
+                .iter()
+                .filter(
+                    |cmd| matches!(cmd, crate::command_buffer::RenderCommand::ClearDepth(_)),
+                )
+                .count();
+        }
 
         let mut frame = crate::renderer::FrameCtx {
             zbuffer,
             width,
             height,
         };
-        crate::renderer::execute_commands(fb, &mut frame, &cmd)
+        crate::renderer::execute_commands(fb, &mut frame, commands)
     }
 }
 

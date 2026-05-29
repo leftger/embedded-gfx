@@ -13,6 +13,7 @@
 //! - ESC: Exit
 
 use embedded_3dgfx::K3dengine;
+use embedded_3dgfx::config::apply_default_caps;
 use embedded_3dgfx::draw::draw_zbuffered;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh};
 #[cfg(feature = "perfcounter")]
@@ -37,6 +38,7 @@ fn main() {
 
     // Create 3D engine
     let mut engine = K3dengine::new(800, 600);
+    apply_default_caps(&mut engine);
     engine.camera.set_position(Point3::new(0.0, 3.0, 10.0));
     engine.camera.set_target(Point3::new(0.0, 0.0, 0.0));
 

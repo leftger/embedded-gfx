@@ -18,7 +18,7 @@ use core::marker::PhantomData;
 use embedded_graphics_core::{
     draw_target::DrawTarget,
     geometry::{Dimensions, Point},
-    pixelcolor::{PixelColor, Rgb565, RgbColor},
+    pixelcolor::{PixelColor, Rgb565},
     primitives::Rectangle,
     Drawable, Pixel,
 };
@@ -26,6 +26,8 @@ use embedded_graphics_framebuf::{FrameBuf, backends::FrameBufferBackend};
 
 #[cfg(feature = "aa")]
 use crate::draw::ReadPixel;
+#[cfg(feature = "aa")]
+use embedded_graphics_core::pixelcolor::RgbColor;
 use crate::draw::draw;
 use crate::DrawPrimitive;
 

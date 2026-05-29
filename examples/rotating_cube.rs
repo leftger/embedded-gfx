@@ -3,7 +3,8 @@
 //! Demonstrates animated 3D transformations with a continuously rotating cube
 
 use embedded_3dgfx::K3dengine;
-use embedded_3dgfx::draw::draw;
+use embedded_3dgfx::config::apply_default_caps;
+use embedded_3dgfx::command_buffer::CommandBuffer;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
 #[cfg(feature = "perfcounter")]
 use embedded_3dgfx::perfcounter::PerformanceCounter;
@@ -49,7 +50,11 @@ fn make_cube() -> (Vec<[f32; 3]>, Vec<[usize; 3]>) {
 }
 
 fn main() {
+    const WIDTH: usize = 640;
+    const HEIGHT: usize = 480;
     let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(640, 480));
+    let mut zbuffer = vec![u32::MAX; WIDTH * HEIGHT];
+    let mut commands = CommandBuffer::<4096>::new();
 
     let output_settings = OutputSettingsBuilder::new().scale(1).build();
 
@@ -57,6 +62,7 @@ fn main() {
 
     // Create 3D engine
     let mut engine = K3dengine::new(640, 480);
+    apply_default_caps(&mut engine);
     engine.camera.set_position(Point3::new(0.0, 2.0, 6.0));
     engine.camera.set_target(Point3::new(0.0, 0.0, 0.0));
 
@@ -118,11 +124,15 @@ fn main() {
 
         // Clear display
         display.clear(Rgb565::BLACK).unwrap();
+        zbuffer.fill(u32::MAX);
 
-        // Render
-        engine.render(std::iter::once(&cube), |prim| {
-            draw(prim, &mut display);
-        });
+        engine
+            .record_render_commands(std::iter::once(&cube), &mut commands)
+            .unwrap();
+        engine
+            .execute_recorded_frame::<_, 4096>(&mut display, &mut zbuffer, WIDTH, HEIGHT, &commands)
+
+            .unwrap();
 
         // Display FPS
         #[cfg(feature = "perfcounter")]

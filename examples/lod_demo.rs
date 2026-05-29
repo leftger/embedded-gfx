@@ -16,10 +16,12 @@
 //! - ESC: Exit
 
 use embedded_3dgfx::K3dengine;
-use embedded_3dgfx::draw::draw_zbuffered;
+use embedded_3dgfx::config::apply_default_caps;
+use embedded_3dgfx::command_buffer::CommandBuffer;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, LODLevels, RenderMode};
 #[cfg(feature = "perfcounter")]
 use embedded_3dgfx::perfcounter::PerformanceCounter;
+use embedded_3dgfx::telemetry::{ExecuteTelemetry, RecordTelemetry};
 use embedded_graphics::mono_font::{MonoTextStyle, ascii::FONT_6X10};
 use embedded_graphics::text::Text;
 use embedded_graphics_core::pixelcolor::{Rgb565, RgbColor, WebColors};
@@ -31,6 +33,8 @@ use nalgebra::{Point3, Vector3};
 use std::f32::consts::PI;
 use std::thread;
 use std::time::Duration;
+#[path = "shared/perf_hud.rs"]
+mod perf_hud;
 
 /// Generate a sphere mesh with specified detail level
 fn generate_sphere(segments: usize, rings: usize) -> (Vec<[f32; 3]>, Vec<[usize; 3]>) {
@@ -68,6 +72,8 @@ fn generate_sphere(segments: usize, rings: usize) -> (Vec<[f32; 3]>, Vec<[usize;
 }
 
 fn main() {
+    const WIDTH: usize = 800;
+    const HEIGHT: usize = 600;
     let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(800, 600));
 
     let output_settings = OutputSettingsBuilder::new().scale(1).build();
@@ -76,6 +82,7 @@ fn main() {
 
     // Create 3D engine
     let mut engine = K3dengine::new(800, 600);
+    apply_default_caps(&mut engine);
     engine.camera.set_position(Point3::new(0.0, 5.0, -20.0));
     engine.camera.set_target(Point3::new(0.0, 0.0, 0.0));
     engine.camera.set_far(200.0); // Need far clipping for distant spheres
@@ -86,7 +93,10 @@ fn main() {
     let text_style = MonoTextStyle::new(&FONT_6X10, Rgb565::CSS_WHITE);
 
     // Z-buffer
-    let mut zbuffer = vec![u32::MAX; 800 * 600];
+    let mut zbuffer = vec![u32::MAX; WIDTH * HEIGHT];
+    let mut commands = CommandBuffer::<16384>::new();
+    let mut record_telemetry = RecordTelemetry::default();
+    let mut execute_telemetry = ExecuteTelemetry::default();
 
     // Create sphere geometries with different LOD levels
     println!("Generating sphere geometries...");
@@ -296,6 +306,7 @@ fn main() {
         let mut medium_count = 0;
         let mut low_count = 0;
         let mut total_triangles = 0;
+        let mut fallback_candidate_count = 0;
 
         // Render all spheres with Z-buffering
         for sphere in &spheres {
@@ -309,23 +320,53 @@ fn main() {
             } else {
                 low_count += 1;
             }
+            if distance < lod_medium_threshold {
+                fallback_candidate_count += 1;
+            }
 
             total_triangles += geometry.faces.len();
         }
 
-        engine.render(spheres.iter(), |prim| {
-            draw_zbuffered(prim, &mut display, &mut zbuffer, 800);
-        });
+        engine
+            .record_render_commands_with_budget_selector_fallback(
+                spheres.iter(),
+                |_, sphere| {
+                    let distance = (sphere.get_position() - engine.camera.position).norm();
+                    distance < lod_medium_threshold
+                },
+                &mut commands,
+                Some(&mut record_telemetry),
+            )
+            .unwrap();
+
+        engine
+            .execute_recorded_frame_with_telemetry::<_, 16384>(
+                &mut display,
+                &mut zbuffer,
+                WIDTH,
+                HEIGHT,
+                &commands,
+                Some(&mut execute_telemetry),
+            )
+            .unwrap();
 
         // Display info
         perf.print();
+        let telemetry_text = perf_hud::telemetry_summary(&record_telemetry, &execute_telemetry);
         let info_text = format!(
-            "{}\\nLOD Count: High={} Med={} Low={}\\nTotal Triangles: {}\\nLOD Thresholds: High={:.0} Med={:.0}\\nCamera: [{:.1}, {:.1}, {:.1}]",
+            "{}\\nLOD Count: High={} Med={} Low={}\\nTotal Triangles: {}\\n{}\\nFallback: {} (near+mid {})\\nLOD Thresholds: High={:.0} Med={:.0}\\nCamera: [{:.1}, {:.1}, {:.1}]",
             perf.get_text(),
             high_count,
             medium_count,
             low_count,
             total_triangles,
+            telemetry_text,
+            if record_telemetry.fallback_used {
+                "ON"
+            } else {
+                "OFF"
+            },
+            fallback_candidate_count,
             lod_high_threshold,
             lod_medium_threshold,
             engine.camera.position.x,

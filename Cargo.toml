@@ -41,6 +41,8 @@ aa-heuristic = ["aa"]
 # Per-pixel coverage tracking with end-of-frame bg composite. Costs an
 # additional W*H byte buffer; eliminates the shared-edge seam.
 aa-coverage = ["aa"]
+# Disable default embedded cap profile selection in examples/apps.
+desktop-unbounded = []
 
 [dependencies]
 embedded-graphics-core = "0.4.0"

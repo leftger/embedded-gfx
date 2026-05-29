@@ -12,8 +12,10 @@
 
 use embedded_3dgfx::DrawPrimitive;
 use embedded_3dgfx::K3dengine;
+use embedded_3dgfx::config::apply_default_caps;
 use embedded_3dgfx::billboard::Billboard;
-use embedded_3dgfx::draw::{draw_zbuffered, draw_zbuffered_with_textures as draw_tex};
+use embedded_3dgfx::command_buffer::CommandBuffer;
+use embedded_3dgfx::draw::draw_zbuffered_with_textures as draw_tex;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
 use embedded_3dgfx::texture::{Texture, TextureManager};
 use embedded_3dgfx::transform_anim::{AnimationPlayer, TransformKeyframe, TransformTrack};
@@ -222,6 +224,7 @@ fn render_scene(
     logo_tex: u32,
     texture_manager: &TextureManager<4>,
     menu_items: &[K3dMesh<'static>],
+    commands: &mut CommandBuffer<1024>,
     display: &mut SimulatorDisplay<Rgb565>,
     zbuffer: &mut [u32],
 ) {
@@ -237,11 +240,13 @@ fn render_scene(
             );
         }
         Screen::Transition | Screen::Menu => {
-            for item in menu_items {
-                engine.render(core::iter::once(item), |prim| {
-                    draw_zbuffered(prim, display, zbuffer, W as usize);
-                });
-            }
+            engine
+                .record_render_commands(menu_items.iter(), commands)
+                .unwrap();
+            engine
+                .execute_recorded_frame::<_, 1024>(display, zbuffer, W as usize, H as usize, &commands)
+
+                .unwrap();
             render_textured_billboard(
                 engine,
                 logo_billboard,
@@ -295,6 +300,7 @@ fn main() {
     let mut window = Window::new("Boot/Menu 96x64 — SPACE UP/DOWN R ESC", &output_settings);
 
     let mut engine = K3dengine::new(W as u16, H as u16);
+    apply_default_caps(&mut engine);
     engine.camera.set_near_far(0.2, 10.0);
     engine.camera.set_fovy(std::f32::consts::FRAC_PI_3);
     engine.camera.set_position(Point3::new(0.0, 0.0, 3.4));
@@ -318,6 +324,7 @@ fn main() {
     let mut screen = Screen::Boot;
     let mut selected: usize = 0;
     let mut zbuffer = [u32::MAX; (W as usize) * (H as usize)];
+    let mut commands = CommandBuffer::<1024>::new();
     let mut last_frame = std::time::Instant::now();
 
     println!("Boot/menu @ {W}x{H} — bitmap logo + 5 items + fades");
@@ -332,6 +339,7 @@ fn main() {
         logo_tex,
         &texture_manager,
         &menu_items,
+        &mut commands,
         &mut display,
         &mut zbuffer,
     );
@@ -466,6 +474,7 @@ fn main() {
             logo_tex,
             &texture_manager,
             &menu_items,
+            &mut commands,
             &mut display,
             &mut zbuffer,
         );

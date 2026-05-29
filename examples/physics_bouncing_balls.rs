@@ -13,7 +13,8 @@
 //! - ESC: Exit
 
 use embedded_3dgfx::K3dengine;
-use embedded_3dgfx::draw::draw;
+use embedded_3dgfx::config::apply_default_caps;
+use embedded_3dgfx::command_buffer::CommandBuffer;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
 #[cfg(feature = "perfcounter")]
 #[cfg(feature = "perfcounter")]
@@ -63,7 +64,11 @@ const NUM_BALLS: usize = 5;
 const BALL_RADIUS: f32 = 0.5;
 
 fn main() {
+    const WIDTH: usize = 640;
+    const HEIGHT: usize = 480;
     let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(640, 480));
+    let mut zbuffer = vec![u32::MAX; WIDTH * HEIGHT];
+    let mut commands = CommandBuffer::<16384>::new();
     let output_settings = OutputSettingsBuilder::new().scale(1).build();
     let mut window = Window::new(
         "Bouncing Balls - SPACE=drop R=reset ESC=exit",
@@ -71,6 +76,7 @@ fn main() {
     );
 
     let mut engine = K3dengine::new(640, 480);
+    apply_default_caps(&mut engine);
     engine.camera.set_position(Point3::new(0.0, 3.0, 15.0));
     engine.camera.set_target(Point3::new(0.0, 3.0, 0.0));
 
@@ -227,11 +233,16 @@ fn main() {
         }
 
         display.clear(Rgb565::BLACK).unwrap();
+        zbuffer.fill(u32::MAX);
 
         let all_meshes: Vec<&K3dMesh> = meshes.iter().chain(std::iter::once(&floor_mesh)).collect();
-        engine.render(all_meshes.into_iter(), |prim| {
-            draw(prim, &mut display);
-        });
+        engine
+            .record_render_commands(all_meshes.iter().copied(), &mut commands)
+            .unwrap();
+        engine
+            .execute_recorded_frame::<_, 16384>(&mut display, &mut zbuffer, WIDTH, HEIGHT, &commands)
+
+            .unwrap();
 
         // HUD
         #[cfg(feature = "perfcounter")]

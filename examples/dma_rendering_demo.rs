@@ -16,12 +16,14 @@
 //! - ESC: Exit
 
 use embedded_3dgfx::K3dengine;
+use embedded_3dgfx::config::apply_default_caps;
+use embedded_3dgfx::command_buffer::CommandBuffer;
 use embedded_3dgfx::display_backend::SimulatorBackend;
-use embedded_3dgfx::draw::draw_zbuffered;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
 #[cfg(feature = "perfcounter")]
 use embedded_3dgfx::perfcounter::PerformanceCounter;
 use embedded_3dgfx::swapchain::StandardSwapChain;
+use embedded_3dgfx::telemetry::{ExecuteTelemetry, RecordTelemetry};
 use embedded_graphics::mono_font::{MonoTextStyle, ascii::FONT_6X10};
 use embedded_graphics::text::Text;
 use embedded_graphics_core::pixelcolor::{Rgb565, RgbColor, WebColors};
@@ -32,8 +34,12 @@ use embedded_graphics_simulator::{
 use nalgebra::{Point3, Vector3};
 use std::thread;
 use std::time::{Duration, Instant};
+#[path = "shared/perf_hud.rs"]
+mod perf_hud;
 
 fn main() {
+    const WIDTH: usize = 800;
+    const HEIGHT: usize = 600;
     // For single-buffer mode, we'll use a SimulatorDisplay directly
     let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(800, 600));
 
@@ -55,6 +61,7 @@ fn main() {
 
     // Create 3D engine
     let mut engine = K3dengine::new(800, 600);
+    apply_default_caps(&mut engine);
     engine.camera.set_position(Point3::new(0.0, 5.0, 15.0));
     engine.camera.set_target(Point3::new(0.0, 0.0, 0.0));
 
@@ -64,7 +71,10 @@ fn main() {
     let text_style = MonoTextStyle::new(&FONT_6X10, Rgb565::CSS_WHITE);
 
     // Z-buffer
-    let mut zbuffer = vec![u32::MAX; 800 * 600];
+    let mut zbuffer = vec![u32::MAX; WIDTH * HEIGHT];
+    let mut commands = CommandBuffer::<16384>::new();
+    let mut record_telemetry = RecordTelemetry::default();
+    let mut execute_telemetry = ExecuteTelemetry::default();
 
     // Create a cube geometry
     let cube_vertices = [
@@ -211,6 +221,10 @@ fn main() {
             );
         }
 
+        // Fail-soft subset: keep alternating meshes as a cheap degradation policy.
+        let fallback_stride = 2usize;
+        let fallback_candidate_count = cubes.len().div_ceil(fallback_stride);
+
         let render_start = Instant::now();
 
         if use_double_buffer {
@@ -219,11 +233,24 @@ fn main() {
                 let back_buffer = swap_chain.get_back_buffer();
                 back_buffer.clear(Rgb565::BLACK).unwrap();
                 zbuffer.fill(u32::MAX);
-
-                // Render all cubes
-                engine.render(cubes.iter(), |prim| {
-                    draw_zbuffered(prim, back_buffer, &mut zbuffer, 800);
-                });
+                engine
+                    .record_render_commands_with_budget_decimation_fallback(
+                        cubes.iter(),
+                        fallback_stride,
+                        &mut commands,
+                        Some(&mut record_telemetry),
+                    )
+                    .unwrap();
+                engine
+                    .execute_recorded_frame_with_telemetry::<_, 16384>(
+                        back_buffer,
+                        &mut zbuffer,
+                        WIDTH,
+                        HEIGHT,
+                        &commands,
+                        Some(&mut execute_telemetry),
+                    )
+                    .unwrap();
 
                 // Copy back buffer to display for visualization BEFORE presenting
                 // (In real hardware, this wouldn't be needed - DMA does it)
@@ -245,10 +272,24 @@ fn main() {
             // Single-buffered path: render directly to display
             display.clear(Rgb565::BLACK).unwrap();
             zbuffer.fill(u32::MAX);
-
-            engine.render(cubes.iter(), |prim| {
-                draw_zbuffered(prim, &mut display, &mut zbuffer, 800);
-            });
+            engine
+                .record_render_commands_with_budget_decimation_fallback(
+                    cubes.iter(),
+                    fallback_stride,
+                    &mut commands,
+                    Some(&mut record_telemetry),
+                )
+                .unwrap();
+            engine
+                .execute_recorded_frame_with_telemetry::<_, 16384>(
+                    &mut display,
+                    &mut zbuffer,
+                    WIDTH,
+                    HEIGHT,
+                    &commands,
+                    Some(&mut execute_telemetry),
+                )
+                .unwrap();
 
             let render_time = render_start.elapsed().as_secs_f32() * 1000.0;
             render_times.push(render_time);
@@ -278,8 +319,9 @@ fn main() {
 
         // Display info
         perf.print();
+        let telemetry_text = perf_hud::telemetry_summary(&record_telemetry, &execute_telemetry);
         let info_text = format!(
-            "{}\nMode: {}\nObjects: {}\nRender time: {:.1}ms\nFrame time: {:.1}ms\nSwap chain frames: {}\nAuto-rotate: {}",
+            "{}\nMode: {}\nObjects: {}\nRender time: {:.1}ms\nFrame time: {:.1}ms\n{}\nFallback: {} (subset {})\nSwap chain frames: {}\nAuto-rotate: {}",
             perf.get_text(),
             if use_double_buffer {
                 "DOUBLE-BUFFER (DMA)"
@@ -289,6 +331,13 @@ fn main() {
             cubes.len(),
             avg_render,
             avg_frame,
+            telemetry_text,
+            if record_telemetry.fallback_used {
+                "ON"
+            } else {
+                "OFF"
+            },
+            fallback_candidate_count,
             swap_chain.frame_count(),
             if auto_rotate { "ON" } else { "OFF" }
         );

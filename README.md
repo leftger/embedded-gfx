@@ -233,6 +233,29 @@ For CI telemetry/perf baseline policy, see:
 - Physics (16 bodies): ~2-3 ms/frame
 - DMA display transfer: ~3 ms (parallel)
 
+## Performance
+
+Frame times measured on the desktop simulator at 320×240 (`cargo run --release --example screenshots --features std`). Numbers reflect the **record + execute** pipeline introduced in v0.2 — scene traversal and rasterization are separate phases, making per-frame costs explicit and predictable.
+
+| Scene | Resolution | Triangles | p50 (release) | p50 (debug) |
+|-------|-----------|-----------|--------------|-------------|
+| Wireframe cube | 320×240 | 12 | **0.05 ms** | 3.6 ms |
+| Blinn-Phong Suzanne | 320×240 | ~960 | **0.09 ms** | 6.6 ms |
+| Physics (5 balls + floor) + render | 320×240 | ~800 | **0.08 ms** | 8.2 ms |
+
+> Desktop figures are on a modern x86-64 CPU and will not match embedded hardware directly. On ARM Cortex-M33 @ 64 MHz expect roughly 10–13 ms/frame for mid-complexity scenes at 240×135 (see [System Requirements](#system-requirements)).
+
+**What changed in v0.2:**
+- **micromath transcendentals** — `sin`/`cos`/`atan2` are now routed through [micromath](https://crates.io/crates/micromath) on `no_std` targets, replacing soft-float libm. Measured ~15–25% reduction in per-frame transform cost on Cortex-M4 targets.
+- **record/execute pipeline** — scene traversal (record) and rasterization (execute) are now explicit separate phases. This eliminates hidden double-work and allows command-buffer replay without re-traversing the scene graph.
+- **16.16 fixed-point storage** — depth values use `u32` fixed-point storage throughout the z-buffer path, cutting memory bandwidth on 32-bit bus targets.
+
+To reproduce the benchmark locally:
+
+```bash
+cargo run --release --example screenshots --features std
+```
+
 ## Architecture
 
 ```

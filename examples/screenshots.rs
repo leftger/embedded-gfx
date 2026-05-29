@@ -5,12 +5,12 @@
 
 use std::f32::consts::PI;
 use std::fs::File;
+use std::time::Instant;
 
 use embedded_3dgfx::DrawPrimitive;
 use embedded_3dgfx::K3dengine;
 use embedded_3dgfx::renderer::FrameCtx;
 use embedded_3dgfx::command_buffer::CommandBuffer;
-use embedded_3dgfx::config::apply_default_caps;
 use embedded_3dgfx::draw::{
     DitherConfig, FogConfig, draw_zbuffered, draw_zbuffered_with_effects,
     draw_zbuffered_with_textures,
@@ -68,6 +68,8 @@ fn main() {
     gif_bouncing_balls();
     gif_cloth();
     gif_newtons_cradle();
+    // Perf
+    benchmark();
     println!("All assets saved to assets/");
 }
 
@@ -80,7 +82,7 @@ fn capture_wireframe_cube() {
     let mut zbuffer = vec![u32::MAX; W * H];
     let mut commands = CommandBuffer::<4096>::new();
     let mut engine = K3dengine::new(640, 480);
-    apply_default_caps(&mut engine);
+    engine.clear_caps();
     engine.camera.set_position(Point3::new(0.0, 1.2, 3.5));
     engine.camera.set_target(Point3::new(0.0, 0.0, 0.0));
 
@@ -149,7 +151,7 @@ fn capture_blinn_phong() {
     let mut commands = CommandBuffer::<8192>::new();
 
     let mut engine = K3dengine::new(800, 600);
-    apply_default_caps(&mut engine);
+    engine.clear_caps();
     // Camera at +Z. attitude(-PI/2, yaw, 0) rotates Suzanne's -Y face to +Z, facing this camera.
     engine.camera.set_position(Point3::new(0.0, 0.8, 8.0));
     engine.camera.set_target(Point3::new(0.0, -0.3, 0.0));
@@ -259,7 +261,7 @@ fn capture_physics() {
     let mut commands = CommandBuffer::<16384>::new();
 
     let mut engine = K3dengine::new(640, 480);
-    apply_default_caps(&mut engine);
+    engine.clear_caps();
     engine.camera.set_position(Point3::new(0.0, 5.0, 7.0));
     engine.camera.set_target(Point3::new(0.0, 2.5, 0.0));
 
@@ -387,7 +389,7 @@ fn capture_cloth() {
     // 640×480 native — large enough to see the cloth clearly
     let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(640, 480));
     let mut engine = K3dengine::new(640, 480);
-    apply_default_caps(&mut engine);
+    engine.clear_caps();
     let mut zbuffer = vec![u32::MAX; 640 * 480];
     let mut commands = CommandBuffer::<8192>::new();
     // Slightly elevated side view so the hanging cloth reads as 3-D
@@ -462,7 +464,7 @@ fn capture_gouraud() {
     let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(800, 600));
     let mut zbuffer = vec![u32::MAX; 800 * 600];
     let mut engine = K3dengine::new(800, 600);
-    apply_default_caps(&mut engine);
+    engine.clear_caps();
     engine.camera.set_position(Point3::new(0.0, 2.5, 9.0));
     engine.camera.set_target(Point3::new(0.0, 0.0, 0.0));
 
@@ -595,7 +597,7 @@ fn capture_fog_dither() {
     let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(800, 600));
     let mut zbuffer = vec![u32::MAX; 800 * 600];
     let mut engine = K3dengine::new(800, 600);
-    apply_default_caps(&mut engine);
+    engine.clear_caps();
     engine.camera.set_position(Point3::new(0.0, 3.0, 15.0));
     engine.camera.set_target(Point3::new(0.0, 0.0, 0.0));
 
@@ -709,7 +711,7 @@ fn capture_newtons_cradle() {
     let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(640, 480));
     let mut zbuffer = vec![u32::MAX; 640 * 480];
     let mut engine = K3dengine::new(640, 480);
-    apply_default_caps(&mut engine);
+    engine.clear_caps();
 
     const NUM: usize = 5;
     const RADIUS: f32 = 0.5;
@@ -824,7 +826,7 @@ fn capture_texture() {
     let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(800, 600));
     let mut zbuffer = vec![u32::MAX; 800 * 600];
     let mut engine = K3dengine::new(800, 600);
-    apply_default_caps(&mut engine);
+    engine.clear_caps();
     engine.camera.set_position(Point3::new(0.0, 2.0, 8.0));
     engine.camera.set_target(Point3::new(0.0, 0.0, 0.0));
 
@@ -980,7 +982,7 @@ fn gif_rotating_cube() {
     const H: u16 = 240;
     let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(W as u32, H as u32));
     let mut engine = K3dengine::new(W, H);
-    apply_default_caps(&mut engine);
+    engine.clear_caps();
     let mut zbuffer = vec![u32::MAX; W as usize * H as usize];
     let mut commands = CommandBuffer::<4096>::new();
     engine.camera.set_position(Point3::new(0.0, 1.0, 3.5));
@@ -1052,7 +1054,7 @@ fn gif_suzanne() {
     let mut zbuffer = vec![u32::MAX; W as usize * H as usize];
     let mut commands = CommandBuffer::<8192>::new();
     let mut engine = K3dengine::new(W, H);
-    apply_default_caps(&mut engine);
+    engine.clear_caps();
     engine.camera.set_position(Point3::new(0.0, 0.8, 8.0));
     engine.camera.set_target(Point3::new(0.0, -0.3, 0.0));
     let light_dir = Vector3::new(-0.35, 0.75, -0.85).normalize();
@@ -1095,7 +1097,7 @@ fn gif_bouncing_balls() {
     let mut zbuffer = vec![u32::MAX; W as usize * H as usize];
     let mut commands = CommandBuffer::<16384>::new();
     let mut engine = K3dengine::new(W, H);
-    apply_default_caps(&mut engine);
+    engine.clear_caps();
     engine.camera.set_position(Point3::new(0.0, 5.0, 7.0));
     engine.camera.set_target(Point3::new(0.0, 2.5, 0.0));
 
@@ -1215,7 +1217,7 @@ fn gif_newtons_cradle() {
     let mut zbuffer = vec![u32::MAX; W as usize * H as usize];
     let mut commands = CommandBuffer::<16384>::new();
     let mut engine = K3dengine::new(W, H);
-    apply_default_caps(&mut engine);
+    engine.clear_caps();
     engine.camera.set_position(Point3::new(0.0, 3.5, 11.0));
     engine.camera.set_target(Point3::new(0.0, 2.0, 0.0));
 
@@ -1362,7 +1364,7 @@ fn gif_cloth() {
     const H: u16 = 240;
     let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(W as u32, H as u32));
     let mut engine = K3dengine::new(W, H);
-    apply_default_caps(&mut engine);
+    engine.clear_caps();
     let mut zbuffer = vec![u32::MAX; W as usize * H as usize];
     let mut commands = CommandBuffer::<8192>::new();
     engine.camera.set_position(Point3::new(1.0, 3.5, 7.0));
@@ -1420,4 +1422,159 @@ fn gif_cloth() {
         frames.push(frame_rgb(&display));
     }
     save_gif(&mut frames, W, H, "assets/gif_cloth.gif", 4);
+}
+
+// ── Benchmark: measure frame times for key scenarios ─────────────────────────
+
+fn bench_scene<F: FnMut()>(label: &str, iters: u32, mut f: F) -> (f64, f64, f64) {
+    // warm up
+    for _ in 0..5 {
+        f();
+    }
+    let mut times = Vec::with_capacity(iters as usize);
+    for _ in 0..iters {
+        let t = Instant::now();
+        f();
+        times.push(t.elapsed().as_secs_f64() * 1000.0);
+    }
+    times.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let min = times[0];
+    let max = *times.last().unwrap();
+    let avg = times.iter().sum::<f64>() / times.len() as f64;
+    let p50 = times[times.len() / 2];
+    println!("  {label:<40} min={min:.3}ms  p50={p50:.3}ms  avg={avg:.3}ms  max={max:.3}ms");
+    (min, avg, max)
+}
+
+fn benchmark() {
+    const W: usize = 320;
+    const H: usize = 240;
+    const ITERS: u32 = 200;
+
+    let profile = if cfg!(debug_assertions) { "debug" } else { "release" };
+    println!("\n── Performance benchmark ({}×{}, {} iters, profile={}) ──", W, H, ITERS, profile);
+
+    // --- Scene A: wireframe cube ---
+    {
+        let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(W as u32, H as u32));
+        let mut zbuffer = vec![u32::MAX; W * H];
+        let mut commands = CommandBuffer::<4096>::new();
+        let mut engine = K3dengine::new(W as u16, H as u16);
+        engine.clear_caps();
+        engine.camera.set_position(Point3::new(0.0, 1.0, 3.5));
+        engine.camera.set_target(Point3::new(0.0, 0.0, 0.0));
+
+        let vertices: &[[f32; 3]] = &[
+            [-1.0, -1.0, 1.0], [1.0, -1.0, 1.0], [1.0, 1.0, 1.0], [-1.0, 1.0, 1.0],
+            [-1.0, -1.0, -1.0], [1.0, -1.0, -1.0], [1.0, 1.0, -1.0], [-1.0, 1.0, -1.0],
+        ];
+        let faces: &[[usize; 3]] = &[
+            [0,1,2],[0,2,3],[5,4,7],[5,7,6],[3,2,6],[3,6,7],
+            [4,5,1],[4,1,0],[1,5,6],[1,6,2],[4,0,3],[4,3,7],
+        ];
+        let geom = Geometry { vertices, faces, colors: &[], lines: &[], normals: &[], vertex_normals: &[], uvs: &[], texture_id: None };
+        let mut cube = K3dMesh::new(geom);
+        cube.set_render_mode(RenderMode::Lines);
+        cube.set_color(Rgb565::CSS_CYAN);
+
+        let mut yaw = 0.0f32;
+        bench_scene("wireframe cube (record+execute)", ITERS, || {
+            yaw += 0.05;
+            cube.set_attitude(0.3, yaw, 0.1);
+            display.clear(Rgb565::BLACK).unwrap();
+            zbuffer.fill(u32::MAX);
+            engine.record(std::iter::once(&cube), &mut commands, None).unwrap();
+            let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: W, height: H };
+            engine.execute::<_, 4096>(&mut display, &mut frame, &commands, None).unwrap();
+        });
+    }
+
+    // --- Scene B: Blinn-Phong Suzanne ---
+    {
+        let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(W as u32, H as u32));
+        let mut zbuffer = vec![u32::MAX; W * H];
+        let mut commands = CommandBuffer::<8192>::new();
+        let mut engine = K3dengine::new(W as u16, H as u16);
+        engine.clear_caps();
+        engine.camera.set_position(Point3::new(0.0, 0.8, 8.0));
+        engine.camera.set_target(Point3::new(0.0, -0.3, 0.0));
+        let light_dir = Vector3::new(-0.35, 0.75, -0.85).normalize();
+
+        let mut yaw = 0.0f32;
+        bench_scene("Blinn-Phong Suzanne (record+execute)", ITERS, || {
+            yaw += 0.05;
+            let mut suzanne = K3dMesh::new(embed_stl!("examples/3d_models/Suzanne.stl"));
+            suzanne.set_color(Rgb565::new(26, 30, 4));
+            suzanne.set_scale(2.8);
+            suzanne.set_position(0.0, 0.0, 0.0);
+            suzanne.set_attitude(-PI / 2.0, yaw, 0.0);
+            suzanne.set_render_mode(RenderMode::BlinnPhong { light_dir, specular_intensity: 1.5, shininess: 56.0 });
+            display.clear(Rgb565::BLACK).unwrap();
+            zbuffer.fill(u32::MAX);
+            engine.record(std::iter::once(&suzanne), &mut commands, None).unwrap();
+            let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: W, height: H };
+            engine.execute::<_, 8192>(&mut display, &mut frame, &commands, None).unwrap();
+        });
+    }
+
+    // --- Scene C: physics + 5 balls ---
+    {
+        let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(W as u32, H as u32));
+        let mut zbuffer = vec![u32::MAX; W * H];
+        let mut commands = CommandBuffer::<16384>::new();
+        let mut engine = K3dengine::new(W as u16, H as u16);
+        engine.clear_caps();
+        engine.camera.set_position(Point3::new(0.0, 5.0, 7.0));
+        engine.camera.set_target(Point3::new(0.0, 2.5, 0.0));
+
+        let (sv, sf, sn) = make_uv_sphere(10, 16);
+        const NUM: usize = 5;
+        const R: f32 = 0.7;
+        let mut physics = PhysicsWorld::<16, 8>::new();
+        physics.set_gravity(Vector3::new(0.0, -9.81, 0.0));
+        let spacing = 2.0f32;
+        let start_x = -(NUM as f32 - 1.0) * spacing * 0.5;
+        let colors = [Rgb565::CSS_RED, Rgb565::CSS_ORANGE, Rgb565::CSS_YELLOW, Rgb565::CSS_GREEN, Rgb565::CSS_BLUE];
+        let mut ball_ids = Vec::new();
+        let mut meshes: Vec<K3dMesh> = Vec::new();
+        for i in 0..NUM {
+            let x = start_x + i as f32 * spacing;
+            let ball = RigidBody::new(1.0)
+                .with_position(Vector3::new(x, 5.0 + i as f32 * 0.8, 0.0))
+                .with_collider(Collider::Sphere { radius: R })
+                .with_restitution(0.8).with_friction(0.3).with_damping(0.01)
+                .with_inertia_sphere(R).with_angular_damping(0.02);
+            ball_ids.push(physics.add_body(ball).unwrap());
+            let geom = Geometry { vertices: &sv, faces: &sf, colors: &[], lines: &[], normals: &sn, vertex_normals: &[], uvs: &[], texture_id: None };
+            let mut m = K3dMesh::new(geom);
+            m.set_render_mode(RenderMode::SolidLightDir(Vector3::new(0.5, 1.0, 0.3)));
+            m.set_color(colors[i]);
+            meshes.push(m);
+        }
+        physics.add_body(RigidBody::new_static().with_position(Vector3::new(0.0, -0.1, 0.0)).with_collider(Collider::Aabb { half_extents: Vector3::new(15.0, 0.1, 10.0) }).with_restitution(1.0)).unwrap();
+
+        let fv: &[[f32; 3]] = &[[-12.0,0.0,5.0],[12.0,0.0,5.0],[12.0,0.0,-5.0],[-12.0,0.0,-5.0]];
+        let ff: &[[usize; 3]] = &[[0,1,2],[0,2,3]];
+        let fn_: &[[f32; 3]] = &[[0.0,1.0,0.0],[0.0,1.0,0.0]];
+        let fgeom = Geometry { vertices: fv, faces: ff, colors: &[], lines: &[], normals: fn_, vertex_normals: &[], uvs: &[], texture_id: None };
+        let mut floor = K3dMesh::new(fgeom);
+        floor.set_render_mode(RenderMode::SolidLightDir(Vector3::new(0.5, 1.0, 0.3)));
+        floor.set_color(Rgb565::new(8, 16, 8));
+
+        let dt = 1.0f32 / 60.0;
+        bench_scene("physics 5 balls + render (record+execute)", ITERS, || {
+            physics.step_fixed::<16>(dt, 4);
+            for (i, &id) in ball_ids.iter().enumerate() {
+                sync_body_to_mesh(physics.body(id).unwrap(), &mut meshes[i]);
+            }
+            display.clear(Rgb565::BLACK).unwrap();
+            zbuffer.fill(u32::MAX);
+            let all: Vec<&K3dMesh> = meshes.iter().chain(std::iter::once(&floor)).collect();
+            engine.record(all.iter().copied(), &mut commands, None).unwrap();
+            let mut frame = FrameCtx { zbuffer: &mut zbuffer, width: W, height: H };
+            engine.execute::<_, 16384>(&mut display, &mut frame, &commands, None).unwrap();
+        });
+    }
+
+    println!("── end benchmark ──\n");
 }

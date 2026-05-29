@@ -5,6 +5,8 @@ pub struct RecordTelemetry {
     pub unique_textures: usize,
     pub draw_commands: usize,
     pub fallback_used: bool,
+    pub degradation_steps_applied: usize,
+    pub dropped_meshes: usize,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

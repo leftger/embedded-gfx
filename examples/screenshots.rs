@@ -8,11 +8,11 @@ use std::fs::File;
 
 use embedded_3dgfx::DrawPrimitive;
 use embedded_3dgfx::K3dengine;
-use embedded_3dgfx::config::apply_default_caps;
 use embedded_3dgfx::command_buffer::CommandBuffer;
+use embedded_3dgfx::config::apply_default_caps;
 use embedded_3dgfx::draw::{
-    draw_zbuffered, draw_zbuffered_with_effects, draw_zbuffered_with_textures,
-    DitherConfig, FogConfig,
+    DitherConfig, FogConfig, draw_zbuffered, draw_zbuffered_with_effects,
+    draw_zbuffered_with_textures,
 };
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
 use embedded_3dgfx::physics::{Collider, PhysicsWorld, RigidBody, sync_body_to_mesh};
@@ -32,7 +32,6 @@ fn save(display: &SimulatorDisplay<Rgb565>, path: &str) {
         .unwrap();
     println!("Saved {path}");
 }
-
 
 fn frame_rgb(display: &SimulatorDisplay<Rgb565>) -> Vec<u8> {
     let settings = OutputSettingsBuilder::new().scale(1).build();
@@ -132,7 +131,6 @@ fn capture_wireframe_cube() {
         .unwrap();
     engine
         .execute_recorded_frame::<_, 4096>(&mut display, &mut zbuffer, W, H, &commands)
-
         .unwrap();
 
     save(&display, "assets/screenshot_wireframe.png");
@@ -177,7 +175,6 @@ fn capture_blinn_phong() {
         .unwrap();
     engine
         .execute_recorded_frame::<_, 8192>(&mut display, &mut zbuffer, 800, 600, &commands)
-
         .unwrap();
 
     save(&display, "assets/screenshot_blinnphong.png");
@@ -293,7 +290,9 @@ fn capture_physics() {
 
         let ball = RigidBody::new(1.0)
             .with_position(Vector3::new(x, height, 0.0))
-            .with_collider(Collider::Sphere { radius: BALL_RADIUS })
+            .with_collider(Collider::Sphere {
+                radius: BALL_RADIUS,
+            })
             .with_restitution(restitutions[i])
             .with_friction(0.3)
             .with_damping(0.01)
@@ -373,7 +372,6 @@ fn capture_physics() {
         .unwrap();
     engine
         .execute_recorded_frame::<_, 16384>(&mut display, &mut zbuffer, 640, 480, &commands)
-
         .unwrap();
 
     save(&display, "assets/screenshot_physics.png");
@@ -396,8 +394,7 @@ fn capture_cloth() {
     let cloth_w = 8usize;
     let cloth_h = 8usize;
 
-    let mut cloth =
-        SoftBody::<64, 256>::create_cloth(cloth_w, cloth_h, 0.45, 180.0, 1.2).unwrap();
+    let mut cloth = SoftBody::<64, 256>::create_cloth(cloth_w, cloth_h, 0.45, 180.0, 1.2).unwrap();
 
     // Raise the cloth so it hangs into frame after simulation
     for p in cloth.particles.iter_mut() {
@@ -449,7 +446,6 @@ fn capture_cloth() {
         .unwrap();
     engine
         .execute_recorded_frame::<_, 8192>(&mut display, &mut zbuffer, 640, 480, &commands)
-
         .unwrap();
 
     save(&display, "assets/screenshot_cloth.png");
@@ -472,8 +468,14 @@ fn capture_gouraud() {
         [1.0, -1.0, -1.0],
         [-1.0, -1.0, -1.0],
     ];
-    let pyramid_faces: &[[usize; 3]] =
-        &[[0, 1, 2], [0, 2, 3], [0, 3, 4], [0, 4, 1], [1, 4, 3], [1, 3, 2]];
+    let pyramid_faces: &[[usize; 3]] = &[
+        [0, 1, 2],
+        [0, 2, 3],
+        [0, 3, 4],
+        [0, 4, 1],
+        [1, 4, 3],
+        [1, 3, 2],
+    ];
     let pyramid_colors = [
         Rgb565::CSS_WHITE,
         Rgb565::CSS_RED,
@@ -507,12 +509,18 @@ fn capture_gouraud() {
         [-1.0, 1.0, 1.0],
     ];
     let cube_faces: &[[usize; 3]] = &[
-        [0, 1, 2], [0, 2, 3],
-        [1, 5, 6], [1, 6, 2],
-        [5, 4, 7], [5, 7, 6],
-        [4, 0, 3], [4, 3, 7],
-        [3, 2, 6], [3, 6, 7],
-        [4, 5, 1], [4, 1, 0],
+        [0, 1, 2],
+        [0, 2, 3],
+        [1, 5, 6],
+        [1, 6, 2],
+        [5, 4, 7],
+        [5, 7, 6],
+        [4, 0, 3],
+        [4, 3, 7],
+        [3, 2, 6],
+        [3, 6, 7],
+        [4, 5, 1],
+        [4, 1, 0],
     ];
     let cube_colors = [
         Rgb565::new(0, 0, 10),
@@ -545,11 +553,17 @@ fn capture_gouraud() {
         let dist = (mesh.get_position() - engine.camera.position).norm();
         let geom = mesh.select_lod(dist);
         for face in geom.faces {
-            if let Some([p1, p2, p3]) =
-                engine.transform_points(face, geom.vertices, engine.camera.vp_matrix * mesh.model_matrix)
-            {
+            if let Some([p1, p2, p3]) = engine.transform_points(
+                face,
+                geom.vertices,
+                engine.camera.vp_matrix * mesh.model_matrix,
+            ) {
                 let colors = if !geom.colors.is_empty() {
-                    [geom.colors[face[0]], geom.colors[face[1]], geom.colors[face[2]]]
+                    [
+                        geom.colors[face[0]],
+                        geom.colors[face[1]],
+                        geom.colors[face[2]],
+                    ]
                 } else {
                     [mesh.color; 3]
                 };
@@ -581,18 +595,38 @@ fn capture_fog_dither() {
     engine.camera.set_target(Point3::new(0.0, 0.0, 0.0));
 
     let cube_vertices: &[[f32; 3]] = &[
-        [-1.0, -1.0, -1.0], [1.0, -1.0, -1.0], [1.0, 1.0, -1.0], [-1.0, 1.0, -1.0],
-        [-1.0, -1.0, 1.0],  [1.0, -1.0, 1.0],  [1.0, 1.0, 1.0],  [-1.0, 1.0, 1.0],
+        [-1.0, -1.0, -1.0],
+        [1.0, -1.0, -1.0],
+        [1.0, 1.0, -1.0],
+        [-1.0, 1.0, -1.0],
+        [-1.0, -1.0, 1.0],
+        [1.0, -1.0, 1.0],
+        [1.0, 1.0, 1.0],
+        [-1.0, 1.0, 1.0],
     ];
     let cube_faces: &[[usize; 3]] = &[
-        [0, 1, 2], [0, 2, 3], [1, 5, 6], [1, 6, 2],
-        [5, 4, 7], [5, 7, 6], [4, 0, 3], [4, 3, 7],
-        [3, 2, 6], [3, 6, 7], [4, 5, 1], [4, 1, 0],
+        [0, 1, 2],
+        [0, 2, 3],
+        [1, 5, 6],
+        [1, 6, 2],
+        [5, 4, 7],
+        [5, 7, 6],
+        [4, 0, 3],
+        [4, 3, 7],
+        [3, 2, 6],
+        [3, 6, 7],
+        [4, 5, 1],
+        [4, 1, 0],
     ];
     let cube_colors = [
-        Rgb565::new(0, 0, 10),  Rgb565::new(31, 0, 0),  Rgb565::new(31, 63, 0),
-        Rgb565::new(0, 63, 0),  Rgb565::new(0, 0, 31),  Rgb565::new(31, 0, 31),
-        Rgb565::CSS_WHITE,      Rgb565::new(0, 63, 31),
+        Rgb565::new(0, 0, 10),
+        Rgb565::new(31, 0, 0),
+        Rgb565::new(31, 63, 0),
+        Rgb565::new(0, 63, 0),
+        Rgb565::new(0, 0, 31),
+        Rgb565::new(31, 0, 31),
+        Rgb565::CSS_WHITE,
+        Rgb565::new(0, 63, 31),
     ];
     let base_geom = Geometry {
         vertices: cube_vertices,
@@ -629,11 +663,17 @@ fn capture_fog_dither() {
         let dist = (mesh.get_position() - engine.camera.position).norm();
         let geom = mesh.select_lod(dist);
         for face in geom.faces {
-            if let Some([p1, p2, p3]) =
-                engine.transform_points(face, geom.vertices, engine.camera.vp_matrix * mesh.model_matrix)
-            {
+            if let Some([p1, p2, p3]) = engine.transform_points(
+                face,
+                geom.vertices,
+                engine.camera.vp_matrix * mesh.model_matrix,
+            ) {
                 let colors = if !geom.colors.is_empty() {
-                    [geom.colors[face[0]], geom.colors[face[1]], geom.colors[face[2]]]
+                    [
+                        geom.colors[face[0]],
+                        geom.colors[face[1]],
+                        geom.colors[face[2]],
+                    ]
                 } else {
                     [mesh.color; 3]
                 };
@@ -767,7 +807,6 @@ fn capture_newtons_cradle() {
         .unwrap();
     engine
         .execute_recorded_frame::<_, 16384>(&mut display, &mut zbuffer, 640, 480, &commands)
-
         .unwrap();
 
     save(&display, "assets/screenshot_newtons_cradle.png");
@@ -792,7 +831,11 @@ fn capture_texture() {
         while i < 64 {
             let x = i % 8;
             let y = i / 8;
-            d[i] = if (x + y) % 2 == 0 { Rgb565::new(0, 0, 0) } else { Rgb565::new(31, 63, 31) };
+            d[i] = if (x + y) % 2 == 0 {
+                Rgb565::new(0, 0, 0)
+            } else {
+                Rgb565::new(31, 63, 31)
+            };
             i += 1;
         }
         d
@@ -828,22 +871,50 @@ fn capture_texture() {
 
     // Cube geometry ────────────────────────────────────────────────────────────
     let cv: &[[f32; 3]] = &[
-        [-1.0, -1.0, -1.0], [1.0, -1.0, -1.0], [1.0, 1.0, -1.0], [-1.0, 1.0, -1.0],
-        [-1.0, -1.0,  1.0], [1.0, -1.0,  1.0], [1.0, 1.0,  1.0], [-1.0, 1.0,  1.0],
+        [-1.0, -1.0, -1.0],
+        [1.0, -1.0, -1.0],
+        [1.0, 1.0, -1.0],
+        [-1.0, 1.0, -1.0],
+        [-1.0, -1.0, 1.0],
+        [1.0, -1.0, 1.0],
+        [1.0, 1.0, 1.0],
+        [-1.0, 1.0, 1.0],
     ];
     let cf: &[[usize; 3]] = &[
-        [0,1,2],[0,2,3], [1,5,6],[1,6,2], [5,4,7],[5,7,6],
-        [4,0,3],[4,3,7], [3,2,6],[3,6,7], [4,5,1],[4,1,0],
+        [0, 1, 2],
+        [0, 2, 3],
+        [1, 5, 6],
+        [1, 6, 2],
+        [5, 4, 7],
+        [5, 7, 6],
+        [4, 0, 3],
+        [4, 3, 7],
+        [3, 2, 6],
+        [3, 6, 7],
+        [4, 5, 1],
+        [4, 1, 0],
     ];
     let cu: &[[f32; 2]] = &[
-        [0.0,0.0],[1.0,0.0],[1.0,1.0],[0.0,1.0],
-        [0.0,0.0],[1.0,0.0],[1.0,1.0],[0.0,1.0],
+        [0.0, 0.0],
+        [1.0, 0.0],
+        [1.0, 1.0],
+        [0.0, 1.0],
+        [0.0, 0.0],
+        [1.0, 0.0],
+        [1.0, 1.0],
+        [0.0, 1.0],
     ];
 
     let make_cube = |tex_id, pos: (f32, f32, f32), att: (f32, f32, f32)| {
         let geom = Geometry {
-            vertices: cv, faces: cf, colors: &[], lines: &[],
-            normals: &[], vertex_normals: &[], uvs: cu, texture_id: Some(tex_id),
+            vertices: cv,
+            faces: cf,
+            colors: &[],
+            lines: &[],
+            normals: &[],
+            vertex_normals: &[],
+            uvs: cu,
+            texture_id: Some(tex_id),
         };
         let mut m = K3dMesh::new(geom);
         m.set_position(pos.0, pos.1, pos.2);
@@ -853,9 +924,9 @@ fn capture_texture() {
     };
 
     let cubes = [
-        make_cube(id_cb,   (-3.0, 0.0, 0.0), (0.5,  1.0, 0.3)),
-        make_cube(id_brick, (0.0, 0.0, 0.0), (0.8,  0.6, 0.2)),
-        make_cube(id_grad,  (3.0, 0.0, 0.0), (0.3,  0.9, 0.5)),
+        make_cube(id_cb, (-3.0, 0.0, 0.0), (0.5, 1.0, 0.3)),
+        make_cube(id_brick, (0.0, 0.0, 0.0), (0.8, 0.6, 0.2)),
+        make_cube(id_grad, (3.0, 0.0, 0.0), (0.3, 0.9, 0.5)),
     ];
 
     display.clear(Rgb565::new(5, 10, 15)).unwrap();
@@ -865,9 +936,11 @@ fn capture_texture() {
         let dist = (mesh.get_position() - engine.camera.position).norm();
         let geom = mesh.select_lod(dist);
         for face in geom.faces {
-            if let Some([p1, p2, p3]) =
-                engine.transform_points(face, geom.vertices, engine.camera.vp_matrix * mesh.model_matrix)
-            {
+            if let Some([p1, p2, p3]) = engine.transform_points(
+                face,
+                geom.vertices,
+                engine.camera.vp_matrix * mesh.model_matrix,
+            ) {
                 if let Some(tid) = geom.texture_id {
                     if !geom.uvs.is_empty() {
                         let uvs = [geom.uvs[face[0]], geom.uvs[face[1]], geom.uvs[face[2]]];
@@ -908,14 +981,39 @@ fn gif_rotating_cube() {
     engine.camera.set_target(Point3::new(0.0, 0.0, 0.0));
 
     let vertices: &[[f32; 3]] = &[
-        [-1.0, -1.0, 1.0], [1.0, -1.0, 1.0], [1.0, 1.0, 1.0], [-1.0, 1.0, 1.0],
-        [-1.0, -1.0,-1.0], [1.0, -1.0,-1.0], [1.0, 1.0,-1.0], [-1.0, 1.0,-1.0],
+        [-1.0, -1.0, 1.0],
+        [1.0, -1.0, 1.0],
+        [1.0, 1.0, 1.0],
+        [-1.0, 1.0, 1.0],
+        [-1.0, -1.0, -1.0],
+        [1.0, -1.0, -1.0],
+        [1.0, 1.0, -1.0],
+        [-1.0, 1.0, -1.0],
     ];
     let faces: &[[usize; 3]] = &[
-        [0,1,2],[0,2,3],[5,4,7],[5,7,6],[3,2,6],[3,6,7],
-        [4,5,1],[4,1,0],[1,5,6],[1,6,2],[4,0,3],[4,3,7],
+        [0, 1, 2],
+        [0, 2, 3],
+        [5, 4, 7],
+        [5, 7, 6],
+        [3, 2, 6],
+        [3, 6, 7],
+        [4, 5, 1],
+        [4, 1, 0],
+        [1, 5, 6],
+        [1, 6, 2],
+        [4, 0, 3],
+        [4, 3, 7],
     ];
-    let geom = Geometry { vertices, faces, colors: &[], lines: &[], normals: &[], vertex_normals: &[], uvs: &[], texture_id: None };
+    let geom = Geometry {
+        vertices,
+        faces,
+        colors: &[],
+        lines: &[],
+        normals: &[],
+        vertex_normals: &[],
+        uvs: &[],
+        texture_id: None,
+    };
     let mut cube = K3dMesh::new(geom);
     cube.set_render_mode(RenderMode::Lines);
     cube.set_color(Rgb565::CSS_CYAN);
@@ -931,8 +1029,13 @@ fn gif_rotating_cube() {
             .record_render_commands(std::iter::once(&cube), &mut commands)
             .unwrap();
         engine
-            .execute_recorded_frame::<_, 4096>(&mut display, &mut zbuffer, W as usize, H as usize, &commands)
-
+            .execute_recorded_frame::<_, 4096>(
+                &mut display,
+                &mut zbuffer,
+                W as usize,
+                H as usize,
+                &commands,
+            )
             .unwrap();
         frames.push(frame_rgb(&display));
     }
@@ -962,7 +1065,11 @@ fn gif_suzanne() {
         suzanne.set_scale(2.8);
         suzanne.set_position(0.0, 0.0, 0.0);
         suzanne.set_attitude(-PI / 2.0, yaw, 0.0);
-        suzanne.set_render_mode(RenderMode::BlinnPhong { light_dir, specular_intensity: 1.5, shininess: 56.0 });
+        suzanne.set_render_mode(RenderMode::BlinnPhong {
+            light_dir,
+            specular_intensity: 1.5,
+            shininess: 56.0,
+        });
 
         display.clear(Rgb565::BLACK).unwrap();
         zbuffer.fill(u32::MAX);
@@ -970,8 +1077,13 @@ fn gif_suzanne() {
             .record_render_commands(std::iter::once(&suzanne), &mut commands)
             .unwrap();
         engine
-            .execute_recorded_frame::<_, 8192>(&mut display, &mut zbuffer, W as usize, H as usize, &commands)
-
+            .execute_recorded_frame::<_, 8192>(
+                &mut display,
+                &mut zbuffer,
+                W as usize,
+                H as usize,
+                &commands,
+            )
             .unwrap();
         frames.push(frame_rgb(&display));
     }
@@ -999,7 +1111,13 @@ fn gif_bouncing_balls() {
     physics.set_gravity(Vector3::new(0.0, -9.81, 0.0));
 
     let restitutions = [0.95f32, 0.75, 0.50, 0.25, 0.05];
-    let colors = [Rgb565::CSS_RED, Rgb565::CSS_ORANGE, Rgb565::CSS_YELLOW, Rgb565::CSS_GREEN, Rgb565::CSS_BLUE];
+    let colors = [
+        Rgb565::CSS_RED,
+        Rgb565::CSS_ORANGE,
+        Rgb565::CSS_YELLOW,
+        Rgb565::CSS_GREEN,
+        Rgb565::CSS_BLUE,
+    ];
     let spacing = 2.0f32;
     let start_x = -(NUM_BALLS as f32 - 1.0) * spacing * 0.5;
 
@@ -1010,32 +1128,61 @@ fn gif_bouncing_balls() {
         let height = 5.0 + i as f32 * 0.8;
         let ball = RigidBody::new(1.0)
             .with_position(Vector3::new(x, height, 0.0))
-            .with_collider(Collider::Sphere { radius: BALL_RADIUS })
+            .with_collider(Collider::Sphere {
+                radius: BALL_RADIUS,
+            })
             .with_restitution(restitutions[i])
             .with_friction(0.3)
             .with_damping(0.01)
             .with_inertia_sphere(BALL_RADIUS)
             .with_angular_damping(0.02);
         ball_ids.push(physics.add_body(ball).unwrap());
-        let geom = Geometry { vertices: &sv, faces: &sf, colors: &[], lines: &[], normals: &sn, vertex_normals: &[], uvs: &[], texture_id: None };
+        let geom = Geometry {
+            vertices: &sv,
+            faces: &sf,
+            colors: &[],
+            lines: &[],
+            normals: &sn,
+            vertex_normals: &[],
+            uvs: &[],
+            texture_id: None,
+        };
         let mut m = K3dMesh::new(geom);
         m.set_render_mode(RenderMode::SolidLightDir(Vector3::new(0.5, 1.0, 0.3)));
         m.set_color(colors[i]);
         m.set_position(x, height, 0.0);
         meshes.push(m);
     }
-    physics.add_body(
-        RigidBody::new_static()
-            .with_position(Vector3::new(0.0, -0.1, 0.0))
-            .with_collider(Collider::Aabb { half_extents: Vector3::new(15.0, 0.1, 10.0) })
-            .with_restitution(1.0)
-            .with_friction(0.5),
-    ).unwrap();
+    physics
+        .add_body(
+            RigidBody::new_static()
+                .with_position(Vector3::new(0.0, -0.1, 0.0))
+                .with_collider(Collider::Aabb {
+                    half_extents: Vector3::new(15.0, 0.1, 10.0),
+                })
+                .with_restitution(1.0)
+                .with_friction(0.5),
+        )
+        .unwrap();
 
-    let fv: &[[f32; 3]] = &[[-12.0,0.0,5.0],[12.0,0.0,5.0],[12.0,0.0,-5.0],[-12.0,0.0,-5.0]];
-    let ff: &[[usize; 3]] = &[[0,1,2],[0,2,3]];
-    let fn_: &[[f32; 3]] = &[[0.0,1.0,0.0],[0.0,1.0,0.0]];
-    let fgeom = Geometry { vertices: fv, faces: ff, colors: &[], lines: &[], normals: fn_, vertex_normals: &[], uvs: &[], texture_id: None };
+    let fv: &[[f32; 3]] = &[
+        [-12.0, 0.0, 5.0],
+        [12.0, 0.0, 5.0],
+        [12.0, 0.0, -5.0],
+        [-12.0, 0.0, -5.0],
+    ];
+    let ff: &[[usize; 3]] = &[[0, 1, 2], [0, 2, 3]];
+    let fn_: &[[f32; 3]] = &[[0.0, 1.0, 0.0], [0.0, 1.0, 0.0]];
+    let fgeom = Geometry {
+        vertices: fv,
+        faces: ff,
+        colors: &[],
+        lines: &[],
+        normals: fn_,
+        vertex_normals: &[],
+        uvs: &[],
+        texture_id: None,
+    };
     let mut floor = K3dMesh::new(fgeom);
     floor.set_render_mode(RenderMode::SolidLightDir(Vector3::new(0.5, 1.0, 0.3)));
     floor.set_color(Rgb565::new(8, 16, 8));
@@ -1055,8 +1202,13 @@ fn gif_bouncing_balls() {
             .record_render_commands(all.iter().copied(), &mut commands)
             .unwrap();
         engine
-            .execute_recorded_frame::<_, 16384>(&mut display, &mut zbuffer, W as usize, H as usize, &commands)
-
+            .execute_recorded_frame::<_, 16384>(
+                &mut display,
+                &mut zbuffer,
+                W as usize,
+                H as usize,
+                &commands,
+            )
             .unwrap();
         frames.push(frame_rgb(&display));
     }
@@ -1084,8 +1236,11 @@ fn gif_newtons_cradle() {
 
     let (sv, sf, sn) = make_uv_sphere(10, 16);
     let colors = [
-        Rgb565::CSS_RED, Rgb565::CSS_ORANGE, Rgb565::CSS_YELLOW,
-        Rgb565::CSS_GREEN, Rgb565::CSS_CYAN,
+        Rgb565::CSS_RED,
+        Rgb565::CSS_ORANGE,
+        Rgb565::CSS_YELLOW,
+        Rgb565::CSS_GREEN,
+        Rgb565::CSS_CYAN,
     ];
     let light = Vector3::new(0.5, 1.0, 0.3);
 
@@ -1118,12 +1273,24 @@ fn gif_newtons_cradle() {
         sphere_ids.push(sphere_id);
 
         physics
-            .add_distance_constraint(anchor_id, Vector3::zeros(), sphere_id, Vector3::zeros(), 0.0)
+            .add_distance_constraint(
+                anchor_id,
+                Vector3::zeros(),
+                sphere_id,
+                Vector3::zeros(),
+                0.0,
+            )
             .unwrap();
 
         let geom = Geometry {
-            vertices: &sv, faces: &sf, colors: &[], lines: &[],
-            normals: &sn, vertex_normals: &[], uvs: &[], texture_id: None,
+            vertices: &sv,
+            faces: &sf,
+            colors: &[],
+            lines: &[],
+            normals: &sn,
+            vertex_normals: &[],
+            uvs: &[],
+            texture_id: None,
         };
         let mut m = K3dMesh::new(geom);
         m.set_render_mode(RenderMode::SolidLightDir(light));
@@ -1168,8 +1335,14 @@ fn gif_newtons_cradle() {
 
         // Draw strings and top bar
         let fgeom = Geometry {
-            vertices: &fverts, faces: &[], colors: &[], lines: &flines,
-            normals: &[], vertex_normals: &[], uvs: &[], texture_id: None,
+            vertices: &fverts,
+            faces: &[],
+            colors: &[],
+            lines: &flines,
+            normals: &[],
+            vertex_normals: &[],
+            uvs: &[],
+            texture_id: None,
         };
         let mut fmesh = K3dMesh::new(fgeom);
         fmesh.set_render_mode(RenderMode::Lines);
@@ -1181,8 +1354,13 @@ fn gif_newtons_cradle() {
             .record_render_commands(all_meshes.iter().copied(), &mut commands)
             .unwrap();
         engine
-            .execute_recorded_frame::<_, 16384>(&mut display, &mut zbuffer, W as usize, H as usize, &commands)
-
+            .execute_recorded_frame::<_, 16384>(
+                &mut display,
+                &mut zbuffer,
+                W as usize,
+                H as usize,
+                &commands,
+            )
             .unwrap();
 
         frames.push(frame_rgb(&display));
@@ -1231,7 +1409,16 @@ fn gif_cloth() {
     for _ in 0..total {
         cloth.step(0.016);
         cloth.get_vertex_positions(&mut verts);
-        let geom = Geometry { vertices: &verts, faces: &faces, colors: &[], lines: &[], normals: &[], vertex_normals: &[], uvs: &[], texture_id: None };
+        let geom = Geometry {
+            vertices: &verts,
+            faces: &faces,
+            colors: &[],
+            lines: &[],
+            normals: &[],
+            vertex_normals: &[],
+            uvs: &[],
+            texture_id: None,
+        };
         let mut mesh = K3dMesh::new(geom);
         mesh.set_render_mode(RenderMode::Lines);
         mesh.set_color(Rgb565::CSS_CYAN);
@@ -1241,8 +1428,13 @@ fn gif_cloth() {
             .record_render_commands(std::iter::once(&mesh), &mut commands)
             .unwrap();
         engine
-            .execute_recorded_frame::<_, 8192>(&mut display, &mut zbuffer, W as usize, H as usize, &commands)
-
+            .execute_recorded_frame::<_, 8192>(
+                &mut display,
+                &mut zbuffer,
+                W as usize,
+                H as usize,
+                &commands,
+            )
             .unwrap();
         frames.push(frame_rgb(&display));
     }

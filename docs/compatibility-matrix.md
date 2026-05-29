@@ -53,6 +53,19 @@ Legend:
 | Cortex-M3 balanced profile flow | Validated | `.github/workflows/rust.yml` (`profile-budget` matrix, `EMBEDDED_3DGFX_CAPS=m3`) | Explicit CI telemetry/budget validation path |
 | Cortex-M55 perf profile flow | Validated | `.github/workflows/rust.yml` (`profile-budget` matrix + `m55-perf-budget`) | Explicit CI telemetry/budget validation with profile-specific lane |
 
+## Operational Docs Coverage
+
+| Artifact | Status | Source | Notes |
+|---|---|---|---|
+| Backend integration checklist | Validated | `docs/backend-integration-checklist.md` | Board/backend bring-up steps and smoke criteria |
+| Memory sizing/tuning guide | Validated | `docs/memory-sizing-guide.md` | Buffer formulas, cap sizing, and pre-ship checklist |
+| no_std frame-path architecture | Validated | `docs/no-std-architecture.md` | Frame-path allocation boundaries and guard rails |
+| CI performance baseline policy | Validated | `docs/perf-baselines.md` | Telemetry thresholds, lanes, and update process |
+| Rendering performance evidence | Validated | `docs/rendering-performance-evidence.md` | Dirty-region/tile-bin evidence and buffering impact |
+| Hardware profiling guide | Validated | `docs/hardware-profiling.md` | DWT/RTT/ITM hook usage and board profiling flow |
+| Hardware smoke workflow guide | Validated | `docs/hardware-smoke-tests.md` | Self-hosted workflow, log markers, and artifact process |
+| Asset pipeline and streaming guide | Validated | `docs/asset-pipeline.md` | Offline conversion, chunk format, cooperative loader, and CI budget reporting |
+
 ## How to Extend This Matrix
 
 When adding a new backend/profile/board:

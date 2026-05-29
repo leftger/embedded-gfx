@@ -12,9 +12,9 @@
 
 use embedded_3dgfx::DrawPrimitive;
 use embedded_3dgfx::K3dengine;
-use embedded_3dgfx::config::apply_default_caps;
 use embedded_3dgfx::billboard::Billboard;
 use embedded_3dgfx::command_buffer::CommandBuffer;
+use embedded_3dgfx::config::apply_default_caps;
 use embedded_3dgfx::draw::draw_zbuffered_with_textures as draw_tex;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
 use embedded_3dgfx::texture::{Texture, TextureManager};
@@ -156,12 +156,12 @@ fn place_menu_items(items: &mut [K3dMesh<'static>], x: f32) {
     }
 }
 
-fn apply_billboard_from_sample(billboard: &mut Billboard, sample: &embedded_3dgfx::SampledTransform, size_mul: f32) {
-    billboard.position = Point3::new(
-        sample.position[0],
-        sample.position[1],
-        sample.position[2],
-    );
+fn apply_billboard_from_sample(
+    billboard: &mut Billboard,
+    sample: &embedded_3dgfx::SampledTransform,
+    size_mul: f32,
+) {
+    billboard.position = Point3::new(sample.position[0], sample.position[1], sample.position[2]);
     billboard.size = sample.scale * size_mul;
     // Yaw spins the textured quad in screen space (billboards ignore pitch/roll).
     billboard.rotation = sample.yaw;
@@ -244,8 +244,9 @@ fn render_scene(
                 .record_render_commands(menu_items.iter(), commands)
                 .unwrap();
             engine
-                .execute_recorded_frame::<_, 1024>(display, zbuffer, W as usize, H as usize, &commands)
-
+                .execute_recorded_frame::<_, 1024>(
+                    display, zbuffer, W as usize, H as usize, &commands,
+                )
                 .unwrap();
             render_textured_billboard(
                 engine,

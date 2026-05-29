@@ -191,6 +191,20 @@ For validated target/profile/backend coverage, see:
 
 - `docs/compatibility-matrix.md`
 
+For backend bring-up and deployment checklists, see:
+
+- `docs/backend-integration-checklist.md`
+- `docs/memory-sizing-guide.md`
+- `docs/no-std-architecture.md`
+
+For CI telemetry/perf baseline policy, see:
+
+- `docs/perf-baselines.md`
+- `docs/rendering-performance-evidence.md`
+- `docs/hardware-profiling.md`
+- `docs/hardware-smoke-tests.md`
+- `docs/asset-pipeline.md`
+
 ## System Requirements
 
 **Minimum:**

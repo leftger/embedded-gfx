@@ -1,4 +1,4 @@
-workspace = { members = ["load_stl"] }
+workspace = { members = ["load_stl", "asset_cli"] }
 [package]
 name = "embedded-3dgfx"
 version = "0.2.8"
@@ -43,6 +43,16 @@ aa-heuristic = ["aa"]
 aa-coverage = ["aa"]
 # Disable default embedded cap profile selection in examples/apps.
 desktop-unbounded = []
+# Enable triple-buffered swapchain APIs.
+triple-buffering = []
+# Use fixed-point screen-space projection path.
+fixed-transform = []
+# Enable DWT cycle-counter profiling hooks.
+dwt-profiler = []
+# Enable RTT trace sink markers (board-specific integration required).
+rtt-trace = []
+# Enable ITM trace sink markers (board-specific integration required).
+itm-trace = []
 
 [dependencies]
 embedded-graphics-core = "0.4.0"

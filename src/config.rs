@@ -1,6 +1,47 @@
 use crate::error::{BudgetKind, RenderError};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QualityTier {
+    Fastest,
+    Balanced,
+    Quality,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MaterialProfile {
+    Unlit,
+    Lambert,
+    SimpleSpecular,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RenderDefaults {
+    pub quality_tier: QualityTier,
+    pub material_profile: MaterialProfile,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DegradationStep {
+    RaisePriorityFloor(u8),
+    MeshDecimationStride(usize),
+    DowngradeQuality,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DegradationPolicy<'a> {
+    pub steps: &'a [DegradationStep],
+}
+
+impl Default for RenderDefaults {
+    fn default() -> Self {
+        Self {
+            quality_tier: QualityTier::Balanced,
+            material_profile: MaterialProfile::Lambert,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ProfileCaps {
     pub max_draw_primitives: usize,
     pub max_meshes_per_frame: usize,
@@ -18,12 +59,14 @@ impl ProfileCaps {
         height: usize,
     ) -> Result<(), RenderError> {
         if width > self.max_width || height > self.max_height {
-            return Err(RenderError::OutOfBudget(BudgetKind::FramebufferDimensions {
-                width,
-                height,
-                max_width: self.max_width,
-                max_height: self.max_height,
-            }));
+            return Err(RenderError::OutOfBudget(
+                BudgetKind::FramebufferDimensions {
+                    width,
+                    height,
+                    max_width: self.max_width,
+                    max_height: self.max_height,
+                },
+            ));
         }
         Ok(())
     }
@@ -91,6 +134,22 @@ pub const PROFILE_M55_PERF: ProfileCaps = ProfileCaps {
 
 pub const DEFAULT_PROFILE_CAPS: ProfileCaps = PROFILE_M33_BALANCED;
 
+pub fn render_defaults_for_profile(profile: ProfileCaps) -> RenderDefaults {
+    if profile.max_draw_primitives <= PROFILE_M3_BALANCED.max_draw_primitives {
+        return RenderDefaults {
+            quality_tier: QualityTier::Fastest,
+            material_profile: MaterialProfile::Unlit,
+        };
+    }
+    if profile.max_draw_primitives >= PROFILE_M55_PERF.max_draw_primitives {
+        return RenderDefaults {
+            quality_tier: QualityTier::Quality,
+            material_profile: MaterialProfile::SimpleSpecular,
+        };
+    }
+    RenderDefaults::default()
+}
+
 /// Resolve the runtime default cap profile.
 ///
 /// Priority:
@@ -124,7 +183,28 @@ pub fn default_profile_caps() -> Option<ProfileCaps> {
 pub fn apply_default_caps(engine: &mut crate::K3dengine) {
     if let Some(caps) = default_profile_caps() {
         engine.set_caps(caps);
+        engine.apply_render_defaults(render_defaults_for_profile(caps));
     } else {
         engine.clear_caps();
+        engine.apply_render_defaults(RenderDefaults::default());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_render_defaults_for_m3_prefers_fastest_unlit() {
+        let d = render_defaults_for_profile(PROFILE_M3_BALANCED);
+        assert_eq!(d.quality_tier, QualityTier::Fastest);
+        assert_eq!(d.material_profile, MaterialProfile::Unlit);
+    }
+
+    #[test]
+    fn test_render_defaults_for_m55_prefers_quality_specular() {
+        let d = render_defaults_for_profile(PROFILE_M55_PERF);
+        assert_eq!(d.quality_tier, QualityTier::Quality);
+        assert_eq!(d.material_profile, MaterialProfile::SimpleSpecular);
     }
 }

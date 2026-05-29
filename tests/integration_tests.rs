@@ -5,7 +5,7 @@ use embedded_3dgfx::K3dengine;
 use embedded_3dgfx::command_buffer::CommandBuffer;
 use embedded_3dgfx::config::ProfileCaps;
 use embedded_3dgfx::draw::draw;
-use embedded_3dgfx::error::{BudgetKind, RenderError};
+use embedded_3dgfx::error::{BudgetKind, RecoveryAction, RenderError};
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
 use embedded_3dgfx::telemetry::{ExecuteTelemetry, RecordTelemetry};
 use embedded_graphics_core::pixelcolor::Rgb565;
@@ -534,13 +534,7 @@ fn test_execute_recorded_frame_rejects_invalid_zbuffer_len() {
         .unwrap();
 
     let err = engine
-        .execute_recorded_frame::<_, 64>(
-            &mut fb,
-            &mut zbuffer,
-            640,
-            480,
-            &commands,
-        )
+        .execute_recorded_frame::<_, 64>(&mut fb, &mut zbuffer, 640, 480, &commands)
         .unwrap_err();
 
     assert!(matches!(
@@ -1118,11 +1112,7 @@ fn test_record_and_execute_telemetry_reports_counts() {
     let mut cmd = CommandBuffer::<64>::new();
     let mut rec = RecordTelemetry::default();
     engine
-        .record_render_commands_with_telemetry(
-            std::iter::once(&mesh),
-            &mut cmd,
-            Some(&mut rec),
-        )
+        .record_render_commands_with_telemetry(std::iter::once(&mesh), &mut cmd, Some(&mut rec))
         .unwrap();
     assert!(rec.meshes_total >= 1);
     assert!(rec.draw_commands >= 1);
@@ -1311,11 +1301,7 @@ fn test_ci_telemetry_snapshot_record_execute() {
     let mut cmd = CommandBuffer::<64>::new();
     let mut rec = RecordTelemetry::default();
     engine
-        .record_render_commands_with_telemetry(
-            std::iter::once(&mesh),
-            &mut cmd,
-            Some(&mut rec),
-        )
+        .record_render_commands_with_telemetry(std::iter::once(&mesh), &mut cmd, Some(&mut rec))
         .unwrap();
 
     let mut fb = TestFramebuffer::new(640, 480);
@@ -1367,11 +1353,7 @@ fn test_ci_telemetry_snapshot_lines_record_execute() {
     let mut cmd = CommandBuffer::<128>::new();
     let mut rec = RecordTelemetry::default();
     engine
-        .record_render_commands_with_telemetry(
-            std::iter::once(&mesh),
-            &mut cmd,
-            Some(&mut rec),
-        )
+        .record_render_commands_with_telemetry(std::iter::once(&mesh), &mut cmd, Some(&mut rec))
         .unwrap();
 
     let mut fb = TestFramebuffer::new(640, 480);
@@ -1539,4 +1521,258 @@ fn test_ci_telemetry_snapshot_failsoft_record_execute() {
     assert_eq!(exec.draw_commands, 1);
     assert!(rec.fallback_used);
     assert_eq!(primary_budget_key, "MeshesPerFrame");
+}
+
+#[test]
+fn test_execute_recorded_frame_reports_dirty_region() {
+    let engine = K3dengine::new(64, 64);
+    let vertices = [[0.0, 0.0, -5.0]];
+    let geometry = Geometry {
+        vertices: &vertices,
+        faces: &[],
+        colors: &[],
+        lines: &[],
+        normals: &[],
+        vertex_normals: &[],
+        uvs: &[],
+        texture_id: None,
+    };
+    let mut mesh = K3dMesh::new(geometry);
+    mesh.set_render_mode(RenderMode::Points);
+
+    let mut cmd = CommandBuffer::<32>::new();
+    engine
+        .record_render_commands(std::iter::once(&mesh), &mut cmd)
+        .unwrap();
+
+    let mut fb = TestFramebuffer::new(64, 64);
+    let mut zbuffer = vec![u32::MAX; 64 * 64];
+    let dirty = engine
+        .execute_recorded_frame_with_dirty_region::<_, 32>(&mut fb, &mut zbuffer, 64, 64, &cmd)
+        .unwrap();
+    assert!(dirty.is_some());
+}
+
+#[test]
+fn test_build_tile_bins_for_recorded_commands() {
+    let engine = K3dengine::new(64, 64);
+    let vertices = [[0.0, 0.0, -5.0], [0.2, 0.0, -5.0]];
+    let geometry = Geometry {
+        vertices: &vertices,
+        faces: &[],
+        colors: &[],
+        lines: &[],
+        normals: &[],
+        vertex_normals: &[],
+        uvs: &[],
+        texture_id: None,
+    };
+    let mut mesh = K3dMesh::new(geometry);
+    mesh.set_render_mode(RenderMode::Points);
+
+    let mut cmd = CommandBuffer::<64>::new();
+    engine
+        .record_render_commands(std::iter::once(&mesh), &mut cmd)
+        .unwrap();
+
+    let (_, stats) = engine
+        .build_tile_bins::<64, 64>(
+            &cmd,
+            embedded_3dgfx::tilebin::TileConfig {
+                tile_width: 16,
+                tile_height: 16,
+            },
+        )
+        .unwrap();
+    assert!(stats.draw_commands >= 1);
+    assert!(stats.bins_used >= 1);
+}
+
+#[test]
+fn test_tiled_execute_matches_non_tiled_pixel_count() {
+    let engine = K3dengine::new(96, 64);
+    let vertices = [[0.0, 0.0, -5.0], [0.3, 0.0, -5.0], [0.0, 0.3, -5.0]];
+    let faces = [[0, 1, 2]];
+    let geometry = Geometry {
+        vertices: &vertices,
+        faces: &faces,
+        colors: &[],
+        lines: &[],
+        normals: &[],
+        vertex_normals: &[],
+        uvs: &[],
+        texture_id: None,
+    };
+    let mut mesh = K3dMesh::new(geometry);
+    mesh.set_render_mode(RenderMode::Solid);
+    let mut cmd = CommandBuffer::<64>::new();
+    engine
+        .record_render_commands(std::iter::once(&mesh), &mut cmd)
+        .unwrap();
+
+    let mut fb_a = TestFramebuffer::new(96, 64);
+    let mut zb_a = vec![u32::MAX; 96 * 64];
+    engine
+        .execute_recorded_frame::<_, 64>(&mut fb_a, &mut zb_a, 96, 64, &cmd)
+        .unwrap();
+
+    let mut fb_b = TestFramebuffer::new(96, 64);
+    let mut zb_b = vec![u32::MAX; 96 * 64];
+    let stats = engine
+        .execute_recorded_frame_tiled::<_, 64, 64>(
+            &mut fb_b,
+            &mut zb_b,
+            96,
+            64,
+            &cmd,
+            embedded_3dgfx::tilebin::TileConfig {
+                tile_width: 16,
+                tile_height: 16,
+            },
+        )
+        .unwrap();
+
+    assert!(stats.bins_used >= 1);
+    assert_eq!(fb_a.pixel_count(), fb_b.pixel_count());
+}
+
+#[test]
+fn test_dirty_region_smaller_than_full_frame_for_small_scene() {
+    let engine = K3dengine::new(160, 120);
+    let vertices = [[0.0, 0.0, -5.0]];
+    let geometry = Geometry {
+        vertices: &vertices,
+        faces: &[],
+        colors: &[],
+        lines: &[],
+        normals: &[],
+        vertex_normals: &[],
+        uvs: &[],
+        texture_id: None,
+    };
+    let mut mesh = K3dMesh::new(geometry);
+    mesh.set_render_mode(RenderMode::Points);
+
+    let mut cmd = CommandBuffer::<32>::new();
+    engine
+        .record_render_commands(std::iter::once(&mesh), &mut cmd)
+        .unwrap();
+    let mut fb = TestFramebuffer::new(160, 120);
+    let mut zb = vec![u32::MAX; 160 * 120];
+    let dirty = engine
+        .execute_recorded_frame_with_dirty_region::<_, 32>(&mut fb, &mut zb, 160, 120, &cmd)
+        .unwrap()
+        .unwrap();
+
+    let dirty_area = dirty.width * dirty.height;
+    assert!(dirty_area < 160 * 120);
+}
+
+#[test]
+fn test_degradation_policy_uses_priority_floor() {
+    let mut engine = K3dengine::new(64, 64);
+    engine.set_caps(ProfileCaps {
+        max_draw_primitives: 128,
+        max_meshes_per_frame: 1,
+        max_textures: 4,
+        max_width: 64,
+        max_height: 64,
+        max_triangles_per_mesh: 128,
+        max_vertices_per_mesh: 128,
+    });
+
+    let va = [[0.0, 0.0, -5.0]];
+    let vb = [[0.2, 0.0, -5.0]];
+    let ga = Geometry {
+        vertices: &va,
+        faces: &[],
+        colors: &[],
+        lines: &[],
+        normals: &[],
+        vertex_normals: &[],
+        uvs: &[],
+        texture_id: None,
+    };
+    let gb = Geometry {
+        vertices: &vb,
+        faces: &[],
+        colors: &[],
+        lines: &[],
+        normals: &[],
+        vertex_normals: &[],
+        uvs: &[],
+        texture_id: None,
+    };
+    let mut ma = K3dMesh::new(ga);
+    ma.set_render_mode(RenderMode::Points);
+    ma.set_priority(255);
+    let mut mb = K3dMesh::new(gb);
+    mb.set_render_mode(RenderMode::Points);
+    mb.set_priority(10);
+    let meshes = [&ma, &mb];
+
+    let mut cmd = CommandBuffer::<64>::new();
+    let mut rec = RecordTelemetry::default();
+    let outcome = engine
+        .record_render_commands_with_degradation_policy(
+            &meshes,
+            &mut cmd,
+            embedded_3dgfx::config::DegradationPolicy {
+                steps: &[embedded_3dgfx::config::DegradationStep::RaisePriorityFloor(
+                    100,
+                )],
+            },
+            Some(&mut rec),
+        )
+        .unwrap();
+    assert!(outcome.used_degradation);
+    assert!(rec.degradation_steps_applied >= 1);
+    assert!(rec.dropped_meshes >= 1);
+}
+
+#[test]
+fn test_degradation_policy_returns_recoverable_when_exhausted() {
+    let mut engine = K3dengine::new(64, 64);
+    engine.set_caps(ProfileCaps {
+        max_draw_primitives: 0,
+        max_meshes_per_frame: 0,
+        max_textures: 0,
+        max_width: 64,
+        max_height: 64,
+        max_triangles_per_mesh: 0,
+        max_vertices_per_mesh: 0,
+    });
+
+    let v = [[0.0, 0.0, -5.0]];
+    let g = Geometry {
+        vertices: &v,
+        faces: &[],
+        colors: &[],
+        lines: &[],
+        normals: &[],
+        vertex_normals: &[],
+        uvs: &[],
+        texture_id: None,
+    };
+    let mut m = K3dMesh::new(g);
+    m.set_render_mode(RenderMode::Points);
+    let meshes = [&m];
+    let mut cmd = CommandBuffer::<64>::new();
+    let err = engine
+        .record_render_commands_with_degradation_policy(
+            &meshes,
+            &mut cmd,
+            embedded_3dgfx::config::DegradationPolicy {
+                steps: &[embedded_3dgfx::config::DegradationStep::DowngradeQuality],
+            },
+            None,
+        )
+        .unwrap_err();
+    assert!(matches!(
+        err,
+        RenderError::Recoverable {
+            action: RecoveryAction::SkipFrame,
+            ..
+        }
+    ));
 }

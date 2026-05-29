@@ -47,6 +47,10 @@ impl<const MAX: usize> CommandBuffer<MAX> {
     pub fn iter(&self) -> core::slice::Iter<'_, RenderCommand> {
         self.commands.iter()
     }
+
+    pub fn get(&self, index: usize) -> Option<&RenderCommand> {
+        self.commands.get(index)
+    }
 }
 
 impl<const MAX: usize> Default for CommandBuffer<MAX> {

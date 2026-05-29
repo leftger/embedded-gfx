@@ -8,8 +8,8 @@
 //! Press SPACE to cycle through render modes
 
 use embedded_3dgfx::K3dengine;
-use embedded_3dgfx::config::apply_default_caps;
 use embedded_3dgfx::command_buffer::CommandBuffer;
+use embedded_3dgfx::config::apply_default_caps;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
 use embedded_graphics_core::pixelcolor::{Rgb565, RgbColor};
 use embedded_graphics_core::prelude::*;
@@ -114,7 +114,6 @@ fn main() {
         .unwrap();
     engine
         .execute_recorded_frame::<_, 4096>(&mut display, &mut zbuffer, WIDTH, HEIGHT, &commands)
-
         .unwrap();
     window.update(&display);
 
@@ -147,7 +146,6 @@ fn main() {
             .unwrap();
         engine
             .execute_recorded_frame::<_, 4096>(&mut display, &mut zbuffer, WIDTH, HEIGHT, &commands)
-
             .unwrap();
 
         // Update window

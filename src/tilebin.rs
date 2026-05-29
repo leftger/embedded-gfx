@@ -1,0 +1,109 @@
+use crate::DrawPrimitive;
+use crate::command_buffer::{CommandBuffer, RenderCommand};
+use crate::error::RenderError;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TileConfig {
+    pub tile_width: usize,
+    pub tile_height: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TileGrid {
+    pub cols: usize,
+    pub rows: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TileBinStats {
+    pub draw_commands: usize,
+    pub bins_used: usize,
+}
+
+fn primitive_bounds(primitive: &DrawPrimitive) -> (i32, i32, i32, i32) {
+    match primitive {
+        DrawPrimitive::ColoredPoint(p, _) => (p.x, p.y, p.x, p.y),
+        DrawPrimitive::Line([a, b], _) => (a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y)),
+        DrawPrimitive::ColoredTriangle(points, _)
+        | DrawPrimitive::ColoredTriangleWithDepth { points, .. }
+        | DrawPrimitive::GouraudTriangle { points, .. }
+        | DrawPrimitive::GouraudTriangleWithDepth { points, .. }
+        | DrawPrimitive::TexturedTriangle { points, .. }
+        | DrawPrimitive::TexturedTriangleWithDepth { points, .. } => {
+            let min_x = points.iter().map(|p| p.x).min().unwrap_or(0);
+            let min_y = points.iter().map(|p| p.y).min().unwrap_or(0);
+            let max_x = points.iter().map(|p| p.x).max().unwrap_or(0);
+            let max_y = points.iter().map(|p| p.y).max().unwrap_or(0);
+            (min_x, min_y, max_x, max_y)
+        }
+    }
+}
+
+pub fn tile_grid(width: usize, height: usize, config: TileConfig) -> Result<TileGrid, RenderError> {
+    if config.tile_width == 0 || config.tile_height == 0 {
+        return Err(RenderError::InvalidInput("tile dimensions must be >= 1"));
+    }
+    let cols = width.div_ceil(config.tile_width);
+    let rows = height.div_ceil(config.tile_height);
+    Ok(TileGrid { cols, rows })
+}
+
+pub fn build_bins<const MAX: usize, const BIN_CAP: usize>(
+    commands: &CommandBuffer<MAX>,
+    width: usize,
+    height: usize,
+    config: TileConfig,
+) -> Result<
+    (
+        heapless::Vec<heapless::Vec<usize, BIN_CAP>, BIN_CAP>,
+        TileBinStats,
+    ),
+    RenderError,
+> {
+    let grid = tile_grid(width, height, config)?;
+    let bin_count = grid.cols * grid.rows;
+    if bin_count > BIN_CAP {
+        return Err(RenderError::InvalidInput("tile bin count exceeds BIN_CAP"));
+    }
+
+    let mut bins: heapless::Vec<heapless::Vec<usize, BIN_CAP>, BIN_CAP> = heapless::Vec::new();
+    for _ in 0..bin_count {
+        bins.push(heapless::Vec::new())
+            .map_err(|_| RenderError::InvalidInput("unable to allocate tile bins"))?;
+    }
+
+    let mut draw_commands = 0usize;
+    for (idx, command) in commands.iter().enumerate() {
+        let RenderCommand::Draw(primitive) = command else {
+            continue;
+        };
+        draw_commands += 1;
+        let (min_x, min_y, max_x, max_y) = primitive_bounds(primitive);
+        let clamp =
+            |v: i32, max_v: usize| -> usize { v.clamp(0, max_v.saturating_sub(1) as i32) as usize };
+        let x0 = clamp(min_x, width) / config.tile_width;
+        let y0 = clamp(min_y, height) / config.tile_height;
+        let x1 = clamp(max_x, width) / config.tile_width;
+        let y1 = clamp(max_y, height) / config.tile_height;
+        for ty in y0..=y1 {
+            for tx in x0..=x1 {
+                let bin_index = ty * grid.cols + tx;
+                bins[bin_index].push(idx).map_err(|_| {
+                    RenderError::OutOfBudget(crate::error::BudgetKind::DrawPrimitives {
+                        attempted: idx + 1,
+                        max: BIN_CAP,
+                    })
+                })?;
+            }
+        }
+    }
+
+    let bins_used = bins.iter().filter(|bin| !bin.is_empty()).count();
+    Ok((
+        bins,
+        TileBinStats {
+            draw_commands,
+            bins_used,
+        },
+    ))
+}

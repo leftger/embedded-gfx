@@ -143,6 +143,7 @@ pub struct K3dMesh<'a> {
     pub lod_medium: Option<Geometry<'a>>,
     pub lod_low: Option<Geometry<'a>>,
     pub lod_levels: LODLevels,
+    pub priority: u8,
 }
 
 impl<'a> K3dMesh<'a> {
@@ -158,6 +159,7 @@ impl<'a> K3dMesh<'a> {
             lod_medium: None,
             lod_low: None,
             lod_levels: LODLevels::default(),
+            priority: 128,
         }
     }
 
@@ -211,6 +213,10 @@ impl<'a> K3dMesh<'a> {
 
     pub fn set_render_mode(&mut self, mode: RenderMode) {
         self.render_mode = mode;
+    }
+
+    pub fn set_priority(&mut self, priority: u8) {
+        self.priority = priority;
     }
 
     pub fn set_position(&mut self, x: f32, y: f32, z: f32) {

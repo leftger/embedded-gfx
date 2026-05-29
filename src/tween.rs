@@ -48,7 +48,11 @@ pub fn lerp(a: f32, b: f32, t: f32) -> f32 {
 /// Linear interpolation between two 3D points.
 #[inline(always)]
 pub fn lerp3(a: [f32; 3], b: [f32; 3], t: f32) -> [f32; 3] {
-    [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)]
+    [
+        lerp(a[0], b[0], t),
+        lerp(a[1], b[1], t),
+        lerp(a[2], b[2], t),
+    ]
 }
 
 /// Scalar tween from `from` to `to` over `duration` seconds.

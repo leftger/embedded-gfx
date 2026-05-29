@@ -11,8 +11,8 @@
 //! - ESC: Exit
 
 use embedded_3dgfx::K3dengine;
-use embedded_3dgfx::config::apply_default_caps;
 use embedded_3dgfx::billboard::Billboard;
+use embedded_3dgfx::config::apply_default_caps;
 use embedded_3dgfx::draw::draw_zbuffered;
 use embedded_3dgfx::mesh::Geometry;
 #[cfg(feature = "perfcounter")]

@@ -18,8 +18,8 @@
 //! - ESC: Exit
 
 use embedded_3dgfx::K3dengine;
-use embedded_3dgfx::config::apply_default_caps;
 use embedded_3dgfx::command_buffer::CommandBuffer;
+use embedded_3dgfx::config::apply_default_caps;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
 #[cfg(feature = "perfcounter")]
 #[cfg(feature = "perfcounter")]
@@ -279,8 +279,13 @@ fn main() {
             .record_render_commands(all_meshes.iter().copied(), &mut commands)
             .unwrap();
         engine
-            .execute_recorded_frame::<_, 16384>(&mut display, &mut zbuffer, WIDTH, HEIGHT, &commands)
-
+            .execute_recorded_frame::<_, 16384>(
+                &mut display,
+                &mut zbuffer,
+                WIDTH,
+                HEIGHT,
+                &commands,
+            )
             .unwrap();
 
         #[cfg(feature = "perfcounter")]

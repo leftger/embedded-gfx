@@ -30,6 +30,14 @@ jobs:
     - name: cargo check
       run: cargo check --lib --all-features
 
+  no-alloc-frame-path:
+    name: No-Alloc Frame Path Guard
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Guard frame path allocation usage
+      run: python3 .github/scripts/check_no_alloc_frame_path.py
+
   test:
     name: Test
     runs-on: ubuntu-latest
@@ -144,3 +152,11 @@ jobs:
       run: sudo apt-get update && sudo apt-get install -y libsdl2-dev
     - name: Build examples
       run: cargo build --examples
+
+  asset-budget:
+    name: Asset Budget Report
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Asset budget report
+      run: python3 .github/scripts/asset_budget_report.py

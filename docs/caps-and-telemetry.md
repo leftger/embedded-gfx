@@ -213,6 +213,41 @@ cargo test --test integration_tests test_ci_telemetry_snapshot_ -- --nocapture 2
   | .github/scripts/check_telemetry_budget.py
 ```
 
+## Triple buffering
+
+Enable with:
+
+```bash
+cargo check --lib --features triple-buffering
+```
+
+`triple-buffering` exposes `TripleSwapChain` APIs for smoother frame pacing at higher memory cost.
+
+## Fixed transform path
+
+Enable with:
+
+```bash
+cargo check --lib --features fixed-transform
+```
+
+`fixed-transform` routes projection math through 16.16 fixed-point helpers (`src/fixed_math.rs`) to support non-FPU oriented deployments.
+
+## Hardware profiling hooks
+
+Optional profiling hooks are available for board instrumentation:
+
+```bash
+cargo check --lib --no-default-features --features "row_width_240 perfcounter dwt-profiler"
+```
+
+Additional trace sink flags:
+
+- `rtt-trace`
+- `itm-trace`
+
+See `docs/hardware-profiling.md` for board setup and trace guidance.
+
 ## Demo HUD consistency
 
 Telemetry HUD formatting is shared in:

@@ -104,11 +104,8 @@ fn aa_pixel<D>(
         blend_q8(bg, color, coverage_q8)
     };
     zbuffer[idx] = z;
-    fb.draw_iter([embedded_graphics_core::Pixel(
-        Point::new(x, y),
-        final_color,
-    )])
-    .unwrap();
+    fb.draw_iter([embedded_graphics_core::Pixel(Point::new(x, y), final_color)])
+        .unwrap();
 }
 
 /// Depth epsilon for Z-buffer comparison to prevent Z-fighting
@@ -504,10 +501,18 @@ pub fn draw<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
             let bounds = fb.bounding_box();
             let scr_w = bounds.size.width as i32;
             let scr_h = bounds.size.height as i32;
-            if p1.x < 0 && p2.x < 0 && p3.x < 0 { return; }
-            if p1.x >= scr_w && p2.x >= scr_w && p3.x >= scr_w { return; }
-            if p1.y < 0 && p2.y < 0 && p3.y < 0 { return; }
-            if p1.y >= scr_h && p2.y >= scr_h && p3.y >= scr_h { return; }
+            if p1.x < 0 && p2.x < 0 && p3.x < 0 {
+                return;
+            }
+            if p1.x >= scr_w && p2.x >= scr_w && p3.x >= scr_w {
+                return;
+            }
+            if p1.y < 0 && p2.y < 0 && p3.y < 0 {
+                return;
+            }
+            if p1.y >= scr_h && p2.y >= scr_h && p3.y >= scr_h {
+                return;
+            }
 
             fill_triangle(p1, p2, p3, color, fb);
         }
@@ -540,10 +545,18 @@ pub fn draw<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
             let bounds = fb.bounding_box();
             let scr_w = bounds.size.width as i32;
             let scr_h = bounds.size.height as i32;
-            if p1.x < 0 && p2.x < 0 && p3.x < 0 { return; }
-            if p1.x >= scr_w && p2.x >= scr_w && p3.x >= scr_w { return; }
-            if p1.y < 0 && p2.y < 0 && p3.y < 0 { return; }
-            if p1.y >= scr_h && p2.y >= scr_h && p3.y >= scr_h { return; }
+            if p1.x < 0 && p2.x < 0 && p3.x < 0 {
+                return;
+            }
+            if p1.x >= scr_w && p2.x >= scr_w && p3.x >= scr_w {
+                return;
+            }
+            if p1.y < 0 && p2.y < 0 && p3.y < 0 {
+                return;
+            }
+            if p1.y >= scr_h && p2.y >= scr_h && p3.y >= scr_h {
+                return;
+            }
 
             if p2.y == p3.y {
                 fill_bottom_flat_triangle(p1, p2, p3, color, fb);
@@ -591,10 +604,18 @@ pub fn draw<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
             let bounds = fb.bounding_box();
             let scr_w = bounds.size.width as i32;
             let scr_h = bounds.size.height as i32;
-            if p1.x < 0 && p2.x < 0 && p3.x < 0 { return; }
-            if p1.x >= scr_w && p2.x >= scr_w && p3.x >= scr_w { return; }
-            if p1.y < 0 && p2.y < 0 && p3.y < 0 { return; }
-            if p1.y >= scr_h && p2.y >= scr_h && p3.y >= scr_h { return; }
+            if p1.x < 0 && p2.x < 0 && p3.x < 0 {
+                return;
+            }
+            if p1.x >= scr_w && p2.x >= scr_w && p3.x >= scr_w {
+                return;
+            }
+            if p1.y < 0 && p2.y < 0 && p3.y < 0 {
+                return;
+            }
+            if p1.y >= scr_h && p2.y >= scr_h && p3.y >= scr_h {
+                return;
+            }
 
             if p2.y == p3.y {
                 fill_bottom_flat_gouraud(p1, p2, p3, c1, c2, c3, fb);
@@ -785,12 +806,8 @@ pub fn draw_zbuffered<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::
 /// Requires `ReadPixel` on the framebuffer for the boundary blends.
 #[cfg(feature = "aa-heuristic")]
 #[inline]
-pub fn draw_zbuffered_aa<D>(
-    primitive: DrawPrimitive,
-    fb: &mut D,
-    zbuffer: &mut [u32],
-    width: usize,
-) where
+pub fn draw_zbuffered_aa<D>(primitive: DrawPrimitive, fb: &mut D, zbuffer: &mut [u32], width: usize)
+where
     D: DrawTarget<Color = Rgb565> + ReadPixel,
     <D as DrawTarget>::Error: Debug,
 {
@@ -818,10 +835,18 @@ pub fn draw_zbuffered_aa<D>(
             // Off-screen culling.
             let scr_w = width as i32;
             let scr_h = (zbuffer.len() / width) as i32;
-            if p1.x < 0 && p2.x < 0 && p3.x < 0 { return; }
-            if p1.x >= scr_w && p2.x >= scr_w && p3.x >= scr_w { return; }
-            if p1.y < 0 && p2.y < 0 && p3.y < 0 { return; }
-            if p1.y >= scr_h && p2.y >= scr_h && p3.y >= scr_h { return; }
+            if p1.x < 0 && p2.x < 0 && p3.x < 0 {
+                return;
+            }
+            if p1.x >= scr_w && p2.x >= scr_w && p3.x >= scr_w {
+                return;
+            }
+            if p1.y < 0 && p2.y < 0 && p3.y < 0 {
+                return;
+            }
+            if p1.y >= scr_h && p2.y >= scr_h && p3.y >= scr_h {
+                return;
+            }
 
             fill_triangle_zbuffered_aa(p1, p2, p3, z1, z2, z3, color, fb, zbuffer, width);
         }
@@ -915,7 +940,9 @@ fn fill_bottom_flat_aa<D>(
         let z_left = (z1 as i64 + ((z2 as i64 - z1 as i64) * dy as i64 / height as i64)) as u32;
         let z_right = (z1 as i64 + ((z3 as i64 - z1 as i64) * dy as i64 / height as i64)) as u32;
 
-        aa_scanline(curx1, curx2, scanline_y, z_left, z_right, color, fb, zbuffer, width);
+        aa_scanline(
+            curx1, curx2, scanline_y, z_left, z_right, color, fb, zbuffer, width,
+        );
 
         curx1 += invslope1;
         curx2 += invslope2;
@@ -954,7 +981,9 @@ fn fill_top_flat_aa<D>(
         let z_left = (z1 as i64 + ((z3 as i64 - z1 as i64) * dy as i64 / height as i64)) as u32;
         let z_right = (z2 as i64 + ((z3 as i64 - z2 as i64) * dy as i64 / height as i64)) as u32;
 
-        aa_scanline(curx1, curx2, scanline_y, z_left, z_right, color, fb, zbuffer, width);
+        aa_scanline(
+            curx1, curx2, scanline_y, z_left, z_right, color, fb, zbuffer, width,
+        );
 
         curx1 -= invslope1;
         curx2 -= invslope2;
@@ -1094,9 +1123,7 @@ pub fn draw_zbuffered_aa_coverage<D>(
         DrawPrimitive::Line([p1, p2], color) => {
             // Use the coverage-aware Wu's variant so the bg composite at
             // end-of-frame doesn't overwrite line pixels.
-            draw_line_aa_coverage(
-                p1.x, p1.y, p2.x, p2.y, color, fb, coverage, width,
-            );
+            draw_line_aa_coverage(p1.x, p1.y, p2.x, p2.y, color, fb, coverage, width);
         }
         other => draw_zbuffered(other, fb, zbuffer, width),
     }
@@ -1184,7 +1211,8 @@ fn plot_aa_cov<D>(
 
     if coverage_q8 >= 256 {
         coverage[idx] = 255;
-        fb.draw_iter([embedded_graphics_core::Pixel(p, color)]).unwrap();
+        fb.draw_iter([embedded_graphics_core::Pixel(p, color)])
+            .unwrap();
         return;
     }
 
@@ -1193,14 +1221,16 @@ fn plot_aa_cov<D>(
     if prev_cov == 0 {
         let claim_255 = (coverage_q8 * 255) >> 8;
         coverage[idx] = claim_255 as u8;
-        fb.draw_iter([embedded_graphics_core::Pixel(p, color)]).unwrap();
+        fb.draw_iter([embedded_graphics_core::Pixel(p, color)])
+            .unwrap();
         return;
     }
 
     if prev_cov >= 255 {
         let existing = fb.read_pixel(p);
         let result = blend_q8(existing, color, coverage_q8);
-        fb.draw_iter([embedded_graphics_core::Pixel(p, result)]).unwrap();
+        fb.draw_iter([embedded_graphics_core::Pixel(p, result)])
+            .unwrap();
         return;
     }
 
@@ -1214,7 +1244,8 @@ fn plot_aa_cov<D>(
     let blend_factor = (claim_255 * 256) / new_total;
     let result = blend_q8(existing, color, blend_factor);
     coverage[idx] = new_total as u8;
-    fb.draw_iter([embedded_graphics_core::Pixel(p, result)]).unwrap();
+    fb.draw_iter([embedded_graphics_core::Pixel(p, result)])
+        .unwrap();
 }
 
 /// Composite background color into pixels that weren't fully covered by
@@ -1303,7 +1334,8 @@ fn aa_pixel_cov<D>(
     if coverage_q8 >= 256 {
         coverage[idx] = 255;
         zbuffer[idx] = z;
-        fb.draw_iter([embedded_graphics_core::Pixel(p, color)]).unwrap();
+        fb.draw_iter([embedded_graphics_core::Pixel(p, color)])
+            .unwrap();
         return;
     }
 
@@ -1315,7 +1347,8 @@ fn aa_pixel_cov<D>(
         let claim_255 = (coverage_q8 * 255) >> 8;
         coverage[idx] = claim_255 as u8;
         zbuffer[idx] = z;
-        fb.draw_iter([embedded_graphics_core::Pixel(p, color)]).unwrap();
+        fb.draw_iter([embedded_graphics_core::Pixel(p, color)])
+            .unwrap();
         return;
     }
 
@@ -1327,7 +1360,8 @@ fn aa_pixel_cov<D>(
         let existing = fb.read_pixel(p);
         let result = blend_q8(existing, color, coverage_q8);
         zbuffer[idx] = z;
-        fb.draw_iter([embedded_graphics_core::Pixel(p, result)]).unwrap();
+        fb.draw_iter([embedded_graphics_core::Pixel(p, result)])
+            .unwrap();
         return;
     }
 
@@ -1344,7 +1378,8 @@ fn aa_pixel_cov<D>(
     let result = blend_q8(existing, color, blend_factor);
     coverage[idx] = new_total as u8;
     zbuffer[idx] = z;
-    fb.draw_iter([embedded_graphics_core::Pixel(p, result)]).unwrap();
+    fb.draw_iter([embedded_graphics_core::Pixel(p, result)])
+        .unwrap();
 }
 
 #[cfg(feature = "aa-coverage")]
@@ -1512,12 +1547,32 @@ fn aa_scanline_cov<D>(
 
     if l_int == r_int {
         let cov_q16 = r_frac_q16.saturating_sub(l_frac_q16);
-        aa_pixel_cov(fb, l_int, y, color, z_l, zbuffer, coverage, width, cov_q16 >> 8);
+        aa_pixel_cov(
+            fb,
+            l_int,
+            y,
+            color,
+            z_l,
+            zbuffer,
+            coverage,
+            width,
+            cov_q16 >> 8,
+        );
         return;
     }
 
     let left_cov_q8 = 256 - (l_frac_q16 >> 8);
-    aa_pixel_cov(fb, l_int, y, color, z_l, zbuffer, coverage, width, left_cov_q8);
+    aa_pixel_cov(
+        fb,
+        l_int,
+        y,
+        color,
+        z_l,
+        zbuffer,
+        coverage,
+        width,
+        left_cov_q8,
+    );
 
     if span > 1 {
         for x in (l_int + 1)..r_int {
@@ -1532,7 +1587,17 @@ fn aa_scanline_cov<D>(
 
     if r_frac_q16 > 0 {
         let right_cov_q8 = r_frac_q16 >> 8;
-        aa_pixel_cov(fb, r_int, y, color, z_r, zbuffer, coverage, width, right_cov_q8);
+        aa_pixel_cov(
+            fb,
+            r_int,
+            y,
+            color,
+            z_r,
+            zbuffer,
+            coverage,
+            width,
+            right_cov_q8,
+        );
     }
 }
 
@@ -1603,11 +1668,8 @@ where
         let bg = fb.read_pixel(Point::new(x, y));
         blend_q8(bg, color, coverage_q8)
     };
-    fb.draw_iter([embedded_graphics_core::Pixel(
-        Point::new(x, y),
-        final_color,
-    )])
-    .unwrap();
+    fb.draw_iter([embedded_graphics_core::Pixel(Point::new(x, y), final_color)])
+        .unwrap();
 }
 
 // Z-buffered drawing function with optional fog and dithering effects
@@ -1651,10 +1713,18 @@ pub fn draw_zbuffered_with_effects<
             // Off-screen culling.
             let scr_w = width as i32;
             let scr_h = (zbuffer.len() / width) as i32;
-            if p1.x < 0 && p2.x < 0 && p3.x < 0 { return; }
-            if p1.x >= scr_w && p2.x >= scr_w && p3.x >= scr_w { return; }
-            if p1.y < 0 && p2.y < 0 && p3.y < 0 { return; }
-            if p1.y >= scr_h && p2.y >= scr_h && p3.y >= scr_h { return; }
+            if p1.x < 0 && p2.x < 0 && p3.x < 0 {
+                return;
+            }
+            if p1.x >= scr_w && p2.x >= scr_w && p3.x >= scr_w {
+                return;
+            }
+            if p1.y < 0 && p2.y < 0 && p3.y < 0 {
+                return;
+            }
+            if p1.y >= scr_h && p2.y >= scr_h && p3.y >= scr_h {
+                return;
+            }
 
             fill_triangle_zbuffered(
                 p1,
@@ -1700,10 +1770,18 @@ pub fn draw_zbuffered_with_effects<
             // Off-screen culling.
             let scr_w = width as i32;
             let scr_h = (zbuffer.len() / width) as i32;
-            if p1.x < 0 && p2.x < 0 && p3.x < 0 { return; }
-            if p1.x >= scr_w && p2.x >= scr_w && p3.x >= scr_w { return; }
-            if p1.y < 0 && p2.y < 0 && p3.y < 0 { return; }
-            if p1.y >= scr_h && p2.y >= scr_h && p3.y >= scr_h { return; }
+            if p1.x < 0 && p2.x < 0 && p3.x < 0 {
+                return;
+            }
+            if p1.x >= scr_w && p2.x >= scr_w && p3.x >= scr_w {
+                return;
+            }
+            if p1.y < 0 && p2.y < 0 && p3.y < 0 {
+                return;
+            }
+            if p1.y >= scr_h && p2.y >= scr_h && p3.y >= scr_h {
+                return;
+            }
 
             fill_triangle_zbuffered_gouraud(
                 p1,
@@ -1782,10 +1860,18 @@ pub fn draw_zbuffered_with_textures<
                 // Off-screen culling.
                 let scr_w = width as i32;
                 let scr_h = (zbuffer.len() / width) as i32;
-                if p1.x < 0 && p2.x < 0 && p3.x < 0 { return; }
-                if p1.x >= scr_w && p2.x >= scr_w && p3.x >= scr_w { return; }
-                if p1.y < 0 && p2.y < 0 && p3.y < 0 { return; }
-                if p1.y >= scr_h && p2.y >= scr_h && p3.y >= scr_h { return; }
+                if p1.x < 0 && p2.x < 0 && p3.x < 0 {
+                    return;
+                }
+                if p1.x >= scr_w && p2.x >= scr_w && p3.x >= scr_w {
+                    return;
+                }
+                if p1.y < 0 && p2.y < 0 && p3.y < 0 {
+                    return;
+                }
+                if p1.y >= scr_h && p2.y >= scr_h && p3.y >= scr_h {
+                    return;
+                }
 
                 fill_triangle_zbuffered_textured(
                     p1,

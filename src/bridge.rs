@@ -16,20 +16,20 @@ use core::fmt::Debug;
 use core::marker::PhantomData;
 
 use embedded_graphics_core::{
+    Drawable, Pixel,
     draw_target::DrawTarget,
     geometry::{Dimensions, Point},
     pixelcolor::{PixelColor, Rgb565},
     primitives::Rectangle,
-    Drawable, Pixel,
 };
 use embedded_graphics_framebuf::{FrameBuf, backends::FrameBufferBackend};
 
+use crate::DrawPrimitive;
 #[cfg(feature = "aa")]
 use crate::draw::ReadPixel;
+use crate::draw::draw;
 #[cfg(feature = "aa")]
 use embedded_graphics_core::pixelcolor::RgbColor;
-use crate::draw::draw;
-use crate::DrawPrimitive;
 
 // ── 1. Color adapter ─────────────────────────────────────────────────────────
 

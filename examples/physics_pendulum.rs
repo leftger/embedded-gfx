@@ -11,12 +11,14 @@
 //! - ESC: Exit
 
 use embedded_3dgfx::K3dengine;
-use embedded_3dgfx::draw::draw;
+use embedded_3dgfx::command_buffer::CommandBuffer;
+use embedded_3dgfx::config::apply_default_caps;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
 #[cfg(feature = "perfcounter")]
 #[cfg(feature = "perfcounter")]
 use embedded_3dgfx::perfcounter::PerformanceCounter;
 use embedded_3dgfx::physics::{BodyId, Collider, PhysicsWorld, RigidBody, sync_body_to_mesh};
+use embedded_3dgfx::renderer::FrameCtx;
 use embedded_graphics::mono_font::{MonoTextStyle, ascii::FONT_6X10};
 use embedded_graphics::text::Text;
 use embedded_graphics_core::pixelcolor::{Rgb565, RgbColor};
@@ -60,7 +62,11 @@ fn make_sphere(segments: usize) -> (Vec<[f32; 3]>, Vec<[usize; 3]>, Vec<[f32; 3]
 const NUM_PENDULUMS: usize = 3;
 
 fn main() {
+    const WIDTH: usize = 640;
+    const HEIGHT: usize = 480;
     let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(640, 480));
+    let mut zbuffer = vec![u32::MAX; WIDTH * HEIGHT];
+    let mut commands = CommandBuffer::<8192>::new();
     let output_settings = OutputSettingsBuilder::new().scale(1).build();
     let mut window = Window::new(
         "Pendulum Demo - SPACE=impulse 1-3=pull R=reset ESC=exit",
@@ -68,6 +74,7 @@ fn main() {
     );
 
     let mut engine = K3dengine::new(640, 480);
+    apply_default_caps(&mut engine);
     engine.camera.set_position(Point3::new(0.0, 5.0, 20.0));
     engine.camera.set_target(Point3::new(0.0, 5.0, 0.0));
 
@@ -227,10 +234,17 @@ fn main() {
         }
 
         display.clear(Rgb565::BLACK).unwrap();
+        zbuffer.fill(u32::MAX);
 
-        engine.render(meshes.iter(), |prim| {
-            draw(prim, &mut display);
-        });
+        engine.record(meshes.iter(), &mut commands, None).unwrap();
+        let mut frame = FrameCtx {
+            zbuffer: &mut zbuffer,
+            width: WIDTH,
+            height: HEIGHT,
+        };
+        engine
+            .execute::<_, 8192>(&mut display, &mut frame, &commands, None)
+            .unwrap();
 
         // Constraints are working but invisible (no line drawing yet)
 

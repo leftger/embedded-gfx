@@ -1,0 +1,24 @@
+# Per-target compiler flags for ARM Cortex-M cross-compilation.
+# Active only when explicitly targeting these architectures — host builds are unaffected.
+#
+# Critical: the `hf` ABI suffix (eabihf) is what tells the linker to pass float args
+# in FPU registers. Without it, the FPU is never used even on M4/M7/M33.
+# Use thumbv7em-none-eabihf (not thumbv7em-none-eabi) for all FPU-capable targets.
+#
+# target-cpu tells the compiler which instruction scheduling model and feature set to
+# assume. Downstream projects targeting M7 should override with target-cpu=cortex-m7
+# (enables FPv5-DP double-precision FPU) in their own .cargo/config.toml.
+
+[target.thumbv7m-none-eabi]
+# Cortex-M3: no FPU, no DSP extensions, software float only.
+rustflags = ["-C", "target-cpu=cortex-m3"]
+
+[target.thumbv7em-none-eabihf]
+# Cortex-M4/M7: single-precision VFPv4 FPU + DSP SIMD extensions.
+# For Cortex-M7 (FPv5-DP, double-precision), set target-cpu=cortex-m7 downstream.
+rustflags = ["-C", "target-cpu=cortex-m4"]
+
+[target.thumbv8m.main-none-eabihf]
+# Cortex-M33/M55: ARMv8-M Mainline with FPv5-SP FPU and DSP extensions.
+# For Cortex-M55 with Helium (MVE), a nightly toolchain and +mve.fp features are needed.
+rustflags = ["-C", "target-cpu=cortex-m33"]

@@ -13,7 +13,7 @@
 //! - Better performance (CPU and display work in parallel)
 //! - Predictable frame timing
 
-use crate::display_backend::{DisplayBackend, DisplayError};
+use crate::display_backend::{DisplayBackend, DisplayError, DisplayRegion};
 use embedded_graphics_core::pixelcolor::Rgb565;
 use embedded_graphics_framebuf::{
     FrameBuf,
@@ -178,6 +178,30 @@ where
         Ok(())
     }
 
+    /// Present only a region of the back buffer.
+    ///
+    /// Backends that don't support region DMA automatically fall back to full-frame transfer.
+    pub fn present_region(&mut self, region: DisplayRegion) -> Result<(), DisplayError> {
+        self.backend.wait_for_dma();
+        core::mem::swap(&mut self.front, &mut self.back);
+        self.backend
+            .start_dma_transfer_region(&self.front, region)?;
+        self.frame_count += 1;
+        Ok(())
+    }
+
+    /// Non-blocking partial present.
+    pub fn try_present_region(&mut self, region: DisplayRegion) -> Result<(), DisplayError> {
+        if !self.backend.is_dma_ready() {
+            return Err(DisplayError::Busy);
+        }
+        core::mem::swap(&mut self.front, &mut self.back);
+        self.backend
+            .start_dma_transfer_region(&self.front, region)?;
+        self.frame_count += 1;
+        Ok(())
+    }
+
     /// Wait for the current DMA transfer to complete
     ///
     /// Useful if you need to ensure a frame has been fully displayed
@@ -209,11 +233,94 @@ where
     }
 }
 
+/// Triple-buffered swap chain for smoother pacing under bursty frame times.
+#[cfg(feature = "triple-buffering")]
+pub struct TripleSwapChain<const W: usize, const H: usize, FB, B>
+where
+    FB: DMACapableFrameBufferBackend<Color = Rgb565>,
+    B: DisplayBackend<W, H, FB>,
+{
+    display: FrameBuf<Rgb565, FB>,
+    ready: FrameBuf<Rgb565, FB>,
+    render: FrameBuf<Rgb565, FB>,
+    backend: B,
+    frame_count: u64,
+}
+
+#[cfg(feature = "triple-buffering")]
+pub type StandardTripleSwapChain<const W: usize, const H: usize, B> =
+    TripleSwapChain<W, H, EndianCorrectedBuffer<'static, Rgb565>, B>;
+
+#[cfg(feature = "triple-buffering")]
+impl<const W: usize, const H: usize, B> StandardTripleSwapChain<W, H, B>
+where
+    B: DisplayBackend<W, H, EndianCorrectedBuffer<'static, Rgb565>>,
+{
+    pub fn from_static_slices(
+        display_data: &'static mut [Rgb565],
+        ready_data: &'static mut [Rgb565],
+        render_data: &'static mut [Rgb565],
+        big_endian: bool,
+        backend: B,
+    ) -> Self {
+        let mk = |data: &'static mut [Rgb565]| {
+            if big_endian {
+                EndianCorrectedBuffer::new(data, EndianCorrection::ToBigEndian)
+            } else {
+                EndianCorrectedBuffer::new(data, EndianCorrection::ToLittleEndian)
+            }
+        };
+        Self {
+            display: FrameBuf::new(mk(display_data), W, H),
+            ready: FrameBuf::new(mk(ready_data), W, H),
+            render: FrameBuf::new(mk(render_data), W, H),
+            backend,
+            frame_count: 0,
+        }
+    }
+}
+
+#[cfg(feature = "triple-buffering")]
+impl<const W: usize, const H: usize, FB, B> TripleSwapChain<W, H, FB, B>
+where
+    FB: DMACapableFrameBufferBackend<Color = Rgb565>,
+    B: DisplayBackend<W, H, FB>,
+{
+    pub fn get_render_buffer(&mut self) -> &mut FrameBuf<Rgb565, FB> {
+        &mut self.render
+    }
+
+    pub fn present(&mut self) -> Result<(), DisplayError> {
+        self.backend.wait_for_dma();
+        core::mem::swap(&mut self.display, &mut self.render);
+        self.backend.start_dma_transfer(&self.display)?;
+        core::mem::swap(&mut self.ready, &mut self.render);
+        self.frame_count += 1;
+        Ok(())
+    }
+
+    pub fn try_present(&mut self) -> Result<(), DisplayError> {
+        if !self.backend.is_dma_ready() {
+            return Err(DisplayError::Busy);
+        }
+        core::mem::swap(&mut self.display, &mut self.render);
+        self.backend.start_dma_transfer(&self.display)?;
+        core::mem::swap(&mut self.ready, &mut self.render);
+        self.frame_count += 1;
+        Ok(())
+    }
+
+    pub fn frame_count(&self) -> u64 {
+        self.frame_count
+    }
+}
+
 #[cfg(test)]
 mod tests {
     extern crate std;
     use super::*;
     use crate::display_backend::SimulatorBackend;
+    use core::cell::Cell;
     use embedded_graphics_core::pixelcolor::RgbColor;
     use std::vec;
 
@@ -316,5 +423,76 @@ mod tests {
 
         swap_chain.reset_frame_count();
         assert_eq!(swap_chain.frame_count(), 0);
+    }
+
+    struct TrackingBackend {
+        region_present_count: Cell<usize>,
+    }
+
+    impl TrackingBackend {
+        fn new() -> Self {
+            Self {
+                region_present_count: Cell::new(0),
+            }
+        }
+    }
+
+    impl<const W: usize, const H: usize, FB> DisplayBackend<W, H, FB> for TrackingBackend
+    where
+        FB: DMACapableFrameBufferBackend<Color = Rgb565>,
+    {
+        fn start_dma_transfer(
+            &mut self,
+            _framebuffer: &FrameBuf<Rgb565, FB>,
+        ) -> Result<(), DisplayError> {
+            Ok(())
+        }
+
+        fn start_dma_transfer_region(
+            &mut self,
+            _framebuffer: &FrameBuf<Rgb565, FB>,
+            _region: DisplayRegion,
+        ) -> Result<(), DisplayError> {
+            self.region_present_count
+                .set(self.region_present_count.get() + 1);
+            Ok(())
+        }
+
+        fn wait_for_dma(&mut self) {}
+
+        fn is_dma_ready(&self) -> bool {
+            true
+        }
+    }
+
+    #[test]
+    fn test_swapchain_present_region() {
+        let fb0 = create_static_buffer::<{ 64 * 64 }>();
+        let fb1 = create_static_buffer::<{ 64 * 64 }>();
+        let backend = TrackingBackend::new();
+        let mut swap_chain =
+            StandardSwapChain::<64, 64, _>::from_static_slices(fb0, fb1, false, backend);
+        swap_chain
+            .present_region(DisplayRegion::new(0, 0, 8, 8))
+            .unwrap();
+        assert_eq!(swap_chain.backend.region_present_count.get(), 1);
+    }
+
+    #[cfg(feature = "triple-buffering")]
+    #[test]
+    fn test_triple_swapchain_present() {
+        let fb0 = create_static_buffer::<{ 64 * 64 }>();
+        let fb1 = create_static_buffer::<{ 64 * 64 }>();
+        let fb2 = create_static_buffer::<{ 64 * 64 }>();
+        let mut sc = StandardTripleSwapChain::<64, 64, _>::from_static_slices(
+            fb0,
+            fb1,
+            fb2,
+            false,
+            SimulatorBackend::new(),
+        );
+        assert_eq!(sc.frame_count(), 0);
+        sc.present().unwrap();
+        assert_eq!(sc.frame_count(), 1);
     }
 }

@@ -13,12 +13,14 @@
 //! - ESC: Exit
 
 use embedded_3dgfx::K3dengine;
-use embedded_3dgfx::draw::draw;
+use embedded_3dgfx::command_buffer::CommandBuffer;
+use embedded_3dgfx::config::apply_default_caps;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
 #[cfg(feature = "perfcounter")]
 #[cfg(feature = "perfcounter")]
 use embedded_3dgfx::perfcounter::PerformanceCounter;
 use embedded_3dgfx::physics::{BodyId, Collider, PhysicsWorld, RigidBody, sync_body_to_mesh};
+use embedded_3dgfx::renderer::FrameCtx;
 use embedded_graphics::mono_font::{MonoTextStyle, ascii::FONT_6X10};
 use embedded_graphics::text::Text;
 use embedded_graphics_core::pixelcolor::{Rgb565, RgbColor};
@@ -68,7 +70,11 @@ const CHAIN_LENGTH: f32 = 5.0;
 const SPACING: f32 = SPHERE_RADIUS * 2.0 + 0.01;
 
 fn main() {
+    const WIDTH: usize = 640;
+    const HEIGHT: usize = 480;
     let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(640, 480));
+    let mut zbuffer = vec![u32::MAX; WIDTH * HEIGHT];
+    let mut commands = CommandBuffer::<8192>::new();
     let output_settings = OutputSettingsBuilder::new().scale(1).build();
     let mut window = Window::new(
         "Newton's Cradle - 1-5=pull SPACE=release R=reset ESC=exit",
@@ -76,6 +82,7 @@ fn main() {
     );
 
     let mut engine = K3dengine::new(640, 480);
+    apply_default_caps(&mut engine);
     engine.camera.set_position(Point3::new(0.0, 0.0, 15.0));
     engine.camera.set_target(Point3::new(0.0, 0.0, 0.0));
 
@@ -261,10 +268,17 @@ fn main() {
 
         // Render
         display.clear(Rgb565::BLACK).unwrap();
+        zbuffer.fill(u32::MAX);
 
-        engine.render(meshes.iter(), |prim| {
-            draw(prim, &mut display);
-        });
+        engine.record(meshes.iter(), &mut commands, None).unwrap();
+        let mut frame = FrameCtx {
+            zbuffer: &mut zbuffer,
+            width: WIDTH,
+            height: HEIGHT,
+        };
+        engine
+            .execute::<_, 8192>(&mut display, &mut frame, &commands, None)
+            .unwrap();
 
         // HUD
         #[cfg(feature = "perfcounter")]

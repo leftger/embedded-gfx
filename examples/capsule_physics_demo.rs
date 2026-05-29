@@ -17,11 +17,13 @@
 //! - ESC: Exit
 
 use embedded_3dgfx::K3dengine;
-use embedded_3dgfx::draw::draw;
+use embedded_3dgfx::command_buffer::CommandBuffer;
+use embedded_3dgfx::config::apply_default_caps;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
 #[cfg(feature = "perfcounter")]
 use embedded_3dgfx::perfcounter::PerformanceCounter;
 use embedded_3dgfx::physics::{Collider, PhysicsWorld, RigidBody};
+use embedded_3dgfx::renderer::FrameCtx;
 use embedded_graphics::mono_font::{MonoTextStyle, ascii::FONT_6X10};
 use embedded_graphics::text::Text;
 use embedded_graphics_core::pixelcolor::{Rgb565, RgbColor};
@@ -91,11 +93,16 @@ fn create_capsule_mesh(
 }
 
 fn main() {
+    const WIDTH: usize = 320;
+    const HEIGHT: usize = 240;
     let mut display: SimulatorDisplay<Rgb565> = SimulatorDisplay::new(Size::new(320, 240));
+    let mut zbuffer = vec![u32::MAX; WIDTH * HEIGHT];
+    let mut commands = CommandBuffer::<4096>::new();
     let output_settings = OutputSettingsBuilder::new().scale(2).build();
     let mut window = Window::new("Capsule Physics Demo", &output_settings);
 
     let mut engine = K3dengine::new(320, 240);
+    apply_default_caps(&mut engine);
     engine.camera.set_position(Point3::new(0.0, 3.0, 12.0));
     engine.camera.set_target(Point3::new(0.0, 2.0, 0.0));
 
@@ -216,6 +223,8 @@ fn main() {
         world.step::<32>(0.016);
 
         display.clear(Rgb565::BLACK).unwrap();
+        zbuffer.fill(u32::MAX);
+        let mut frame_meshes: Vec<K3dMesh> = Vec::new();
 
         // Render all bodies
         for (_body_id, body) in world.bodies() {
@@ -257,10 +266,19 @@ fn main() {
             let (roll, pitch, yaw) = body.orientation.euler_angles();
             mesh.set_attitude(roll, pitch, yaw);
 
-            engine.render(std::iter::once(&mesh), |prim| {
-                draw(prim, &mut display);
-            });
+            frame_meshes.push(mesh);
         }
+        engine
+            .record(frame_meshes.iter(), &mut commands, None)
+            .unwrap();
+        let mut frame = FrameCtx {
+            zbuffer: &mut zbuffer,
+            width: WIDTH,
+            height: HEIGHT,
+        };
+        engine
+            .execute::<_, 4096>(&mut display, &mut frame, &commands, None)
+            .unwrap();
 
         Text::new(
             &format!("Bodies: {}", world.bodies().count()),

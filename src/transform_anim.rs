@@ -20,7 +20,14 @@ pub struct TransformKeyframe {
 }
 
 impl TransformKeyframe {
-    pub const fn new(time: f32, position: [f32; 3], roll: f32, pitch: f32, yaw: f32, scale: f32) -> Self {
+    pub const fn new(
+        time: f32,
+        position: [f32; 3],
+        roll: f32,
+        pitch: f32,
+        yaw: f32,
+        scale: f32,
+    ) -> Self {
         Self {
             time,
             position,
@@ -69,7 +76,10 @@ pub struct TransformTrack<'a> {
 
 impl<'a> TransformTrack<'a> {
     pub fn new(keyframes: &'a [TransformKeyframe], looping: bool) -> Self {
-        assert!(!keyframes.is_empty(), "TransformTrack requires at least one keyframe");
+        assert!(
+            !keyframes.is_empty(),
+            "TransformTrack requires at least one keyframe"
+        );
         Self { keyframes, looping }
     }
 
@@ -93,11 +103,7 @@ impl<'a> TransformTrack<'a> {
 
         let duration = self.duration();
         let t = if self.looping {
-            if duration > 0.0 {
-                time % duration
-            } else {
-                0.0
-            }
+            if duration > 0.0 { time % duration } else { 0.0 }
         } else {
             time.clamp(0.0, duration)
         };

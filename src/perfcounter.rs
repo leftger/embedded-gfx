@@ -1,3 +1,4 @@
+use crate::hardware_profile;
 use core::fmt::Write;
 use core::mem;
 use heapless::String;
@@ -58,6 +59,8 @@ pub struct PerformanceCounter {
     only_fps: bool,
     start_time_us: u64,
     last_measurement_time_us: u64,
+    dwt_frame_start_cycles: u32,
+    dwt_last_measurement_cycles: u32,
 }
 
 impl Default for PerformanceCounter {
@@ -76,6 +79,8 @@ impl PerformanceCounter {
             only_fps: false,
             start_time_us: now,
             last_measurement_time_us: now,
+            dwt_frame_start_cycles: 0,
+            dwt_last_measurement_cycles: 0,
         }
     }
 
@@ -92,6 +97,11 @@ impl PerformanceCounter {
         self.text.clear();
         self.start_time_us = now_us();
         self.last_measurement_time_us = self.start_time_us;
+        hardware_profile::init_dwt_cycle_counter();
+        if let Some(cycles) = hardware_profile::read_cycle_counter() {
+            self.dwt_frame_start_cycles = cycles;
+            self.dwt_last_measurement_cycles = cycles;
+        }
     }
 
     pub fn add_measurement(&mut self, label: &str) {
@@ -100,7 +110,22 @@ impl PerformanceCounter {
         }
         let now = now_us();
         let duration = now.saturating_sub(self.last_measurement_time_us);
-        let _ = write!(self.text, "{}: {}us\n", label, duration);
+        if let Some(cycles_now) = hardware_profile::read_cycle_counter() {
+            let sample = hardware_profile::sample_cycles(
+                "perf.measurement",
+                self.dwt_last_measurement_cycles,
+                cycles_now,
+            );
+            hardware_profile::emit_trace(sample);
+            let _ = write!(
+                self.text,
+                "{}: {}us ({} cyc)\n",
+                label, duration, sample.cycles
+            );
+            self.dwt_last_measurement_cycles = cycles_now;
+        } else {
+            let _ = write!(self.text, "{}: {}us\n", label, duration);
+        }
         self.last_measurement_time_us = now;
     }
 
@@ -120,7 +145,22 @@ impl PerformanceCounter {
             self.old_text = self.text.clone();
             return;
         }
-        let _ = write!(self.text, "total: {}us\nfps: {}\n", total_us, fps);
+        if let Some(cycles_now) = hardware_profile::read_cycle_counter() {
+            let total_cycles = cycles_now.wrapping_sub(self.dwt_frame_start_cycles);
+            let sample = hardware_profile::sample_cycles(
+                "perf.frame",
+                self.dwt_frame_start_cycles,
+                cycles_now,
+            );
+            hardware_profile::emit_trace(sample);
+            let _ = write!(
+                self.text,
+                "total: {}us ({} cyc)\nfps: {}\n",
+                total_us, total_cycles, fps
+            );
+        } else {
+            let _ = write!(self.text, "total: {}us\nfps: {}\n", total_us, fps);
+        }
         self.old_text = self.text.clone();
     }
 

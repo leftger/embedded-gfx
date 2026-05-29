@@ -1,4 +1,6 @@
 #![no_std]
+#[cfg(feature = "std")]
+extern crate std;
 use camera::Camera;
 use embedded_graphics_core::pixelcolor::Rgb565;
 use embedded_graphics_core::pixelcolor::RgbColor;
@@ -15,16 +17,17 @@ use nalgebra::Vector3;
 use nalgebra::ComplexField;
 
 pub mod animation;
-pub mod bridge;
-pub mod tween;
-pub mod transform_anim;
 pub mod billboard;
+pub mod bridge;
 pub mod camera;
 pub mod command_buffer;
 pub mod config;
 pub mod display_backend;
 pub mod draw;
 pub mod error;
+pub mod fixed_math;
+pub mod hardware_profile;
+pub mod hud;
 pub mod lut;
 pub mod mesh;
 #[cfg(feature = "std")]
@@ -32,11 +35,17 @@ pub mod painters;
 #[cfg(feature = "perfcounter")]
 pub mod perfcounter;
 pub mod physics;
+pub mod renderer;
+pub mod scene_format;
+pub mod scene_stream;
 pub mod skeleton;
 pub mod softbody;
 pub mod swapchain;
+pub mod telemetry;
 pub mod texture;
-pub mod renderer;
+pub mod tilebin;
+pub mod transform_anim;
+pub mod tween;
 
 // Re-export framebuffer types from external crate for user convenience
 pub use embedded_graphics_framebuf::{
@@ -47,16 +56,13 @@ pub use embedded_graphics_framebuf::{
 #[cfg(feature = "aa")]
 pub use draw::ReadPixel;
 
-pub use tween::{apply_easing, lerp, lerp3, scale_rgb565, Easing, Tween, Tween3};
-pub use transform_anim::{
-    AnimationPlayer, SampledTransform, TransformKeyframe, TransformTrack,
-};
 pub use bridge::{
-    draw_to,
-    eg_to_nalgebra, nalgebra_to_eg,
-    AsEgPoint, AsNalgebraPoint,
-    render_drawable_to_buffer,
+    AsEgPoint, AsNalgebraPoint, draw_to, eg_to_nalgebra, nalgebra_to_eg, render_drawable_to_buffer,
 };
+pub use renderer::{DirtyRegion, FrameCtx};
+pub use tilebin::{TileBinStats, TileConfig};
+pub use transform_anim::{AnimationPlayer, SampledTransform, TransformKeyframe, TransformTrack};
+pub use tween::{Easing, Tween, Tween3, apply_easing, lerp, lerp3, scale_rgb565};
 
 #[derive(Debug, Clone)]
 pub enum DrawPrimitive {
@@ -85,6 +91,7 @@ pub enum DrawPrimitive {
     TexturedTriangleWithDepth {
         points: [Point2<i32>; 3],
         depths: [f32; 3],
+        ws: [f32; 3],
         uvs: [[f32; 2]; 3],
         texture_id: u32,
     },
@@ -94,6 +101,24 @@ pub struct K3dengine {
     pub camera: Camera,
     width: u16,
     height: u16,
+    caps: Option<crate::config::ProfileCaps>,
+    quality_tier: crate::config::QualityTier,
+    material_profile: crate::config::MaterialProfile,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BudgetFallbackOutcome {
+    pub used_fallback: bool,
+    pub primary_budget_error: Option<crate::error::BudgetKind>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DegradationOutcome {
+    pub used_degradation: bool,
+    pub steps_applied: usize,
+    pub dropped_meshes: usize,
+    pub final_quality_tier: crate::config::QualityTier,
+    pub primary_budget_error: Option<crate::error::BudgetKind>,
 }
 
 impl K3dengine {
@@ -102,6 +127,61 @@ impl K3dengine {
             camera: Camera::new(width as f32 / height as f32),
             width,
             height,
+            caps: None,
+            quality_tier: crate::config::QualityTier::Balanced,
+            material_profile: crate::config::MaterialProfile::Lambert,
+        }
+    }
+
+    pub fn set_caps(&mut self, caps: crate::config::ProfileCaps) {
+        self.caps = Some(caps);
+        self.apply_render_defaults(crate::config::render_defaults_for_profile(caps));
+    }
+
+    pub fn clear_caps(&mut self) {
+        self.caps = None;
+    }
+
+    pub fn set_quality_tier(&mut self, tier: crate::config::QualityTier) {
+        self.quality_tier = tier;
+    }
+
+    pub fn set_material_profile(&mut self, profile: crate::config::MaterialProfile) {
+        self.material_profile = profile;
+    }
+
+    pub fn apply_render_defaults(&mut self, defaults: crate::config::RenderDefaults) {
+        self.quality_tier = defaults.quality_tier;
+        self.material_profile = defaults.material_profile;
+    }
+
+    fn resolve_render_mode(&self, mode: &RenderMode) -> RenderMode {
+        use crate::config::{MaterialProfile, QualityTier};
+        match self.quality_tier {
+            QualityTier::Fastest => match mode {
+                RenderMode::BlinnPhong { .. }
+                | RenderMode::GouraudLightDir(_)
+                | RenderMode::SolidLightDir(_) => RenderMode::Solid,
+                _ => mode.clone(),
+            },
+            QualityTier::Balanced => match (self.material_profile, mode) {
+                (MaterialProfile::Unlit, RenderMode::BlinnPhong { .. })
+                | (MaterialProfile::Unlit, RenderMode::GouraudLightDir(_))
+                | (MaterialProfile::Unlit, RenderMode::SolidLightDir(_)) => RenderMode::Solid,
+                (MaterialProfile::Lambert, RenderMode::BlinnPhong { light_dir, .. }) => {
+                    RenderMode::SolidLightDir(light_dir.clone())
+                }
+                _ => mode.clone(),
+            },
+            QualityTier::Quality => match (self.material_profile, mode) {
+                (MaterialProfile::Unlit, RenderMode::BlinnPhong { .. })
+                | (MaterialProfile::Unlit, RenderMode::GouraudLightDir(_))
+                | (MaterialProfile::Unlit, RenderMode::SolidLightDir(_)) => RenderMode::Solid,
+                (MaterialProfile::Lambert, RenderMode::BlinnPhong { light_dir, .. }) => {
+                    RenderMode::SolidLightDir(light_dir.clone())
+                }
+                _ => mode.clone(),
+            },
         }
     }
 
@@ -137,20 +217,64 @@ impl K3dengine {
 
     #[inline(always)]
     fn transform_point(&self, point: &[f32; 3], model_matrix: Matrix4<f32>) -> Option<Point3<i32>> {
+        #[cfg(feature = "fixed-transform")]
+        {
+            return self.transform_point_fixed(point, model_matrix);
+        }
+        #[cfg(not(feature = "fixed-transform"))]
+        {
+            let point = nalgebra::Vector4::new(point[0], point[1], point[2], 1.0);
+            let point = model_matrix * point;
+
+            if point.w < 0.0 {
+                return None;
+            }
+            if point.z < self.camera.near || point.z > self.camera.far {
+                return None;
+            }
+
+            let point = Point3::from_homogeneous(point)?;
+
+            let x = ((1.0 + point.x) * 0.5 * self.width as f32) as i32;
+            let y = ((1.0 - point.y) * 0.5 * self.height as f32) as i32;
+
+            if x < 0 || x >= self.width as i32 || y < 0 || y >= self.height as i32 {
+                return None;
+            }
+
+            Some(Point3::new(
+                x,
+                y,
+                (point.z * (self.camera.far - self.camera.near) + self.camera.near) as i32,
+            ))
+        }
+    }
+
+    #[cfg(feature = "fixed-transform")]
+    #[inline(always)]
+    fn transform_point_fixed(
+        &self,
+        point: &[f32; 3],
+        model_matrix: Matrix4<f32>,
+    ) -> Option<Point3<i32>> {
+        use crate::fixed_math::{div_fp, from_fp, to_fp};
+
         let point = nalgebra::Vector4::new(point[0], point[1], point[2], 1.0);
         let point = model_matrix * point;
 
-        if point.w < 0.0 {
-            return None;
-        }
-        if point.z < self.camera.near || point.z > self.camera.far {
+        if point.w <= 0.0 {
             return None;
         }
 
-        let point = Point3::from_homogeneous(point)?;
+        let x_fp = div_fp(to_fp(point.x), to_fp(point.w))?;
+        let y_fp = div_fp(to_fp(point.y), to_fp(point.w))?;
+        let z_ndc = from_fp(div_fp(to_fp(point.z), to_fp(point.w))?);
+        if z_ndc < self.camera.near || z_ndc > self.camera.far {
+            return None;
+        }
 
-        let x = ((1.0 + point.x) * 0.5 * self.width as f32) as i32;
-        let y = ((1.0 - point.y) * 0.5 * self.height as f32) as i32;
+        let x = ((1.0 + from_fp(x_fp)) * 0.5 * self.width as f32) as i32;
+        let y = ((1.0 - from_fp(y_fp)) * 0.5 * self.height as f32) as i32;
 
         if x < 0 || x >= self.width as i32 || y < 0 || y >= self.height as i32 {
             return None;
@@ -159,7 +283,7 @@ impl K3dengine {
         Some(Point3::new(
             x,
             y,
-            (point.z * (self.camera.far - self.camera.near) + self.camera.near) as i32,
+            (z_ndc * (self.camera.far - self.camera.near) + self.camera.near) as i32,
         ))
     }
 
@@ -179,7 +303,52 @@ impl K3dengine {
         Some(ret)
     }
 
-    pub fn render<'a, MS, F>(&self, meshes: MS, mut callback: F)
+    /// Like `transform_point` but also returns the clip-space W for perspective-correct interpolation.
+    /// Returns (screen_point, w_clip). w_clip is the clip-space W before perspective division.
+    fn transform_point_with_w(
+        &self,
+        point: &[f32; 3],
+        model_matrix: Matrix4<f32>,
+    ) -> Option<(Point3<i32>, f32)> {
+        let v = nalgebra::Vector4::new(point[0], point[1], point[2], 1.0);
+        let clip = model_matrix * v;
+        if clip.w <= 0.0 {
+            return None;
+        }
+        let ndc_x = clip.x / clip.w;
+        let ndc_y = clip.y / clip.w;
+        let ndc_z = clip.z / clip.w;
+        if ndc_z < self.camera.near || ndc_z > self.camera.far {
+            return None;
+        }
+        let x = ((1.0 + ndc_x) * 0.5 * self.width as f32) as i32;
+        let y = ((1.0 - ndc_y) * 0.5 * self.height as f32) as i32;
+        if x < 0 || x >= self.width as i32 || y < 0 || y >= self.height as i32 {
+            return None;
+        }
+        let z = (ndc_z * (self.camera.far - self.camera.near) + self.camera.near) as i32;
+        Some((Point3::new(x, y, z), clip.w))
+    }
+
+    /// Like `transform_points` but also returns clip-space W values for perspective-correct UV.
+    #[inline(always)]
+    pub fn transform_points_with_w<const N: usize>(
+        &self,
+        indices: &[usize; N],
+        vertices: &[[f32; 3]],
+        model_matrix: Matrix4<f32>,
+    ) -> Option<([Point3<i32>; N], [f32; N])> {
+        let mut pts = [Point3::new(0, 0, 0); N];
+        let mut ws = [1.0f32; N];
+        for i in 0..N {
+            let (p, w) = self.transform_point_with_w(&vertices[indices[i]], model_matrix)?;
+            pts[i] = p;
+            ws[i] = w;
+        }
+        Some((pts, ws))
+    }
+
+    fn render<'a, MS, F>(&self, meshes: MS, mut callback: F)
     where
         MS: IntoIterator<Item = &'a K3dMesh<'a>>,
         F: FnMut(DrawPrimitive),
@@ -203,7 +372,8 @@ impl K3dengine {
 
             let transform_matrix = self.camera.vp_matrix * mesh.model_matrix;
 
-            match mesh.render_mode {
+            let render_mode = self.resolve_render_mode(&mesh.render_mode);
+            match render_mode {
                 RenderMode::Points => {
                     let screen_space_points = geometry
                         .vertices
@@ -475,63 +645,485 @@ impl K3dengine {
                         }
                     }
                 }
+
+                RenderMode::SectorBright(brightness) => {
+                    // Scale mesh color by brightness factor (Doom-style sector lighting)
+                    let factor = brightness as f32 / 255.0;
+                    let scaled_r = (mesh.color.r() as f32 * factor) as u8;
+                    let scaled_g = (mesh.color.g() as f32 * factor) as u8;
+                    let scaled_b = (mesh.color.b() as f32 * factor) as u8;
+                    let scaled_color = Rgb565::new(scaled_r, scaled_g, scaled_b);
+
+                    if geometry.normals.is_empty() {
+                        for face in geometry.faces.iter() {
+                            if let Some([p1, p2, p3]) =
+                                self.transform_points(face, geometry.vertices, transform_matrix)
+                            {
+                                callback(DrawPrimitive::ColoredTriangleWithDepth {
+                                    points: [p1.xy(), p2.xy(), p3.xy()],
+                                    depths: [p1.z as f32, p2.z as f32, p3.z as f32],
+                                    color: scaled_color,
+                                });
+                            }
+                        }
+                    } else {
+                        for (face, normal) in geometry.faces.iter().zip(geometry.normals) {
+                            // Backface culling
+                            let normal = Vector3::new(normal[0], normal[1], normal[2]);
+                            let transformed_normal = mesh.model_matrix.transform_vector(&normal);
+
+                            if self.camera.get_direction().dot(&transformed_normal) < 0.0 {
+                                continue;
+                            }
+
+                            if let Some([p1, p2, p3]) =
+                                self.transform_points(face, geometry.vertices, transform_matrix)
+                            {
+                                callback(DrawPrimitive::ColoredTriangleWithDepth {
+                                    points: [p1.xy(), p2.xy(), p3.xy()],
+                                    depths: [p1.z as f32, p2.z as f32, p3.z as f32],
+                                    color: scaled_color,
+                                });
+                            }
+                        }
+                    }
+                }
             }
         }
     }
 
-    pub fn record_render_commands<'a, MS, const MAX: usize>(
+    pub fn record<'a, MS, const MAX: usize>(
         &self,
         meshes: MS,
         commands: &mut crate::command_buffer::CommandBuffer<MAX>,
+        telemetry: Option<&mut crate::telemetry::RecordTelemetry>,
+    ) -> Result<(), crate::error::RenderError>
+    where
+        MS: IntoIterator<Item = &'a K3dMesh<'a>>,
+    {
+        self.record_impl(meshes, commands, telemetry)
+    }
+
+    fn record_impl<'a, MS, const MAX: usize>(
+        &self,
+        meshes: MS,
+        commands: &mut crate::command_buffer::CommandBuffer<MAX>,
+        telemetry: Option<&mut crate::telemetry::RecordTelemetry>,
     ) -> Result<(), crate::error::RenderError>
     where
         MS: IntoIterator<Item = &'a K3dMesh<'a>>,
     {
         use crate::command_buffer::RenderCommand;
+        use crate::error::{BudgetKind, RenderError};
 
         commands.clear();
         commands.push(RenderCommand::ClearDepth(u32::MAX))?;
+        if let Some(caps) = self.caps {
+            caps.validate_framebuffer(self.width as usize, self.height as usize)?;
+        }
 
         let mut first_error = None;
-        self.render(meshes, |primitive| {
-            if first_error.is_none() {
-                if let Err(e) = commands.push(RenderCommand::Draw(primitive)) {
-                    first_error = Some(e);
+        let mut visible_meshes = 0usize;
+        let mut used_texture_ids: heapless::Vec<u32, 64> = heapless::Vec::new();
+        let mut meshes_total = 0usize;
+
+        for mesh in meshes {
+            meshes_total += 1;
+            if mesh.geometry.vertices.is_empty() {
+                continue;
+            }
+            if self.should_cull_mesh(mesh) {
+                continue;
+            }
+
+            let distance = (mesh.get_position() - self.camera.position).norm();
+            let geometry = mesh.select_lod(distance);
+
+            if let Some(caps) = self.caps {
+                visible_meshes += 1;
+                if visible_meshes > caps.max_meshes_per_frame {
+                    return Err(RenderError::OutOfBudget(BudgetKind::MeshesPerFrame {
+                        attempted: visible_meshes,
+                        max: caps.max_meshes_per_frame,
+                    }));
+                }
+
+                if geometry.vertices.len() > caps.max_vertices_per_mesh {
+                    return Err(RenderError::OutOfBudget(BudgetKind::VerticesPerMesh {
+                        attempted: geometry.vertices.len(),
+                        max: caps.max_vertices_per_mesh,
+                    }));
+                }
+
+                if geometry.faces.len() > caps.max_triangles_per_mesh {
+                    return Err(RenderError::OutOfBudget(BudgetKind::TrianglesPerMesh {
+                        attempted: geometry.faces.len(),
+                        max: caps.max_triangles_per_mesh,
+                    }));
+                }
+
+                if let Some(texture_id) = geometry.texture_id
+                    && !used_texture_ids.iter().any(|id| *id == texture_id)
+                {
+                    let attempted = used_texture_ids.len() + 1;
+                    if attempted > caps.max_textures {
+                        return Err(RenderError::OutOfBudget(BudgetKind::Textures {
+                            attempted,
+                            max: caps.max_textures,
+                        }));
+                    }
+
+                    if used_texture_ids.push(texture_id).is_err() {
+                        return Err(RenderError::OutOfBudget(BudgetKind::Textures {
+                            attempted,
+                            max: caps.max_textures,
+                        }));
+                    }
                 }
             }
-        });
 
-        if let Some(err) = first_error {
-            return Err(err);
+            self.render(core::iter::once(mesh), |primitive| {
+                if first_error.is_none()
+                    && let Err(e) = commands.push(RenderCommand::Draw(primitive))
+                {
+                    first_error = Some(e);
+                }
+            });
+            if let Some(err) = first_error {
+                return Err(err);
+            }
+        }
+
+        if let Some(t) = telemetry {
+            t.meshes_total = meshes_total;
+            t.meshes_visible = visible_meshes;
+            t.unique_textures = used_texture_ids.len();
+            t.draw_commands = commands
+                .iter()
+                .filter(|cmd| matches!(cmd, RenderCommand::Draw(_)))
+                .count();
+            t.fallback_used = false;
+            t.degradation_steps_applied = 0;
+            t.dropped_meshes = 0;
         }
 
         Ok(())
     }
 
-    pub fn render_frame<'a, MS, D, const MAX: usize>(
+    pub fn record_with_fallback<'a, MS, FS, const MAX: usize>(
         &self,
-        meshes: MS,
-        fb: &mut D,
-        zbuffer: &mut [u32],
-        width: usize,
-        height: usize,
-    ) -> Result<(), crate::error::RenderError>
+        primary: MS,
+        fallback: FS,
+        commands: &mut crate::command_buffer::CommandBuffer<MAX>,
+        telemetry: Option<&mut crate::telemetry::RecordTelemetry>,
+    ) -> Result<BudgetFallbackOutcome, crate::error::RenderError>
     where
         MS: IntoIterator<Item = &'a K3dMesh<'a>>,
+        FS: IntoIterator<Item = &'a K3dMesh<'a>>,
+    {
+        use crate::error::RenderError;
+
+        let mut local_telemetry = crate::telemetry::RecordTelemetry::default();
+        match self.record_impl(primary, commands, Some(&mut local_telemetry)) {
+            Ok(()) => {
+                if let Some(t) = telemetry {
+                    *t = local_telemetry;
+                    t.fallback_used = false;
+                }
+                Ok(BudgetFallbackOutcome {
+                    used_fallback: false,
+                    primary_budget_error: None,
+                })
+            }
+            Err(RenderError::OutOfBudget(kind)) => {
+                let mut fallback_telemetry = crate::telemetry::RecordTelemetry::default();
+                self.record_impl(fallback, commands, Some(&mut fallback_telemetry))?;
+                if let Some(t) = telemetry {
+                    *t = fallback_telemetry;
+                    t.fallback_used = true;
+                }
+                Ok(BudgetFallbackOutcome {
+                    used_fallback: true,
+                    primary_budget_error: Some(kind),
+                })
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    fn downgraded_quality_tier(tier: crate::config::QualityTier) -> crate::config::QualityTier {
+        use crate::config::QualityTier;
+        match tier {
+            QualityTier::Quality => QualityTier::Balanced,
+            QualityTier::Balanced => QualityTier::Fastest,
+            QualityTier::Fastest => QualityTier::Fastest,
+        }
+    }
+
+    pub fn record_with_degradation<'a, const MAX: usize>(
+        &mut self,
+        meshes: &[&'a K3dMesh<'a>],
+        commands: &mut crate::command_buffer::CommandBuffer<MAX>,
+        policy: crate::config::DegradationPolicy<'_>,
+        telemetry: Option<&mut crate::telemetry::RecordTelemetry>,
+    ) -> Result<DegradationOutcome, crate::error::RenderError> {
+        use crate::config::DegradationStep;
+        use crate::error::RenderError;
+
+        let original_quality = self.quality_tier;
+        let mut active_quality = self.quality_tier;
+
+        let mut outcome = DegradationOutcome {
+            used_degradation: false,
+            steps_applied: 0,
+            dropped_meshes: 0,
+            final_quality_tier: active_quality,
+            primary_budget_error: None,
+        };
+
+        let mut local_telemetry = crate::telemetry::RecordTelemetry::default();
+        match self.record_impl(meshes.iter().copied(), commands, Some(&mut local_telemetry)) {
+            Ok(()) => {
+                if let Some(t) = telemetry {
+                    *t = local_telemetry;
+                }
+                return Ok(outcome);
+            }
+            Err(RenderError::OutOfBudget(kind)) => {
+                outcome.primary_budget_error = Some(kind);
+            }
+            Err(e) => return Err(e),
+        }
+
+        for step in policy.steps {
+            outcome.used_degradation = true;
+            outcome.steps_applied += 1;
+
+            let mut selected: heapless::Vec<&K3dMesh<'_>, 512> = heapless::Vec::new();
+            match *step {
+                DegradationStep::RaisePriorityFloor(min_priority) => {
+                    for mesh in meshes {
+                        if mesh.priority >= min_priority {
+                            let _ = selected.push(*mesh);
+                        } else {
+                            outcome.dropped_meshes += 1;
+                        }
+                    }
+                }
+                DegradationStep::MeshDecimationStride(stride) => {
+                    if stride == 0 {
+                        self.quality_tier = original_quality;
+                        return Err(RenderError::InvalidInput(
+                            "mesh decimation stride must be >= 1",
+                        ));
+                    }
+                    for (idx, mesh) in meshes.iter().enumerate() {
+                        if idx % stride == 0 {
+                            let _ = selected.push(*mesh);
+                        } else {
+                            outcome.dropped_meshes += 1;
+                        }
+                    }
+                }
+                DegradationStep::DowngradeQuality => {
+                    active_quality = Self::downgraded_quality_tier(active_quality);
+                    self.quality_tier = active_quality;
+                    for mesh in meshes {
+                        let _ = selected.push(*mesh);
+                    }
+                }
+            }
+
+            if selected.is_empty() {
+                continue;
+            }
+
+            let mut step_telemetry = crate::telemetry::RecordTelemetry::default();
+            let attempt = self.record_impl(
+                selected.iter().copied(),
+                commands,
+                Some(&mut step_telemetry),
+            );
+
+            if let Ok(()) = attempt {
+                outcome.final_quality_tier = self.quality_tier;
+                if let Some(t) = telemetry {
+                    *t = step_telemetry;
+                    t.fallback_used = true;
+                    t.degradation_steps_applied = outcome.steps_applied;
+                    t.dropped_meshes = outcome.dropped_meshes;
+                }
+                self.quality_tier = original_quality;
+                return Ok(outcome);
+            }
+        }
+
+        self.quality_tier = original_quality;
+        Err(crate::error::RenderError::Recoverable {
+            fault: crate::error::RuntimeFaultKind::Budget(outcome.primary_budget_error.unwrap_or(
+                crate::error::BudgetKind::DrawPrimitives {
+                    attempted: commands.len(),
+                    max: MAX,
+                },
+            )),
+            action: crate::error::RecoveryAction::SkipFrame,
+        })
+    }
+
+    pub fn execute<D, const MAX: usize>(
+        &self,
+        fb: &mut D,
+        frame: &mut crate::renderer::FrameCtx<'_>,
+        commands: &crate::command_buffer::CommandBuffer<MAX>,
+        telemetry: Option<&mut crate::telemetry::ExecuteTelemetry>,
+    ) -> Result<Option<crate::renderer::DirtyRegion>, crate::error::RenderError>
+    where
         D: embedded_graphics_core::draw_target::DrawTarget<Color = Rgb565>
             + embedded_graphics_core::prelude::OriginDimensions,
         <D as embedded_graphics_core::draw_target::DrawTarget>::Error: core::fmt::Debug,
     {
-        let mut cmd = crate::command_buffer::CommandBuffer::<MAX>::new();
-        self.record_render_commands(meshes, &mut cmd)?;
-
-        let mut frame = crate::renderer::FrameCtx {
-            zbuffer,
-            width,
-            height,
-        };
-        crate::renderer::execute_commands(fb, &mut frame, &cmd)
+        if let Some(t) = telemetry {
+            t.commands_total = commands.len();
+            t.draw_commands = commands
+                .iter()
+                .filter(|cmd| matches!(cmd, crate::command_buffer::RenderCommand::Draw(_)))
+                .count();
+            t.clear_color_commands = commands
+                .iter()
+                .filter(|cmd| matches!(cmd, crate::command_buffer::RenderCommand::ClearColor(_)))
+                .count();
+            t.clear_depth_commands = commands
+                .iter()
+                .filter(|cmd| matches!(cmd, crate::command_buffer::RenderCommand::ClearDepth(_)))
+                .count();
+        }
+        crate::renderer::execute_commands_with_dirty_region(fb, frame, commands)
     }
+
+    pub fn execute_tiled<D, const MAX: usize, const BIN_CAP: usize>(
+        &self,
+        fb: &mut D,
+        frame: &mut crate::renderer::FrameCtx<'_>,
+        commands: &crate::command_buffer::CommandBuffer<MAX>,
+        tile: crate::tilebin::TileConfig,
+    ) -> Result<crate::tilebin::TileBinStats, crate::error::RenderError>
+    where
+        D: embedded_graphics_core::draw_target::DrawTarget<Color = Rgb565>
+            + embedded_graphics_core::prelude::OriginDimensions,
+        <D as embedded_graphics_core::draw_target::DrawTarget>::Error: core::fmt::Debug,
+    {
+        crate::renderer::execute_commands_tiled::<D, MAX, BIN_CAP>(fb, frame, commands, tile)
+    }
+}
+
+/// Result of a ray cast against triangle geometry.
+#[derive(Debug, Clone, Copy)]
+pub struct MeshRayCastHit {
+    /// Distance along the ray to the hit point
+    pub distance: f32,
+    /// Hit point in world space
+    pub point: Vector3<f32>,
+    /// Face normal (from cross product of edges, not per-vertex normals)
+    pub normal: Vector3<f32>,
+    /// Index of the triangle face that was hit
+    pub face_index: usize,
+    /// Barycentric-interpolated UV at the hit point (or [0.0, 0.0] if no UVs present)
+    pub uv: [f32; 2],
+}
+
+/// Ray-cast against triangle geometry using Möller–Trumbore intersection.
+///
+/// `ray_origin` and `ray_dir` are in world space. `model_matrix` transforms mesh
+/// vertices to world space. Returns the closest hit within `max_distance`, or `None`.
+pub fn mesh_ray_cast(
+    ray_origin: Vector3<f32>,
+    ray_dir: Vector3<f32>,
+    geometry: &mesh::Geometry<'_>,
+    model_matrix: &Matrix4<f32>,
+    max_distance: f32,
+) -> Option<MeshRayCastHit> {
+    let mut nearest: Option<MeshRayCastHit> = None;
+    let mut min_dist = max_distance;
+
+    for (face_index, face) in geometry.faces.iter().enumerate() {
+        let raw_v0 = geometry.vertices[face[0]];
+        let raw_v1 = geometry.vertices[face[1]];
+        let raw_v2 = geometry.vertices[face[2]];
+
+        // Transform vertices to world space
+        let v0 = model_matrix
+            .transform_point(&Point3::new(raw_v0[0], raw_v0[1], raw_v0[2]))
+            .coords;
+        let v1 = model_matrix
+            .transform_point(&Point3::new(raw_v1[0], raw_v1[1], raw_v1[2]))
+            .coords;
+        let v2 = model_matrix
+            .transform_point(&Point3::new(raw_v2[0], raw_v2[1], raw_v2[2]))
+            .coords;
+
+        // Möller–Trumbore
+        let edge1 = v1 - v0;
+        let edge2 = v2 - v0;
+        let h = ray_dir.cross(&edge2);
+        let det = edge1.dot(&h);
+
+        // Parallel ray: skip
+        if det.abs() < 1e-6 {
+            continue;
+        }
+
+        let inv_det = 1.0 / det;
+        let s = ray_origin - v0;
+        let bary_u = inv_det * s.dot(&h);
+        if bary_u < 0.0 || bary_u > 1.0 {
+            continue;
+        }
+
+        let q = s.cross(&edge1);
+        let bary_v = inv_det * ray_dir.dot(&q);
+        if bary_v < 0.0 || bary_u + bary_v > 1.0 {
+            continue;
+        }
+
+        let t = inv_det * edge2.dot(&q);
+        if t <= 0.0 || t >= min_dist {
+            continue;
+        }
+
+        // Face normal from edge cross product
+        let normal = edge1.cross(&edge2).normalize();
+
+        // Barycentric weights: w0 = 1 - u - v, w1 = u, w2 = v
+        let bary_w = 1.0 - bary_u - bary_v;
+
+        // Interpolate UV if available
+        let uv = if geometry.uvs.len() > face[0]
+            && geometry.uvs.len() > face[1]
+            && geometry.uvs.len() > face[2]
+        {
+            let uv0 = geometry.uvs[face[0]];
+            let uv1 = geometry.uvs[face[1]];
+            let uv2 = geometry.uvs[face[2]];
+            [
+                bary_w * uv0[0] + bary_u * uv1[0] + bary_v * uv2[0],
+                bary_w * uv0[1] + bary_u * uv1[1] + bary_v * uv2[1],
+            ]
+        } else {
+            [0.0, 0.0]
+        };
+
+        let point = ray_origin + ray_dir * t;
+        min_dist = t;
+        nearest = Some(MeshRayCastHit {
+            distance: t,
+            point,
+            normal,
+            face_index,
+            uv,
+        });
+    }
+
+    nearest
 }
 
 #[cfg(test)]

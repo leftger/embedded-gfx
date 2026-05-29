@@ -8,7 +8,7 @@
 
 use embedded_graphics_core::pixelcolor::Rgb565;
 #[cfg(not(feature = "std"))]
-use nalgebra::ComplexField;
+use micromath::F32Ext;
 use nalgebra::{Point3, Vector3};
 
 /// A billboard is a 2D quad that always faces the camera
@@ -55,7 +55,8 @@ impl Billboard {
         let up_base = to_camera.cross(&right).normalize();
 
         // Spin the quad in the plane facing the camera (texture/logo rotation).
-        let (s, c) = self.rotation.sin_cos();
+        let s = self.rotation.sin();
+        let c = self.rotation.cos();
         let right = right * c + up_base * s;
         let up = up_base * c - right * s;
 

@@ -8,6 +8,26 @@
 use embedded_graphics_core::pixelcolor::Rgb565;
 use embedded_graphics_framebuf::{FrameBuf, backends::DMACapableFrameBufferBackend};
 
+/// Rectangle region for partial framebuffer presents.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DisplayRegion {
+    pub x: usize,
+    pub y: usize,
+    pub width: usize,
+    pub height: usize,
+}
+
+impl DisplayRegion {
+    pub const fn new(x: usize, y: usize, width: usize, height: usize) -> Self {
+        Self {
+            x,
+            y,
+            width,
+            height,
+        }
+    }
+}
+
 /// Error types for display backend operations
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DisplayError {
@@ -43,6 +63,17 @@ where
         framebuffer: &FrameBuf<Rgb565, FB>,
     ) -> Result<(), DisplayError>;
 
+    /// Start a non-blocking transfer of a framebuffer sub-region.
+    ///
+    /// Default implementation falls back to full-frame transfer.
+    fn start_dma_transfer_region(
+        &mut self,
+        framebuffer: &FrameBuf<Rgb565, FB>,
+        _region: DisplayRegion,
+    ) -> Result<(), DisplayError> {
+        self.start_dma_transfer(framebuffer)
+    }
+
     /// Wait for the current DMA transfer to complete
     ///
     /// This function blocks until the DMA transfer finishes.
@@ -66,6 +97,18 @@ where
     fn present(&mut self, framebuffer: &FrameBuf<Rgb565, FB>) -> Result<(), DisplayError> {
         self.wait_for_dma();
         self.start_dma_transfer(framebuffer)
+    }
+
+    /// Present a framebuffer sub-region to the display.
+    ///
+    /// Default implementation falls back to full-frame present.
+    fn present_region(
+        &mut self,
+        framebuffer: &FrameBuf<Rgb565, FB>,
+        region: DisplayRegion,
+    ) -> Result<(), DisplayError> {
+        self.wait_for_dma();
+        self.start_dma_transfer_region(framebuffer, region)
     }
 }
 
@@ -119,10 +162,52 @@ where
 mod tests {
     extern crate std;
     use super::*;
+    use core::cell::Cell;
+    use embedded_graphics_core::pixelcolor::RgbColor;
     use embedded_graphics_framebuf::backends::EndianCorrectedBuffer;
+    use std::vec;
 
     // Type alias for testing
     type TestBackend = EndianCorrectedBuffer<'static, Rgb565>;
+
+    struct RegionTrackingBackend {
+        region_calls: Cell<usize>,
+    }
+
+    impl RegionTrackingBackend {
+        fn new() -> Self {
+            Self {
+                region_calls: Cell::new(0),
+            }
+        }
+    }
+
+    impl<const W: usize, const H: usize, FB> DisplayBackend<W, H, FB> for RegionTrackingBackend
+    where
+        FB: DMACapableFrameBufferBackend<Color = Rgb565>,
+    {
+        fn start_dma_transfer(
+            &mut self,
+            _framebuffer: &FrameBuf<Rgb565, FB>,
+        ) -> Result<(), DisplayError> {
+            Ok(())
+        }
+
+        fn start_dma_transfer_region(
+            &mut self,
+            _framebuffer: &FrameBuf<Rgb565, FB>,
+            _region: DisplayRegion,
+        ) -> Result<(), DisplayError> {
+            self.region_calls.set(self.region_calls.get() + 1);
+            Ok(())
+        }
+
+        fn wait_for_dma(&mut self) {}
+
+        fn is_dma_ready(&self) -> bool {
+            true
+        }
+    }
 
     #[test]
     fn test_simulator_backend_creation() {
@@ -154,5 +239,27 @@ mod tests {
             240,
             TestBackend,
         >>::is_dma_ready(&backend));
+    }
+
+    #[test]
+    fn test_present_region_calls_region_transfer() {
+        let mut backend = RegionTrackingBackend::new();
+        let data = vec![Rgb565::BLACK; 4].leak();
+        let fb = FrameBuf::new(
+            EndianCorrectedBuffer::new(
+                data,
+                embedded_graphics_framebuf::backends::EndianCorrection::ToLittleEndian,
+            ),
+            2,
+            2,
+        );
+        let region = DisplayRegion::new(0, 0, 1, 1);
+        <RegionTrackingBackend as DisplayBackend<2, 2, TestBackend>>::present_region(
+            &mut backend,
+            &fb,
+            region,
+        )
+        .unwrap();
+        assert_eq!(backend.region_calls.get(), 1);
     }
 }

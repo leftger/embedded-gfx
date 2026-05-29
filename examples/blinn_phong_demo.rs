@@ -11,10 +11,12 @@
 //! - ESC: Exit
 
 use embedded_3dgfx::K3dengine;
-use embedded_3dgfx::draw::draw_zbuffered;
+use embedded_3dgfx::command_buffer::CommandBuffer;
+use embedded_3dgfx::config::apply_default_caps;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
 #[cfg(feature = "perfcounter")]
 use embedded_3dgfx::perfcounter::PerformanceCounter;
+use embedded_3dgfx::renderer::FrameCtx;
 use embedded_graphics::mono_font::{MonoTextStyle, ascii::FONT_6X10};
 use embedded_graphics::text::Text;
 use embedded_graphics_core::pixelcolor::{Rgb565, RgbColor};
@@ -29,6 +31,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 fn main() {
+    const WIDTH: usize = 800;
+    const HEIGHT: usize = 600;
     let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(800, 600));
 
     let output_settings = OutputSettingsBuilder::new().scale(1).build();
@@ -37,6 +41,7 @@ fn main() {
 
     // Create 3D engine
     let mut engine = K3dengine::new(800, 600);
+    apply_default_caps(&mut engine);
     engine.camera.set_position(Point3::new(-10.0, 2.0, 0.0));
     engine.camera.set_target(Point3::new(-9.0, 2.0, 0.0));
 
@@ -67,7 +72,8 @@ fn main() {
     let text_style = MonoTextStyle::new(&FONT_6X10, Rgb565::CSS_WHITE);
 
     // Z-buffer
-    let mut zbuffer = vec![u32::MAX; 800 * 600];
+    let mut zbuffer = vec![u32::MAX; WIDTH * HEIGHT];
+    let mut commands = CommandBuffer::<8192>::new();
 
     // Lighting parameters
     let mut light_angle_h = 0.0f32; // Horizontal angle
@@ -185,10 +191,21 @@ fn main() {
         display.clear(Rgb565::BLACK).unwrap();
         zbuffer.fill(u32::MAX);
 
-        // Render all meshes with Z-buffering
-        engine.render([&suzanne, &teapot, &blahaj].iter().copied(), |prim| {
-            draw_zbuffered(prim, &mut display, &mut zbuffer, 800);
-        });
+        engine
+            .record(
+                [&suzanne, &teapot, &blahaj].iter().copied(),
+                &mut commands,
+                None,
+            )
+            .unwrap();
+        let mut frame = FrameCtx {
+            zbuffer: &mut zbuffer,
+            width: WIDTH,
+            height: HEIGHT,
+        };
+        engine
+            .execute::<_, 8192>(&mut display, &mut frame, &commands, None)
+            .unwrap();
 
         // Display info
         perf.print();

@@ -4,9 +4,8 @@ use heapless::index_set::FnvIndexSet;
 use log::error;
 use nalgebra::{Point3, Similarity3, UnitQuaternion, Vector3};
 
-// ComplexField provides sqrt() for f32 in no_std via libm
-#[allow(unused_imports)]
-use nalgebra::ComplexField;
+#[cfg(not(feature = "std"))]
+use micromath::F32Ext;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum RenderMode {
@@ -20,6 +19,9 @@ pub enum RenderMode {
         shininess: f32,
     },
     GouraudLightDir(Vector3<f32>),
+    /// Flat-shaded with a uniform brightness level (0=black, 255=full color).
+    /// Used for Doom-style sector-based lighting.
+    SectorBright(u8),
 }
 #[derive(Debug, Default, Copy, Clone)]
 pub struct Geometry<'a> {
@@ -143,6 +145,7 @@ pub struct K3dMesh<'a> {
     pub lod_medium: Option<Geometry<'a>>,
     pub lod_low: Option<Geometry<'a>>,
     pub lod_levels: LODLevels,
+    pub priority: u8,
 }
 
 impl<'a> K3dMesh<'a> {
@@ -158,6 +161,7 @@ impl<'a> K3dMesh<'a> {
             lod_medium: None,
             lod_low: None,
             lod_levels: LODLevels::default(),
+            priority: 128,
         }
     }
 
@@ -211,6 +215,10 @@ impl<'a> K3dMesh<'a> {
 
     pub fn set_render_mode(&mut self, mode: RenderMode) {
         self.render_mode = mode;
+    }
+
+    pub fn set_priority(&mut self, priority: u8) {
+        self.priority = priority;
     }
 
     pub fn set_position(&mut self, x: f32, y: f32, z: f32) {

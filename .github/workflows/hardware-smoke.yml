@@ -1,0 +1,34 @@
+name: Hardware Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      board:
+        description: "Board runner label"
+        required: true
+        default: "stm32-m4"
+      profile:
+        description: "EMBEDDED_3DGFX_CAPS profile"
+        required: true
+        default: "m4"
+      row_feature:
+        description: "row width feature"
+        required: true
+        default: "row_width_240"
+
+jobs:
+  smoke:
+    name: Hardware smoke (${{ inputs.board }})
+    runs-on: [self-hosted, embedded-3dgfx-hw, "${{ inputs.board }}"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Run board smoke script
+        run: bash .github/scripts/hardware_smoke.sh "${{ inputs.board }}" "${{ inputs.profile }}" "${{ inputs.row_feature }}"
+      - name: Validate smoke markers
+        run: python3 .github/scripts/check_hardware_smoke.py hardware-smoke.log
+      - name: Upload smoke log
+        uses: actions/upload-artifact@v4
+        with:
+          name: hardware-smoke-${{ inputs.board }}-${{ inputs.profile }}
+          path: hardware-smoke.log

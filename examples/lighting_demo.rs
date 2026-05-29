@@ -4,10 +4,12 @@
 //! This demo uses simple cubes positioned to show clear lighting differences.
 
 use embedded_3dgfx::K3dengine;
-use embedded_3dgfx::draw::draw_zbuffered;
+use embedded_3dgfx::command_buffer::CommandBuffer;
+use embedded_3dgfx::config::apply_default_caps;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
 #[cfg(feature = "perfcounter")]
 use embedded_3dgfx::perfcounter::PerformanceCounter;
+use embedded_3dgfx::renderer::FrameCtx;
 use embedded_graphics::mono_font::{MonoTextStyle, ascii::FONT_6X10};
 use embedded_graphics::text::Text;
 use embedded_graphics_core::pixelcolor::{Rgb565, RgbColor};
@@ -66,6 +68,8 @@ fn make_cube() -> (Vec<[f32; 3]>, Vec<[usize; 3]>, Vec<[f32; 3]>) {
 }
 
 fn main() {
+    const WIDTH: usize = 800;
+    const HEIGHT: usize = 600;
     let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(800, 600));
 
     let output_settings = OutputSettingsBuilder::new().scale(1).build();
@@ -74,6 +78,7 @@ fn main() {
 
     // Create 3D engine
     let mut engine = K3dengine::new(800, 600);
+    apply_default_caps(&mut engine);
     engine.camera.set_position(Point3::new(0.0, 3.0, 10.0));
     engine.camera.set_target(Point3::new(0.0, 0.0, 0.0));
 
@@ -132,7 +137,8 @@ fn main() {
 
     // Create Z-buffer (using u32 for better embedded performance)
     // u32::MAX represents infinity (furthest distance)
-    let mut zbuffer = vec![u32::MAX; 800 * 600];
+    let mut zbuffer = vec![u32::MAX; WIDTH * HEIGHT];
+    let mut commands = CommandBuffer::<8192>::new();
 
     let start_time = Instant::now();
     let mut auto_rotate = true;
@@ -216,10 +222,21 @@ fn main() {
         display.clear(Rgb565::BLACK).unwrap();
         zbuffer.fill(u32::MAX);
 
-        // Render all cubes with Z-buffering
-        engine.render([&cube1, &cube2, &cube3].iter().copied(), |prim| {
-            draw_zbuffered(prim, &mut display, &mut zbuffer, 800);
-        });
+        engine
+            .record(
+                [&cube1, &cube2, &cube3].iter().copied(),
+                &mut commands,
+                None,
+            )
+            .unwrap();
+        let mut frame = FrameCtx {
+            zbuffer: &mut zbuffer,
+            width: WIDTH,
+            height: HEIGHT,
+        };
+        engine
+            .execute::<_, 8192>(&mut display, &mut frame, &commands, None)
+            .unwrap();
 
         // Display info
         perf.print();

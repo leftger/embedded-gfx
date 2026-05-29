@@ -13,8 +13,11 @@
 use embedded_3dgfx::DrawPrimitive;
 use embedded_3dgfx::K3dengine;
 use embedded_3dgfx::billboard::Billboard;
-use embedded_3dgfx::draw::{draw_zbuffered, draw_zbuffered_with_textures as draw_tex};
+use embedded_3dgfx::command_buffer::CommandBuffer;
+use embedded_3dgfx::config::apply_default_caps;
+use embedded_3dgfx::draw::draw_zbuffered_with_textures as draw_tex;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
+use embedded_3dgfx::renderer::FrameCtx;
 use embedded_3dgfx::texture::{Texture, TextureManager};
 use embedded_3dgfx::transform_anim::{AnimationPlayer, TransformKeyframe, TransformTrack};
 use embedded_3dgfx::tween::{Easing, Tween, scale_rgb565};
@@ -154,12 +157,12 @@ fn place_menu_items(items: &mut [K3dMesh<'static>], x: f32) {
     }
 }
 
-fn apply_billboard_from_sample(billboard: &mut Billboard, sample: &embedded_3dgfx::SampledTransform, size_mul: f32) {
-    billboard.position = Point3::new(
-        sample.position[0],
-        sample.position[1],
-        sample.position[2],
-    );
+fn apply_billboard_from_sample(
+    billboard: &mut Billboard,
+    sample: &embedded_3dgfx::SampledTransform,
+    size_mul: f32,
+) {
+    billboard.position = Point3::new(sample.position[0], sample.position[1], sample.position[2]);
     billboard.size = sample.scale * size_mul;
     // Yaw spins the textured quad in screen space (billboards ignore pitch/roll).
     billboard.rotation = sample.yaw;
@@ -201,6 +204,7 @@ fn render_textured_billboard(
                 DrawPrimitive::TexturedTriangleWithDepth {
                     points: [p1.xy(), p2.xy(), p3.xy()],
                     depths: [p1.z as f32, p2.z as f32, p3.z as f32],
+                    ws: [1.0, 1.0, 1.0],
                     uvs: [uvs[face[0]], uvs[face[1]], uvs[face[2]]],
                     texture_id,
                 },
@@ -222,6 +226,7 @@ fn render_scene(
     logo_tex: u32,
     texture_manager: &TextureManager<4>,
     menu_items: &[K3dMesh<'static>],
+    commands: &mut CommandBuffer<1024>,
     display: &mut SimulatorDisplay<Rgb565>,
     zbuffer: &mut [u32],
 ) {
@@ -237,11 +242,15 @@ fn render_scene(
             );
         }
         Screen::Transition | Screen::Menu => {
-            for item in menu_items {
-                engine.render(core::iter::once(item), |prim| {
-                    draw_zbuffered(prim, display, zbuffer, W as usize);
-                });
-            }
+            engine.record(menu_items.iter(), commands, None).unwrap();
+            let mut frame = FrameCtx {
+                zbuffer,
+                width: W as usize,
+                height: H as usize,
+            };
+            engine
+                .execute::<_, 1024>(display, &mut frame, &commands, None)
+                .unwrap();
             render_textured_billboard(
                 engine,
                 logo_billboard,
@@ -295,6 +304,7 @@ fn main() {
     let mut window = Window::new("Boot/Menu 96x64 — SPACE UP/DOWN R ESC", &output_settings);
 
     let mut engine = K3dengine::new(W as u16, H as u16);
+    apply_default_caps(&mut engine);
     engine.camera.set_near_far(0.2, 10.0);
     engine.camera.set_fovy(std::f32::consts::FRAC_PI_3);
     engine.camera.set_position(Point3::new(0.0, 0.0, 3.4));
@@ -318,6 +328,7 @@ fn main() {
     let mut screen = Screen::Boot;
     let mut selected: usize = 0;
     let mut zbuffer = [u32::MAX; (W as usize) * (H as usize)];
+    let mut commands = CommandBuffer::<1024>::new();
     let mut last_frame = std::time::Instant::now();
 
     println!("Boot/menu @ {W}x{H} — bitmap logo + 5 items + fades");
@@ -332,6 +343,7 @@ fn main() {
         logo_tex,
         &texture_manager,
         &menu_items,
+        &mut commands,
         &mut display,
         &mut zbuffer,
     );
@@ -466,6 +478,7 @@ fn main() {
             logo_tex,
             &texture_manager,
             &menu_items,
+            &mut commands,
             &mut display,
             &mut zbuffer,
         );

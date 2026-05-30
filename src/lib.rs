@@ -40,12 +40,14 @@ pub mod painters;
 pub mod particles;
 #[cfg(feature = "perfcounter")]
 pub mod perfcounter;
+#[cfg(feature = "physics")]
 pub mod physics;
 pub mod renderer;
 pub mod retro;
 pub mod scene_format;
 pub mod scene_stream;
 pub mod skeleton;
+#[cfg(feature = "physics")]
 pub mod softbody;
 pub mod swapchain;
 pub mod telemetry;

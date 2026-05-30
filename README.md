@@ -44,7 +44,7 @@ A `no_std` 3D graphics and physics engine for embedded systems, optimized for re
 - `engine.execute(fb, &mut frame, &cmd_buf, telemetry)` — rasterize commands to framebuffer
 - `engine.execute_tiled(...)` — tile-binned execution for partial display updates
 
-**Physics Engine**
+**Physics Engine** *(feature: `physics`, opt-in)*
 - Rigid body dynamics — linear/angular motion, forces, torques
 - Sphere, AABB, and capsule colliders with impulse-based collision response
 - Distance, ball-socket, and fixed joint constraints
@@ -54,7 +54,7 @@ A `no_std` 3D graphics and physics engine for embedded systems, optimized for re
 - Parent-child bone hierarchies with linear blend skinning (LBS/SSD)
 - Up to 4 bone influences per vertex
 
-**Soft Body Physics**
+**Soft Body Physics** *(feature: `physics`, opt-in)*
 - Mass-spring systems for cloth, jelly, and deformable objects
 - Volume preservation via pressure simulation
 
@@ -114,8 +114,11 @@ cargo run --example screenshots --features std
 # Embedded (no_std)
 embedded-3dgfx = { version = "0.3", default-features = false }
 
+# With physics
+embedded-3dgfx = { version = "0.3", features = ["physics"] }
+
 # Desktop / simulator with all features
-embedded-3dgfx = { version = "0.3", features = ["std"] }
+embedded-3dgfx = { version = "0.3", features = ["std", "physics"] }
 ```
 
 ## Basic Example
@@ -317,7 +320,7 @@ cargo run --example <name> --features std
 | `boot_menu` | Boot splash + menu transitions (96×64, tweens) |
 | `stl_viewer` | Load and view STL models |
 
-**Physics**
+**Physics** *(requires `physics` feature)*
 | Example | Description |
 |---------|-------------|
 | `physics_rolling_ball` | Beginner intro — gravity, friction, ramps |
@@ -403,6 +406,7 @@ PhysicsWorld::<16, 8>::new()  // 16 bodies, 8 constraints (const generics, no he
 
 | Flag | Default | Description |
 |------|---------|-------------|
+| `physics` | off | Rigid body dynamics, soft body, and ray casting (`physics` + `softbody` modules) |
 | `std` | on | Enables painter's algorithm (`Vec`) and includes `perfcounter` |
 | `perfcounter` | off | FPS/timing measurements (requires `std` or `embassy-time`) |
 | `embassy-time` | off | Timing source for embedded targets |
@@ -489,9 +493,9 @@ src/
   lights.rs           # Dynamic point lights, PointLight, PointLightSet
   config.rs           # ProfileCaps, QualityTier, DegradationPolicy
   error.rs            # RenderError, BudgetKind
-  physics.rs          # Rigid body dynamics
+  physics.rs          # Rigid body dynamics (feature: physics)
   skeleton.rs         # Skeletal animation, linear blend skinning
-  softbody.rs         # Mass-spring soft body physics
+  softbody.rs         # Mass-spring soft body physics (feature: physics)
   texture.rs          # Texture management, RGB565
   billboard.rs        # Camera-facing quads
   animation.rs        # Keyframe vertex animation

@@ -19,8 +19,10 @@ use embedded_3dgfx::draw::{
 use embedded_3dgfx::lights::PointLight;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
 use embedded_3dgfx::particles::{ParticleSpawn, ParticleSystem};
+#[cfg(feature = "physics")]
 use embedded_3dgfx::physics::{Collider, PhysicsWorld, RigidBody, sync_body_to_mesh};
 use embedded_3dgfx::renderer::FrameCtx;
+#[cfg(feature = "physics")]
 use embedded_3dgfx::softbody::SoftBody;
 use embedded_3dgfx::texture::{Texture, TextureManager};
 use embedded_3dgfx::{K3dengine, RetroStyle, SkyConfig};
@@ -92,7 +94,9 @@ fn main() {
     // PNGs
     capture_wireframe_cube();
     capture_blinn_phong();
+    #[cfg(feature = "physics")]
     capture_physics();
+    #[cfg(feature = "physics")]
     capture_cloth();
     capture_gouraud();
     capture_fog_dither();
@@ -105,8 +109,11 @@ fn main() {
     // GIFs
     gif_rotating_cube();
     gif_suzanne();
+    #[cfg(feature = "physics")]
     gif_bouncing_balls();
+    #[cfg(feature = "physics")]
     gif_cloth();
+    #[cfg(feature = "physics")]
     gif_newtons_cradle();
     gif_particles();
     gif_point_lights();
@@ -305,6 +312,7 @@ fn make_uv_sphere(lat: usize, lon: usize) -> (Vec<[f32; 3]>, Vec<[usize; 3]>, Ve
     (verts, faces, normals)
 }
 
+#[cfg(feature = "physics")]
 fn capture_physics() {
     let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(640, 480));
     let mut zbuffer = vec![u32::MAX; 640 * 480];
@@ -439,6 +447,7 @@ fn capture_physics() {
 
 // ── Scene 4: cloth soft-body simulation ──────────────────────────────────────
 
+#[cfg(feature = "physics")]
 fn capture_cloth() {
     // 640×480 native — large enough to see the cloth clearly
     let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(640, 480));
@@ -1385,6 +1394,7 @@ fn gif_suzanne() {
 
 // ── GIF 3: bouncing balls physics ────────────────────────────────────────────
 
+#[cfg(feature = "physics")]
 fn gif_bouncing_balls() {
     const W: u16 = 320;
     const H: u16 = 240;
@@ -1533,6 +1543,7 @@ fn gif_bouncing_balls() {
 
 // ── GIF 4: Newton's cradle ────────────────────────────────────────────────────
 
+#[cfg(feature = "physics")]
 fn gif_newtons_cradle() {
     const W: u16 = 320;
     const H: u16 = 240;
@@ -1708,6 +1719,7 @@ fn gif_newtons_cradle() {
 
 // ── GIF 5: cloth simulation ───────────────────────────────────────────────────
 
+#[cfg(feature = "physics")]
 fn gif_cloth() {
     const W: u16 = 320;
     const H: u16 = 240;
@@ -2354,6 +2366,7 @@ fn benchmark() {
     }
 
     // --- Scene C: physics + 5 balls ---
+    #[cfg(feature = "physics")]
     {
         let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(W as u32, H as u32));
         let mut zbuffer = vec![u32::MAX; W * H];

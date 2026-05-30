@@ -18,6 +18,54 @@ pub enum StippleMode {
     Checkerboard,
 }
 
+/// Palette quantization mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PaletteMode {
+    Off,
+    /// 3-3-2 bit palette approximation (256 colors).
+    Rgb332,
+}
+
+impl PaletteMode {
+    #[inline]
+    pub fn apply(self, color: Rgb565) -> Rgb565 {
+        match self {
+            PaletteMode::Off => color,
+            PaletteMode::Rgb332 => {
+                let r3 = ((color.r() as u16 * 7 + 15) / 31) as u8;
+                let g3 = ((color.g() as u16 * 7 + 31) / 63) as u8;
+                let b2 = ((color.b() as u16 * 3 + 15) / 31) as u8;
+                let r = (r3 as u16 * 31 / 7) as u8;
+                let g = (g3 as u16 * 63 / 7) as u8;
+                let b = (b2 as u16 * 31 / 3) as u8;
+                Rgb565::new(r, g, b)
+            }
+        }
+    }
+}
+
+/// Procedural sky background rendered before world geometry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SkyConfig {
+    pub top_color: Rgb565,
+    pub bottom_color: Rgb565,
+    pub stripe_color: Rgb565,
+    pub stripe_strength: u8,
+    pub stripe_width: u8,
+}
+
+impl SkyConfig {
+    pub const fn retro_blue() -> Self {
+        Self {
+            top_color: Rgb565::new(6, 16, 31),
+            bottom_color: Rgb565::new(1, 4, 12),
+            stripe_color: Rgb565::new(18, 30, 31),
+            stripe_strength: 42,
+            stripe_width: 10,
+        }
+    }
+}
+
 /// Full-screen tint blended onto final raster colors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ScreenTint {
@@ -64,6 +112,10 @@ pub struct RetroStyle {
     pub stipple_mode: StippleMode,
     /// Optional full-screen tint.
     pub screen_tint: Option<ScreenTint>,
+    /// Optional palette quantization.
+    pub palette_mode: PaletteMode,
+    /// Optional procedural sky.
+    pub sky: Option<SkyConfig>,
 }
 
 impl Default for RetroStyle {
@@ -83,6 +135,8 @@ impl RetroStyle {
             light_levels: LightLevels::Linear,
             stipple_mode: StippleMode::Off,
             screen_tint: None,
+            palette_mode: PaletteMode::Off,
+            sky: None,
         }
     }
 
@@ -96,6 +150,8 @@ impl RetroStyle {
             light_levels: LightLevels::Doom32,
             stipple_mode: StippleMode::Off,
             screen_tint: None,
+            palette_mode: PaletteMode::Rgb332,
+            sky: Some(SkyConfig::retro_blue()),
         }
     }
 
@@ -109,6 +165,8 @@ impl RetroStyle {
             light_levels: LightLevels::Linear,
             stipple_mode: StippleMode::Off,
             screen_tint: None,
+            palette_mode: PaletteMode::Rgb332,
+            sky: Some(SkyConfig::retro_blue()),
         }
     }
 }

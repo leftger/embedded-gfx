@@ -72,7 +72,9 @@ pub use input::InputState;
 pub use lights::{PointLight, PointLightSet};
 pub use particles::{ParticleSpawn, ParticleSystem};
 pub use renderer::{DirtyRegion, FrameCtx};
-pub use retro::{LightLevels, RetroStyle, ScreenTint, StippleMode, TextureMapping};
+pub use retro::{
+    LightLevels, PaletteMode, RetroStyle, ScreenTint, SkyConfig, StippleMode, TextureMapping,
+};
 pub use tilebin::{TileBinStats, TileConfig};
 pub use transform_anim::{AnimationPlayer, SampledTransform, TransformKeyframe, TransformTrack};
 pub use tween::{Easing, Tween, Tween3, apply_easing, lerp, lerp3, scale_rgb565};
@@ -149,6 +151,10 @@ pub struct K3dengine {
     stipple_mode: crate::retro::StippleMode,
     /// Optional full-screen tint blended during rasterization.
     screen_tint: Option<crate::retro::ScreenTint>,
+    /// Optional palette quantization.
+    palette_mode: crate::retro::PaletteMode,
+    /// Optional sky background rendered before scene geometry.
+    sky: Option<crate::retro::SkyConfig>,
     /// Runtime point lights (max 16).  Applied at face-centre granularity
     /// during `record` for mesh geometry and at face level for BSP.
     point_lights: heapless::Vec<crate::lights::PointLight, 16>,
@@ -185,6 +191,8 @@ impl K3dengine {
             light_levels: crate::retro::LightLevels::Linear,
             stipple_mode: crate::retro::StippleMode::Off,
             screen_tint: None,
+            palette_mode: crate::retro::PaletteMode::Off,
+            sky: None,
             point_lights: heapless::Vec::new(),
         }
     }
@@ -239,6 +247,21 @@ impl K3dengine {
         self.screen_tint = None;
     }
 
+    /// Set output palette quantization mode.
+    pub fn set_palette_mode(&mut self, mode: crate::retro::PaletteMode) {
+        self.palette_mode = mode;
+    }
+
+    /// Set procedural sky rendering parameters.
+    pub fn set_sky(&mut self, sky: crate::retro::SkyConfig) {
+        self.sky = Some(sky);
+    }
+
+    /// Disable procedural sky rendering.
+    pub fn clear_sky(&mut self) {
+        self.sky = None;
+    }
+
     /// Apply a coarse retro visual preset.
     pub fn apply_retro_style(&mut self, style: crate::retro::RetroStyle) {
         self.fog = style.fog;
@@ -248,6 +271,8 @@ impl K3dengine {
         self.light_levels = style.light_levels;
         self.stipple_mode = style.stipple_mode;
         self.screen_tint = style.screen_tint;
+        self.palette_mode = style.palette_mode;
+        self.sky = style.sky;
     }
 
     /// Add a dynamic point light.  Returns `false` when the 16-light limit
@@ -1486,6 +1511,7 @@ impl K3dengine {
                 .filter(|cmd| matches!(cmd, crate::command_buffer::RenderCommand::ClearDepth(_)))
                 .count();
         }
+        let camera_dir = self.camera.get_direction();
         crate::renderer::execute_commands_with_dirty_region_effects(
             fb,
             frame,
@@ -1494,6 +1520,9 @@ impl K3dengine {
             self.dither.as_ref(),
             self.screen_tint,
             self.stipple_mode,
+            self.palette_mode,
+            self.sky,
+            [camera_dir.x, camera_dir.y, camera_dir.z],
         )
     }
 
@@ -1509,6 +1538,7 @@ impl K3dengine {
             + embedded_graphics_core::prelude::OriginDimensions,
         <D as embedded_graphics_core::draw_target::DrawTarget>::Error: core::fmt::Debug,
     {
+        let camera_dir = self.camera.get_direction();
         crate::renderer::execute_commands_tiled_effects::<D, MAX, BIN_CAP>(
             fb,
             frame,
@@ -1518,6 +1548,9 @@ impl K3dengine {
             self.dither.as_ref(),
             self.screen_tint,
             self.stipple_mode,
+            self.palette_mode,
+            self.sky,
+            [camera_dir.x, camera_dir.y, camera_dir.z],
         )
     }
 }

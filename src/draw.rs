@@ -34,7 +34,7 @@ use embedded_graphics_core::prelude::Point;
 use heapless::Vec;
 
 use crate::DrawPrimitive;
-use crate::retro::{ScreenTint, StippleMode, TextureMapping};
+use crate::retro::{PaletteMode, ScreenTint, StippleMode, TextureMapping};
 
 /// Framebuffer that supports reading back pixel values.
 ///
@@ -1870,6 +1870,7 @@ pub fn draw_zbuffered_with_textures<
         TextureMapping::PerspectiveCorrect,
         StippleMode::Off,
         None,
+        PaletteMode::Off,
     );
 }
 
@@ -1888,6 +1889,7 @@ pub fn draw_zbuffered_with_textures_mapped<
     texture_mapping: TextureMapping,
     stipple_mode: StippleMode,
     screen_tint: Option<ScreenTint>,
+    palette_mode: PaletteMode,
 ) where
     <D as DrawTarget>::Error: Debug,
 {
@@ -1964,6 +1966,7 @@ pub fn draw_zbuffered_with_textures_mapped<
                     texture_mapping,
                     stipple_mode,
                     screen_tint,
+                    palette_mode,
                 );
             }
         }
@@ -2022,6 +2025,7 @@ pub fn draw_zbuffered_lightmapped<
         TextureMapping::PerspectiveCorrect,
         StippleMode::Off,
         None,
+        PaletteMode::Off,
     );
 }
 
@@ -2045,6 +2049,7 @@ pub fn draw_zbuffered_lightmapped_mapped<
     texture_mapping: TextureMapping,
     stipple_mode: StippleMode,
     screen_tint: Option<ScreenTint>,
+    palette_mode: PaletteMode,
 ) where
     <D as DrawTarget>::Error: core::fmt::Debug,
 {
@@ -2131,6 +2136,7 @@ pub fn draw_zbuffered_lightmapped_mapped<
             texture_mapping,
             stipple_mode,
             screen_tint,
+            palette_mode,
         );
     } else if p1.y == p2.y {
         fill_lm_top_flat(
@@ -2159,6 +2165,7 @@ pub fn draw_zbuffered_lightmapped_mapped<
             texture_mapping,
             stipple_mode,
             screen_tint,
+            palette_mode,
         );
     } else {
         // Split at the middle vertex
@@ -2204,6 +2211,7 @@ pub fn draw_zbuffered_lightmapped_mapped<
             texture_mapping,
             stipple_mode,
             screen_tint,
+            palette_mode,
         );
         fill_lm_top_flat(
             p2,
@@ -2231,6 +2239,7 @@ pub fn draw_zbuffered_lightmapped_mapped<
             texture_mapping,
             stipple_mode,
             screen_tint,
+            palette_mode,
         );
     }
 }
@@ -2263,6 +2272,7 @@ fn fill_lm_bottom_flat<D: DrawTarget<Color = embedded_graphics_core::pixelcolor:
     texture_mapping: TextureMapping,
     stipple_mode: StippleMode,
     screen_tint: Option<ScreenTint>,
+    palette_mode: PaletteMode,
 ) where
     <D as DrawTarget>::Error: core::fmt::Debug,
 {
@@ -2319,6 +2329,7 @@ fn fill_lm_bottom_flat<D: DrawTarget<Color = embedded_graphics_core::pixelcolor:
             texture_mapping,
             stipple_mode,
             screen_tint,
+            palette_mode,
         );
         curx1 += invslope1;
         curx2 += invslope2;
@@ -2353,6 +2364,7 @@ fn fill_lm_top_flat<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rg
     texture_mapping: TextureMapping,
     stipple_mode: StippleMode,
     screen_tint: Option<ScreenTint>,
+    palette_mode: PaletteMode,
 ) where
     <D as DrawTarget>::Error: core::fmt::Debug,
 {
@@ -2409,6 +2421,7 @@ fn fill_lm_top_flat<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rg
             texture_mapping,
             stipple_mode,
             screen_tint,
+            palette_mode,
         );
         curx1 -= invslope1;
         curx2 -= invslope2;
@@ -2439,6 +2452,7 @@ fn draw_scanline_lm<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rg
     texture_mapping: TextureMapping,
     stipple_mode: StippleMode,
     screen_tint: Option<ScreenTint>,
+    palette_mode: PaletteMode,
 ) where
     <D as DrawTarget>::Error: core::fmt::Debug,
 {
@@ -2499,6 +2513,7 @@ fn draw_scanline_lm<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rg
         if let Some(tint) = screen_tint {
             final_c = tint.apply(final_c);
         }
+        final_c = palette_mode.apply(final_c);
 
         fb.draw_iter([embedded_graphics_core::Pixel(
             embedded_graphics_core::prelude::Point::new(x, y),
@@ -2531,6 +2546,7 @@ pub fn draw_bsp_coverage<
     texture_mapping: TextureMapping,
     stipple_mode: StippleMode,
     screen_tint: Option<ScreenTint>,
+    palette_mode: PaletteMode,
 ) where
     <D as DrawTarget>::Error: core::fmt::Debug,
 {
@@ -2608,6 +2624,7 @@ pub fn draw_bsp_coverage<
                 if let Some(tint) = screen_tint {
                     color = tint.apply(color);
                 }
+                color = palette_mode.apply(color);
                 coverage.mark_covered(x as usize, y as usize);
                 fb.draw_iter([embedded_graphics_core::Pixel(
                     embedded_graphics_core::prelude::Point::new(x, y),
@@ -3382,6 +3399,7 @@ fn fill_triangle_zbuffered_textured<
     texture_mapping: TextureMapping,
     stipple_mode: StippleMode,
     screen_tint: Option<ScreenTint>,
+    palette_mode: PaletteMode,
 ) where
     <D as DrawTarget>::Error: Debug,
 {
@@ -3419,6 +3437,7 @@ fn fill_triangle_zbuffered_textured<
             texture_mapping,
             stipple_mode,
             screen_tint,
+            palette_mode,
         );
     } else if p1_eg.y == p2_eg.y {
         fill_top_flat_triangle_zbuffered_textured(
@@ -3443,6 +3462,7 @@ fn fill_triangle_zbuffered_textured<
             texture_mapping,
             stipple_mode,
             screen_tint,
+            palette_mode,
         );
     } else {
         // Split into two flat triangles
@@ -3482,6 +3502,7 @@ fn fill_triangle_zbuffered_textured<
             texture_mapping,
             stipple_mode,
             screen_tint,
+            palette_mode,
         );
         fill_top_flat_triangle_zbuffered_textured(
             p2_eg,
@@ -3505,6 +3526,7 @@ fn fill_triangle_zbuffered_textured<
             texture_mapping,
             stipple_mode,
             screen_tint,
+            palette_mode,
         );
     }
 }
@@ -3535,6 +3557,7 @@ fn fill_bottom_flat_triangle_zbuffered_textured<
     texture_mapping: TextureMapping,
     stipple_mode: StippleMode,
     screen_tint: Option<ScreenTint>,
+    palette_mode: PaletteMode,
 ) where
     <D as DrawTarget>::Error: Debug,
 {
@@ -3598,6 +3621,7 @@ fn fill_bottom_flat_triangle_zbuffered_textured<
             texture_mapping,
             stipple_mode,
             screen_tint,
+            palette_mode,
         );
 
         curx1 += invslope1;
@@ -3631,6 +3655,7 @@ fn fill_top_flat_triangle_zbuffered_textured<
     texture_mapping: TextureMapping,
     stipple_mode: StippleMode,
     screen_tint: Option<ScreenTint>,
+    palette_mode: PaletteMode,
 ) where
     <D as DrawTarget>::Error: Debug,
 {
@@ -3694,6 +3719,7 @@ fn fill_top_flat_triangle_zbuffered_textured<
             texture_mapping,
             stipple_mode,
             screen_tint,
+            palette_mode,
         );
 
         curx1 -= invslope1;
@@ -3724,6 +3750,7 @@ fn draw_scanline_zbuffered_textured<
     texture_mapping: TextureMapping,
     stipple_mode: StippleMode,
     screen_tint: Option<ScreenTint>,
+    palette_mode: PaletteMode,
 ) where
     <D as DrawTarget>::Error: Debug,
 {
@@ -3777,6 +3804,7 @@ fn draw_scanline_zbuffered_textured<
             if let Some(tint) = screen_tint {
                 final_color = tint.apply(final_color);
             }
+            final_color = palette_mode.apply(final_color);
 
             fb.draw_iter([embedded_graphics_core::Pixel(Point::new(x, y), final_color)])
                 .unwrap();

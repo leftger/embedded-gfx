@@ -1451,7 +1451,7 @@ fn test_golden_hash_doom_preset_scene_record_execute() {
         .unwrap();
 
     let digest = fb.hash_pixels();
-    assert_eq!(digest, 4340463807825636315);
+    assert_eq!(digest, 7016329455287226920);
 }
 
 #[test]
@@ -1496,7 +1496,7 @@ fn test_golden_hash_psx_preset_scene_record_execute() {
         .unwrap();
 
     let digest = fb.hash_pixels();
-    assert_eq!(digest, 16976449647092100349);
+    assert_eq!(digest, 17228516721892987187);
 }
 
 #[test]

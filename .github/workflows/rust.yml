@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [ "master" ]
 
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
   TELEMETRY_MAX_RECORD_DRAW_COMMANDS: "3"

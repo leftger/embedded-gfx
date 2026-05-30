@@ -34,6 +34,7 @@ use embedded_graphics_core::prelude::Point;
 use heapless::Vec;
 
 use crate::DrawPrimitive;
+use crate::retro::TextureMapping;
 
 /// Framebuffer that supports reading back pixel values.
 ///
@@ -1811,6 +1812,32 @@ pub fn draw_zbuffered_with_effects<
     }
 }
 
+#[inline(always)]
+fn interpolate_uv(
+    t: f32,
+    w1: f32,
+    w2: f32,
+    uv1: [f32; 2],
+    uv2: [f32; 2],
+    texture_mapping: TextureMapping,
+) -> [f32; 2] {
+    match texture_mapping {
+        TextureMapping::PerspectiveCorrect => {
+            let ow1 = 1.0 / w1;
+            let ow2 = 1.0 / w2;
+            let one_over_w = ow1 + t * (ow2 - ow1);
+            [
+                (uv1[0] * ow1 + t * (uv2[0] * ow2 - uv1[0] * ow1)) / one_over_w,
+                (uv1[1] * ow1 + t * (uv2[1] * ow2 - uv1[1] * ow1)) / one_over_w,
+            ]
+        }
+        TextureMapping::Affine => [
+            uv1[0] + t * (uv2[0] - uv1[0]),
+            uv1[1] + t * (uv2[1] - uv1[1]),
+        ],
+    }
+}
+
 // Z-buffered drawing function with textures, fog, and dithering effects
 #[inline]
 pub fn draw_zbuffered_with_textures<
@@ -1824,6 +1851,34 @@ pub fn draw_zbuffered_with_textures<
     texture_manager: &crate::texture::TextureManager<N>,
     fog_config: Option<&FogConfig>,
     dither_config: Option<&DitherConfig>,
+) where
+    <D as DrawTarget>::Error: Debug,
+{
+    draw_zbuffered_with_textures_mapped(
+        primitive,
+        fb,
+        zbuffer,
+        width,
+        texture_manager,
+        fog_config,
+        dither_config,
+        TextureMapping::PerspectiveCorrect,
+    );
+}
+
+#[inline]
+pub fn draw_zbuffered_with_textures_mapped<
+    D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>,
+    const N: usize,
+>(
+    primitive: DrawPrimitive,
+    fb: &mut D,
+    zbuffer: &mut [u32],
+    width: usize,
+    texture_manager: &crate::texture::TextureManager<N>,
+    fog_config: Option<&FogConfig>,
+    dither_config: Option<&DitherConfig>,
+    texture_mapping: TextureMapping,
 ) where
     <D as DrawTarget>::Error: Debug,
 {
@@ -1897,6 +1952,7 @@ pub fn draw_zbuffered_with_textures<
                     width,
                     fog_config,
                     dither_config,
+                    texture_mapping,
                 );
             }
         }
@@ -1922,6 +1978,44 @@ pub fn draw_zbuffered_lightmapped<
     D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>,
     const N: usize,
 >(
+    points: [nalgebra::Point2<i32>; 3],
+    depths: [f32; 3],
+    ws: [f32; 3],
+    surface_uvs: [[f32; 2]; 3],
+    lm_uvs: [[f32; 2]; 3],
+    texture_id: u32,
+    lightmap_id: u32,
+    dynamic_tint: embedded_graphics_core::pixelcolor::Rgb565,
+    fog_config: Option<&FogConfig>,
+    texture_manager: &crate::texture::TextureManager<N>,
+    fb: &mut D,
+    zbuffer: &mut [u32],
+    width: usize,
+) where
+    <D as DrawTarget>::Error: core::fmt::Debug,
+{
+    draw_zbuffered_lightmapped_mapped(
+        points,
+        depths,
+        ws,
+        surface_uvs,
+        lm_uvs,
+        texture_id,
+        lightmap_id,
+        dynamic_tint,
+        fog_config,
+        texture_manager,
+        fb,
+        zbuffer,
+        width,
+        TextureMapping::PerspectiveCorrect,
+    );
+}
+
+pub fn draw_zbuffered_lightmapped_mapped<
+    D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>,
+    const N: usize,
+>(
     mut points: [nalgebra::Point2<i32>; 3],
     mut depths: [f32; 3],
     mut ws: [f32; 3],
@@ -1935,6 +2029,7 @@ pub fn draw_zbuffered_lightmapped<
     fb: &mut D,
     zbuffer: &mut [u32],
     width: usize,
+    texture_mapping: TextureMapping,
 ) where
     <D as DrawTarget>::Error: core::fmt::Debug,
 {
@@ -2018,6 +2113,7 @@ pub fn draw_zbuffered_lightmapped<
             fb,
             zbuffer,
             width,
+            texture_mapping,
         );
     } else if p1.y == p2.y {
         fill_lm_top_flat(
@@ -2043,6 +2139,7 @@ pub fn draw_zbuffered_lightmapped<
             fb,
             zbuffer,
             width,
+            texture_mapping,
         );
     } else {
         // Split at the middle vertex
@@ -2085,6 +2182,7 @@ pub fn draw_zbuffered_lightmapped<
             fb,
             zbuffer,
             width,
+            texture_mapping,
         );
         fill_lm_top_flat(
             p2,
@@ -2109,6 +2207,7 @@ pub fn draw_zbuffered_lightmapped<
             fb,
             zbuffer,
             width,
+            texture_mapping,
         );
     }
 }
@@ -2138,6 +2237,7 @@ fn fill_lm_bottom_flat<D: DrawTarget<Color = embedded_graphics_core::pixelcolor:
     fb: &mut D,
     zbuffer: &mut [u32],
     width: usize,
+    texture_mapping: TextureMapping,
 ) where
     <D as DrawTarget>::Error: core::fmt::Debug,
 {
@@ -2191,6 +2291,7 @@ fn fill_lm_bottom_flat<D: DrawTarget<Color = embedded_graphics_core::pixelcolor:
             fb,
             zbuffer,
             width,
+            texture_mapping,
         );
         curx1 += invslope1;
         curx2 += invslope2;
@@ -2222,6 +2323,7 @@ fn fill_lm_top_flat<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rg
     fb: &mut D,
     zbuffer: &mut [u32],
     width: usize,
+    texture_mapping: TextureMapping,
 ) where
     <D as DrawTarget>::Error: core::fmt::Debug,
 {
@@ -2275,6 +2377,7 @@ fn fill_lm_top_flat<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rg
             fb,
             zbuffer,
             width,
+            texture_mapping,
         );
         curx1 -= invslope1;
         curx2 -= invslope2;
@@ -2302,6 +2405,7 @@ fn draw_scanline_lm<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rg
     fb: &mut D,
     zbuffer: &mut [u32],
     width: usize,
+    texture_mapping: TextureMapping,
 ) where
     <D as DrawTarget>::Error: core::fmt::Debug,
 {
@@ -2329,16 +2433,11 @@ fn draw_scanline_lm<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rg
         }
         zbuffer[zbuf_idx] = z;
 
-        let ow1 = 1.0 / w1;
-        let ow2 = 1.0 / w2;
-        let one_over_w = ow1 + t * (ow2 - ow1);
-        let su = (uv1[0] * ow1 + t * (uv2[0] * ow2 - uv1[0] * ow1)) / one_over_w;
-        let sv = (uv1[1] * ow1 + t * (uv2[1] * ow2 - uv1[1] * ow1)) / one_over_w;
+        let [su, sv] = interpolate_uv(t, w1, w2, uv1, uv2, texture_mapping);
         let surf_c = surf.sample(su, sv);
 
         let lit_c = if let Some(lm_tex) = lm {
-            let lu = (luv1[0] * ow1 + t * (luv2[0] * ow2 - luv1[0] * ow1)) / one_over_w;
-            let lv = (luv1[1] * ow1 + t * (luv2[1] * ow2 - luv1[1] * ow1)) / one_over_w;
+            let [lu, lv] = interpolate_uv(t, w1, w2, luv1, luv2, texture_mapping);
             let lm_c = lm_tex.sample(lu, lv);
             let r = ((surf_c.r() as u32 * lm_c.r() as u32) / 31).min(31) as u8;
             let g = ((surf_c.g() as u32 * lm_c.g() as u32) / 63).min(63) as u8;
@@ -2390,6 +2489,7 @@ pub fn draw_bsp_coverage<
     texture_manager: &crate::texture::TextureManager<N>,
     fb: &mut D,
     coverage: &mut crate::bsp::coverage::CoverageBuffer<'_>,
+    texture_mapping: TextureMapping,
 ) where
     <D as DrawTarget>::Error: core::fmt::Debug,
 {
@@ -2459,11 +2559,7 @@ pub fn draw_bsp_coverage<
                 } else {
                     0.0
                 };
-                let ow1 = 1.0 / wl;
-                let ow2 = 1.0 / wr;
-                let one_over_w = ow1 + t * (ow2 - ow1);
-                let su = (uvl[0] * ow1 + t * (uvr[0] * ow2 - uvl[0] * ow1)) / one_over_w;
-                let sv = (uvl[1] * ow1 + t * (uvr[1] * ow2 - uvl[1] * ow1)) / one_over_w;
+                let [su, sv] = interpolate_uv(t, wl, wr, uvl, uvr, texture_mapping);
                 let color = tex.sample(su, sv);
                 coverage.mark_covered(x as usize, y as usize);
                 fb.draw_iter([embedded_graphics_core::Pixel(
@@ -3236,6 +3332,7 @@ fn fill_triangle_zbuffered_textured<
     width: usize,
     fog_config: Option<&FogConfig>,
     dither_config: Option<&DitherConfig>,
+    texture_mapping: TextureMapping,
 ) where
     <D as DrawTarget>::Error: Debug,
 {
@@ -3270,6 +3367,7 @@ fn fill_triangle_zbuffered_textured<
             width,
             fog_config,
             dither_config,
+            texture_mapping,
         );
     } else if p1_eg.y == p2_eg.y {
         fill_top_flat_triangle_zbuffered_textured(
@@ -3291,6 +3389,7 @@ fn fill_triangle_zbuffered_textured<
             width,
             fog_config,
             dither_config,
+            texture_mapping,
         );
     } else {
         // Split into two flat triangles
@@ -3327,6 +3426,7 @@ fn fill_triangle_zbuffered_textured<
             width,
             fog_config,
             dither_config,
+            texture_mapping,
         );
         fill_top_flat_triangle_zbuffered_textured(
             p2_eg,
@@ -3347,6 +3447,7 @@ fn fill_triangle_zbuffered_textured<
             width,
             fog_config,
             dither_config,
+            texture_mapping,
         );
     }
 }
@@ -3374,6 +3475,7 @@ fn fill_bottom_flat_triangle_zbuffered_textured<
     width: usize,
     fog_config: Option<&FogConfig>,
     dither_config: Option<&DitherConfig>,
+    texture_mapping: TextureMapping,
 ) where
     <D as DrawTarget>::Error: Debug,
 {
@@ -3434,6 +3536,7 @@ fn fill_bottom_flat_triangle_zbuffered_textured<
             width,
             fog_config,
             dither_config,
+            texture_mapping,
         );
 
         curx1 += invslope1;
@@ -3464,6 +3567,7 @@ fn fill_top_flat_triangle_zbuffered_textured<
     width: usize,
     fog_config: Option<&FogConfig>,
     dither_config: Option<&DitherConfig>,
+    texture_mapping: TextureMapping,
 ) where
     <D as DrawTarget>::Error: Debug,
 {
@@ -3524,6 +3628,7 @@ fn fill_top_flat_triangle_zbuffered_textured<
             width,
             fog_config,
             dither_config,
+            texture_mapping,
         );
 
         curx1 -= invslope1;
@@ -3551,6 +3656,7 @@ fn draw_scanline_zbuffered_textured<
     width: usize,
     fog_config: Option<&FogConfig>,
     dither_config: Option<&DitherConfig>,
+    texture_mapping: TextureMapping,
 ) where
     <D as DrawTarget>::Error: Debug,
 {
@@ -3585,12 +3691,7 @@ fn draw_scanline_zbuffered_textured<
         if z < zbuffer[zbuffer_idx].saturating_add(DEPTH_EPSILON) {
             zbuffer[zbuffer_idx] = z;
 
-            // Perspective-correct UV interpolation
-            let ow1 = 1.0 / w1;
-            let ow2 = 1.0 / w2;
-            let one_over_w = ow1 + t * (ow2 - ow1);
-            let u = (uv1[0] * ow1 + t * (uv2[0] * ow2 - uv1[0] * ow1)) / one_over_w;
-            let v = (uv1[1] * ow1 + t * (uv2[1] * ow2 - uv1[1] * ow1)) / one_over_w;
+            let [u, v] = interpolate_uv(t, w1, w2, uv1, uv2, texture_mapping);
 
             // Sample texture
             let mut final_color = texture.sample(u, v);

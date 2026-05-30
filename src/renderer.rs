@@ -10,7 +10,7 @@ use embedded_graphics_core::{
 use crate::{
     DrawPrimitive,
     command_buffer::{CommandBuffer, RenderCommand},
-    draw::{FogConfig, draw_zbuffered_with_effects},
+    draw::{DitherConfig, FogConfig, draw_zbuffered_with_effects},
     error::{BudgetKind, RenderError},
 };
 
@@ -105,7 +105,7 @@ where
     D: DrawTarget<Color = Rgb565> + OriginDimensions,
     D::Error: Debug,
 {
-    let _ = execute_commands_with_dirty_region(fb, frame, cmd, fog)?;
+    let _ = execute_commands_with_dirty_region_effects(fb, frame, cmd, fog, None)?;
     Ok(())
 }
 
@@ -114,6 +114,20 @@ pub fn execute_commands_with_dirty_region<D, const MAX: usize>(
     frame: &mut FrameCtx<'_>,
     cmd: &CommandBuffer<MAX>,
     fog: Option<&FogConfig>,
+) -> Result<Option<DirtyRegion>, RenderError>
+where
+    D: DrawTarget<Color = Rgb565> + OriginDimensions,
+    D::Error: Debug,
+{
+    execute_commands_with_dirty_region_effects(fb, frame, cmd, fog, None)
+}
+
+pub fn execute_commands_with_dirty_region_effects<D, const MAX: usize>(
+    fb: &mut D,
+    frame: &mut FrameCtx<'_>,
+    cmd: &CommandBuffer<MAX>,
+    fog: Option<&FogConfig>,
+    dither: Option<&DitherConfig>,
 ) -> Result<Option<DirtyRegion>, RenderError>
 where
     D: DrawTarget<Color = Rgb565> + OriginDimensions,
@@ -146,7 +160,7 @@ where
                     frame.zbuffer,
                     frame.width,
                     fog,
-                    None,
+                    dither,
                 );
                 let (min_x, min_y, max_x, max_y) = primitive_bounds(primitive);
                 if let Some((min_x, min_y, max_x, max_y)) =
@@ -176,6 +190,21 @@ pub fn execute_commands_tiled<D, const MAX: usize, const BIN_CAP: usize>(
     cmd: &CommandBuffer<MAX>,
     tile: crate::tilebin::TileConfig,
     fog: Option<&FogConfig>,
+) -> Result<crate::tilebin::TileBinStats, RenderError>
+where
+    D: DrawTarget<Color = Rgb565> + OriginDimensions,
+    D::Error: Debug,
+{
+    execute_commands_tiled_effects::<D, MAX, BIN_CAP>(fb, frame, cmd, tile, fog, None)
+}
+
+pub fn execute_commands_tiled_effects<D, const MAX: usize, const BIN_CAP: usize>(
+    fb: &mut D,
+    frame: &mut FrameCtx<'_>,
+    cmd: &CommandBuffer<MAX>,
+    tile: crate::tilebin::TileConfig,
+    fog: Option<&FogConfig>,
+    dither: Option<&DitherConfig>,
 ) -> Result<crate::tilebin::TileBinStats, RenderError>
 where
     D: DrawTarget<Color = Rgb565> + OriginDimensions,
@@ -219,7 +248,7 @@ where
                 frame.zbuffer,
                 frame.width,
                 fog,
-                None,
+                dither,
             );
             executed_draw[idx] = true;
         }

@@ -42,6 +42,7 @@ pub mod particles;
 pub mod perfcounter;
 pub mod physics;
 pub mod renderer;
+pub mod retro;
 pub mod scene_format;
 pub mod scene_stream;
 pub mod skeleton;
@@ -66,11 +67,12 @@ pub use bridge::{
     AsEgPoint, AsNalgebraPoint, draw_to, eg_to_nalgebra, nalgebra_to_eg, render_drawable_to_buffer,
 };
 pub use character::CharacterController;
-pub use draw::FogConfig;
+pub use draw::{DitherConfig, FogConfig};
 pub use input::InputState;
 pub use lights::{PointLight, PointLightSet};
 pub use particles::{ParticleSpawn, ParticleSystem};
 pub use renderer::{DirtyRegion, FrameCtx};
+pub use retro::{RetroStyle, TextureMapping};
 pub use tilebin::{TileBinStats, TileConfig};
 pub use transform_anim::{AnimationPlayer, SampledTransform, TransformKeyframe, TransformTrack};
 pub use tween::{Easing, Tween, Tween3, apply_easing, lerp, lerp3, scale_rgb565};
@@ -135,6 +137,12 @@ pub struct K3dengine {
     material_profile: crate::config::MaterialProfile,
     /// Depth-based fog applied during `execute` / `execute_tiled`.
     fog: Option<crate::draw::FogConfig>,
+    /// Ordered dithering applied during `execute` / `execute_tiled`.
+    dither: Option<crate::draw::DitherConfig>,
+    /// Optional NDC snap precision for retro-style vertex jitter.
+    vertex_snap_bits: u8,
+    /// Texture interpolation mode for textured raster paths.
+    texture_mapping: crate::retro::TextureMapping,
     /// Runtime point lights (max 16).  Applied at face-centre granularity
     /// during `record` for mesh geometry and at face level for BSP.
     point_lights: heapless::Vec<crate::lights::PointLight, 16>,
@@ -165,6 +173,9 @@ impl K3dengine {
             quality_tier: crate::config::QualityTier::Balanced,
             material_profile: crate::config::MaterialProfile::Lambert,
             fog: None,
+            dither: None,
+            vertex_snap_bits: 0,
+            texture_mapping: crate::retro::TextureMapping::PerspectiveCorrect,
             point_lights: heapless::Vec::new(),
         }
     }
@@ -177,6 +188,34 @@ impl K3dengine {
     /// Disable fog (default state).
     pub fn clear_fog(&mut self) {
         self.fog = None;
+    }
+
+    /// Enable ordered dithering for subsequent execute passes.
+    pub fn set_dither(&mut self, dither: crate::draw::DitherConfig) {
+        self.dither = Some(dither);
+    }
+
+    /// Disable ordered dithering.
+    pub fn clear_dither(&mut self) {
+        self.dither = None;
+    }
+
+    /// Set NDC vertex snap precision. `0` disables snapping.
+    pub fn set_vertex_snap_bits(&mut self, bits: u8) {
+        self.vertex_snap_bits = bits.min(16);
+    }
+
+    /// Select texture interpolation mode.
+    pub fn set_texture_mapping(&mut self, mapping: crate::retro::TextureMapping) {
+        self.texture_mapping = mapping;
+    }
+
+    /// Apply a coarse retro visual preset.
+    pub fn apply_retro_style(&mut self, style: crate::retro::RetroStyle) {
+        self.fog = style.fog;
+        self.dither = style.dither;
+        self.set_vertex_snap_bits(style.vertex_snap_bits);
+        self.texture_mapping = style.texture_mapping;
     }
 
     /// Add a dynamic point light.  Returns `false` when the 16-light limit
@@ -493,7 +532,12 @@ impl K3dengine {
         if c.w <= 0.0 {
             return None;
         }
-        let ndc = Point3::from_homogeneous(c)?;
+        let mut ndc = Point3::from_homogeneous(c)?;
+        if self.vertex_snap_bits > 0 {
+            let scale = (1u32 << self.vertex_snap_bits) as f32;
+            ndc.x = (ndc.x * scale).round() / scale;
+            ndc.y = (ndc.y * scale).round() / scale;
+        }
         let w = self.width as f32;
         let h = self.height as f32;
         let x = ((1.0 + ndc.x) * 0.5 * w).clamp(-w * 8.0, w * 9.0) as i32;
@@ -1391,7 +1435,13 @@ impl K3dengine {
                 .filter(|cmd| matches!(cmd, crate::command_buffer::RenderCommand::ClearDepth(_)))
                 .count();
         }
-        crate::renderer::execute_commands_with_dirty_region(fb, frame, commands, self.fog.as_ref())
+        crate::renderer::execute_commands_with_dirty_region_effects(
+            fb,
+            frame,
+            commands,
+            self.fog.as_ref(),
+            self.dither.as_ref(),
+        )
     }
 
     pub fn execute_tiled<D, const MAX: usize, const BIN_CAP: usize>(
@@ -1406,12 +1456,13 @@ impl K3dengine {
             + embedded_graphics_core::prelude::OriginDimensions,
         <D as embedded_graphics_core::draw_target::DrawTarget>::Error: core::fmt::Debug,
     {
-        crate::renderer::execute_commands_tiled::<D, MAX, BIN_CAP>(
+        crate::renderer::execute_commands_tiled_effects::<D, MAX, BIN_CAP>(
             fb,
             frame,
             commands,
             tile,
             self.fog.as_ref(),
+            self.dither.as_ref(),
         )
     }
 }

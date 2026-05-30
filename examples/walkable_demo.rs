@@ -19,7 +19,6 @@ use std::f32::consts::PI;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use embedded_3dgfx::K3dengine;
 use embedded_3dgfx::command_buffer::CommandBuffer;
 use embedded_3dgfx::config::apply_default_caps;
 use embedded_3dgfx::lights::PointLight;
@@ -28,6 +27,7 @@ use embedded_3dgfx::particles::{ParticleSpawn, ParticleSystem};
 #[cfg(feature = "perfcounter")]
 use embedded_3dgfx::perfcounter::PerformanceCounter;
 use embedded_3dgfx::renderer::FrameCtx;
+use embedded_3dgfx::{K3dengine, RetroStyle};
 use embedded_graphics::mono_font::{MonoTextStyle, ascii::FONT_6X10};
 use embedded_graphics::text::Text;
 use embedded_graphics_core::pixelcolor::{Rgb565, RgbColor};
@@ -248,6 +248,7 @@ fn main() {
 
     let mut engine = K3dengine::new(WIDTH as u16, HEIGHT as u16);
     apply_default_caps(&mut engine);
+    engine.apply_retro_style(RetroStyle::doom_walkable());
     // near must be smaller than the player collision margin (0.3) so walls
     // closer than that never have all vertices behind the clip plane.
     engine.camera.set_near_far(0.1, 20.0);

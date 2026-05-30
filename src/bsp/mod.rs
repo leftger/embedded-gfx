@@ -353,7 +353,7 @@ impl K3dengine {
         D: DrawTarget<Color = Rgb565> + OriginDimensions,
         D::Error: Debug,
     {
-        use crate::draw::{draw_zbuffered_lightmapped, draw_zbuffered_with_textures};
+        use crate::draw::{draw_zbuffered_lightmapped_mapped, draw_zbuffered_with_textures_mapped};
         use crate::renderer::DirtyRegion;
 
         frame.validate()?;
@@ -396,7 +396,7 @@ impl K3dengine {
                             lightmap_id,
                             dynamic_tint,
                         } => {
-                            draw_zbuffered_lightmapped(
+                            draw_zbuffered_lightmapped_mapped(
                                 points,
                                 depths,
                                 ws,
@@ -410,17 +410,19 @@ impl K3dengine {
                                 fb,
                                 frame.zbuffer,
                                 frame.width,
+                                self.texture_mapping,
                             );
                         }
                         other => {
-                            draw_zbuffered_with_textures(
+                            draw_zbuffered_with_textures_mapped(
                                 other,
                                 fb,
                                 frame.zbuffer,
                                 frame.width,
                                 texture_manager,
                                 self.fog.as_ref(),
-                                None,
+                                self.dither.as_ref(),
+                                self.texture_mapping,
                             );
                         }
                     }
@@ -464,7 +466,7 @@ impl K3dengine {
         D: DrawTarget<Color = Rgb565> + OriginDimensions,
         D::Error: Debug,
     {
-        use crate::draw::{draw_zbuffered_lightmapped, draw_zbuffered_with_textures};
+        use crate::draw::{draw_zbuffered_lightmapped_mapped, draw_zbuffered_with_textures_mapped};
 
         frame.validate()?;
         frame.zbuffer.fill(u32::MAX);
@@ -512,17 +514,18 @@ impl K3dengine {
                             uvs: pt.uvs,
                             texture_id: face.texture_id,
                         };
-                        draw_zbuffered_with_textures(
+                        draw_zbuffered_with_textures_mapped(
                             prim,
                             fb,
                             frame.zbuffer,
                             frame.width,
                             texture_manager,
                             self.fog.as_ref(),
-                            None,
+                            self.dither.as_ref(),
+                            self.texture_mapping,
                         );
                     } else {
-                        draw_zbuffered_lightmapped(
+                        draw_zbuffered_lightmapped_mapped(
                             [pt.points[0], pt.points[1], pt.points[2]],
                             pt.depths,
                             pt.ws,
@@ -536,6 +539,7 @@ impl K3dengine {
                             fb,
                             frame.zbuffer,
                             frame.width,
+                            self.texture_mapping,
                         );
                     }
                     tel.triangles_emitted += 1;
@@ -625,6 +629,7 @@ impl K3dengine {
                         texture_manager,
                         fb,
                         coverage,
+                        self.texture_mapping,
                     );
                     tel.triangles_emitted += 1;
                     emitted_any = true;

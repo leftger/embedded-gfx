@@ -1,7 +1,6 @@
 //! Integration tests for embedded-3dgfx
 //! These tests verify the full rendering pipeline works correctly
 
-use embedded_3dgfx::K3dengine;
 use embedded_3dgfx::command_buffer::CommandBuffer;
 use embedded_3dgfx::config::ProfileCaps;
 use embedded_3dgfx::draw::draw;
@@ -9,6 +8,7 @@ use embedded_3dgfx::error::{BudgetKind, RecoveryAction, RenderError};
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
 use embedded_3dgfx::renderer::FrameCtx;
 use embedded_3dgfx::telemetry::{ExecuteTelemetry, RecordTelemetry};
+use embedded_3dgfx::{K3dengine, RetroStyle};
 use embedded_graphics_core::pixelcolor::Rgb565;
 use embedded_graphics_core::prelude::*;
 use nalgebra::{Point3, Vector3};
@@ -1407,6 +1407,96 @@ fn test_golden_hash_gouraud_scene_record_execute() {
 
     let digest = fb.hash_pixels();
     assert_eq!(digest, 3505104233474102080);
+}
+
+#[test]
+fn test_golden_hash_doom_preset_scene_record_execute() {
+    let mut engine = K3dengine::new(320, 240);
+    engine.apply_retro_style(RetroStyle::doom_walkable());
+
+    let vertices = [
+        [-0.45, -0.35, -3.0],
+        [0.52, -0.26, -3.0],
+        [0.07, 0.51, -3.0],
+    ];
+    let faces = [[0, 1, 2]];
+    let geometry = Geometry {
+        vertices: &vertices,
+        faces: &faces,
+        colors: &[],
+        lines: &[],
+        normals: &[],
+        vertex_normals: &[],
+        uvs: &[],
+        texture_id: None,
+    };
+    let mut mesh = K3dMesh::new(geometry);
+    mesh.set_render_mode(RenderMode::Solid);
+    mesh.set_color(Rgb565::new(26, 31, 10));
+
+    let mut cmd = CommandBuffer::<128>::new();
+    engine
+        .record(std::iter::once(&mesh), &mut cmd, None)
+        .unwrap();
+
+    let mut fb = TestFramebuffer::new(320, 240);
+    let mut zbuffer = vec![u32::MAX; 320 * 240];
+    let mut frame = FrameCtx {
+        zbuffer: &mut zbuffer,
+        width: 320,
+        height: 240,
+    };
+    engine
+        .execute::<_, 128>(&mut fb, &mut frame, &cmd, None)
+        .unwrap();
+
+    let digest = fb.hash_pixels();
+    assert_eq!(digest, 4340463807825636315);
+}
+
+#[test]
+fn test_golden_hash_psx_preset_scene_record_execute() {
+    let mut engine = K3dengine::new(320, 240);
+    engine.apply_retro_style(RetroStyle::psx());
+
+    let vertices = [
+        [-0.41, -0.29, -2.8],
+        [0.57, -0.34, -2.8],
+        [0.11, 0.58, -2.8],
+    ];
+    let faces = [[0, 1, 2]];
+    let geometry = Geometry {
+        vertices: &vertices,
+        faces: &faces,
+        colors: &[],
+        lines: &[],
+        normals: &[],
+        vertex_normals: &[],
+        uvs: &[],
+        texture_id: None,
+    };
+    let mut mesh = K3dMesh::new(geometry);
+    mesh.set_render_mode(RenderMode::Solid);
+    mesh.set_color(Rgb565::new(18, 22, 30));
+
+    let mut cmd = CommandBuffer::<128>::new();
+    engine
+        .record(std::iter::once(&mesh), &mut cmd, None)
+        .unwrap();
+
+    let mut fb = TestFramebuffer::new(320, 240);
+    let mut zbuffer = vec![u32::MAX; 320 * 240];
+    let mut frame = FrameCtx {
+        zbuffer: &mut zbuffer,
+        width: 320,
+        height: 240,
+    };
+    engine
+        .execute::<_, 128>(&mut fb, &mut frame, &cmd, None)
+        .unwrap();
+
+    let digest = fb.hash_pixels();
+    assert_eq!(digest, 16976449647092100349);
 }
 
 #[test]

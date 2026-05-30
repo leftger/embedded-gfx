@@ -5,7 +5,7 @@
 
 A `no_std` 3D graphics and physics engine for embedded systems, optimized for resource-constrained devices. Features real-time rendering, rigid body dynamics, soft body physics, skeletal animation, and visual effects.
 
-> This is a fork of [embedded-gfx](https://github.com/Kezii/embedded-gfx) by [Kezii](https://github.com/Kezii). This fork adds texture mapping, fog/dithering effects, DMA rendering, Z-buffer improvements, anti-aliasing, and a complete physics engine.
+> This is a fork of [embedded-gfx](https://github.com/Kezii/embedded-gfx) by [Kezii](https://github.com/Kezii). This fork adds texture mapping, fog/dithering effects, DMA rendering, Z-buffer improvements, anti-aliasing, a complete physics engine, and Quake-style environmental effects.
 
 ## What's new in 0.3.0
 
@@ -15,6 +15,12 @@ A `no_std` 3D graphics and physics engine for embedded systems, optimized for re
 - **HUD overlay** — `hud` module provides a fixed-capacity overlay for text and icon elements drawn after the scene pass
 - **record/execute pipeline** (introduced in 0.2, stabilized in 0.3) — scene traversal and rasterization are explicit separate phases; command buffers can be replayed without re-traversing the scene graph
 
+## Recent additions
+
+- **Particle system** — fixed-capacity, no-alloc billboard emitter (`ParticleSystem<N>`). Supports color and size interpolation over particle lifetime, gravity/acceleration, and camera-facing billboards. Integrates with the record/execute pipeline via `sys.record(&engine, &mut cmd_buf)`.
+- **Runtime depth fog** — `K3dengine::set_fog(FogConfig)` enables per-pixel linear depth fog applied during rasterization across both mesh and BSP paths.
+- **Dynamic point lights** — `K3dengine::add_point_light(PointLight)` registers runtime point lights with squared-distance falloff that are composited as an additive RGB565 tint on top of baked/directional lighting at face granularity.
+
 ## Features
 
 **3D Rendering**
@@ -23,7 +29,10 @@ A `no_std` 3D graphics and physics engine for embedded systems, optimized for re
 - Flat and Gouraud shading, directional lighting, Blinn-Phong specular
 - Perspective-correct UV texture mapping with multi-texture support (RGB565)
 - Sector lighting (Doom-style per-mesh brightness scaling)
-- Fog, dithering (4×4 Bayer), billboards, vertex animation
+- Runtime depth fog (`K3dengine::set_fog`)
+- Dynamic point lights with additive tint (`K3dengine::add_point_light`)
+- Particle system — no-alloc billboard emitters with color/size over lifetime (`ParticleSystem<N>`)
+- Bayer 4×4 dithering, billboards, vertex animation
 - Anti-aliased lines and triangles (heuristic and per-pixel coverage modes)
 - LOD system with distance-based mesh switching
 - DMA double-buffer rendering via `swapchain`
@@ -64,11 +73,19 @@ A `no_std` 3D graphics and physics engine for embedded systems, optimized for re
     <td align="center"><img src="assets/gif_cloth.gif" alt="Cloth soft-body simulation" width="320"><br><em>Cloth soft-body simulation</em></td>
   </tr>
   <tr>
+    <td align="center"><img src="assets/gif_particles.gif" alt="Particle fountain with fog" width="320"><br><em>Particle system + depth fog</em></td>
+    <td align="center"><img src="assets/gif_point_lights.gif" alt="Orbiting dynamic point lights" width="320"><br><em>Dynamic point lights (orbiting)</em></td>
+  </tr>
+  <tr>
     <td colspan="2" align="center"><img src="assets/gif_newtons_cradle.gif" alt="Newton's cradle — constraint physics" width="480"><br><em>Newton's cradle (distance constraints)</em></td>
   </tr>
 </table>
 
 <table>
+  <tr>
+    <td align="center"><img src="assets/screenshot_particles_fog.png" alt="Particle fountain with fog" width="320"><br><em>Particle fountain + depth fog</em></td>
+    <td align="center"><img src="assets/screenshot_point_lights.png" alt="Dynamic point lights" width="320"><br><em>Point lights — additive tint</em></td>
+  </tr>
   <tr>
     <td align="center"><img src="assets/screenshot_gouraud.png" alt="Gouraud shading" width="320"><br><em>Gouraud shading (per-vertex color)</em></td>
     <td align="center"><img src="assets/screenshot_fog_dither.png" alt="Fog and Bayer dithering" width="320"><br><em>Fog + Bayer dithering</em></td>
@@ -113,6 +130,79 @@ mesh.set_render_mode(RenderMode::Lines);
 let mut commands = embedded_3dgfx::command_buffer::CommandBuffer::<512>::new();
 engine.record(core::iter::once(&mesh), &mut commands, None).unwrap();
 engine.execute(&mut display, &mut frame_ctx, &commands, None).unwrap();
+```
+
+## Particle System
+
+```rust
+use embedded_3dgfx::particles::{ParticleSpawn, ParticleSystem};
+use nalgebra::{Point3, Vector3};
+
+// Fixed capacity — no heap allocation
+let mut sys: ParticleSystem<256> = ParticleSystem::new();
+
+// Spawn a burst of sparks from the origin
+sys.spawn(ParticleSpawn {
+    position: Point3::new(0.0, 0.0, 0.0),
+    velocity: Vector3::new(0.5, 3.0, 0.3),
+    acceleration: Vector3::zeros(),
+    color_start: Rgb565::new(31, 60, 10), // yellow-white
+    color_end:   Rgb565::new(28, 5, 0),   // orange-red
+    size_start: 0.2,
+    size_end:   0.0,
+    lifetime:   1.5,
+});
+
+// Per-frame: integrate physics, then append billboard quads to the command buffer
+let gravity = Vector3::new(0.0, -4.0, 0.0);
+sys.update(dt, gravity);
+sys.record(&engine, &mut commands);
+// engine.execute(...) renders particles alongside meshes
+```
+
+## Dynamic Point Lights
+
+```rust
+use embedded_3dgfx::lights::PointLight;
+use nalgebra::Point3;
+
+let mut engine = K3dengine::new(320, 240);
+
+// Register up to MAX_POINT_LIGHTS per frame
+engine.add_point_light(
+    PointLight::new(
+        Point3::new(-3.0, 2.0, 1.0), // world position
+        Rgb565::new(31, 0, 0),        // red light
+        8.0,                          // radius
+    )
+    .with_intensity(1.2),
+);
+
+// Lights are automatically applied during engine.record()
+// as additive RGB565 tint at face granularity — no extra draw pass needed.
+engine.record(meshes.iter(), &mut commands, None).unwrap();
+
+// Clear each frame to update light positions
+engine.clear_point_lights();
+```
+
+## Depth Fog
+
+```rust
+use embedded_3dgfx::draw::FogConfig;
+
+let fog_color = Rgb565::new(4, 8, 12); // dark blue haze
+engine.set_fog(FogConfig::new(fog_color, 5.0, 28.0)); // near, far
+
+// Fog is applied per-pixel during rasterization across all render modes.
+// Clear the display to the fog color so distant surfaces blend seamlessly:
+display.clear(fog_color).unwrap();
+
+engine.record(meshes.iter(), &mut commands, None).unwrap();
+engine.execute(&mut display, &mut frame_ctx, &commands, None).unwrap();
+
+// Disable fog
+engine.clear_fog();
 ```
 
 ## Physics Example
@@ -195,7 +285,7 @@ Available pre-built shapes: `create_cloth`, `create_jelly_cube`, `create_soft_sp
 
 ## Examples
 
-28 interactive examples — run any with:
+29 interactive examples — run any with:
 
 ```bash
 cargo run --example <name> --features std
@@ -353,6 +443,8 @@ Technical reference docs in `docs/`:
 | Physics (16 bodies) | ~4 KB |
 | Soft body (64 particles) | ~2 KB |
 | Skeleton (8 bones) | ~1 KB |
+| Particle system (256 particles) | ~6 KB |
+| Point light set (8 lights) | <1 KB |
 
 **Budget at 240×135 @ 60 FPS:**
 - Rendering: ~10–13 ms/frame
@@ -383,9 +475,11 @@ src/
   lib.rs              # Engine entry point: K3dengine, record/execute API
   camera.rs           # View/projection matrices
   mesh.rs             # Geometry, LOD, render modes
-  draw.rs             # Rasterization, shading, effects
+  draw.rs             # Rasterization, shading, fog, effects
   renderer.rs         # FrameCtx, execute_commands, tiled execution
   command_buffer.rs   # Fixed-capacity command buffer
+  particles.rs        # No-alloc billboard particle system
+  lights.rs           # Dynamic point lights, PointLight, PointLightSet
   config.rs           # ProfileCaps, QualityTier, DegradationPolicy
   error.rs            # RenderError, BudgetKind
   physics.rs          # Rigid body dynamics
@@ -411,8 +505,8 @@ src/
   lut.rs              # Precomputed lookup tables
 
 load_stl/             # STL file embedding macro
-examples/             # 28 interactive demos
-tests/                # 210 unit tests
+examples/             # 29 interactive demos
+tests/                # 255 unit tests
 ```
 
 ## Testing

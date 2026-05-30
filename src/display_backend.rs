@@ -63,6 +63,17 @@ where
     pub error: DisplayError,
 }
 
+impl<FB> core::fmt::Debug for TransferError<FB>
+where
+    FB: DMACapableFrameBufferBackend<Color = Rgb565>,
+{
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("TransferError")
+            .field("error", &self.error)
+            .finish_non_exhaustive()
+    }
+}
+
 /// An in-progress DMA transfer that holds the framebuffer until completion.
 ///
 /// The buffer is inaccessible while this token is live — the only way to
@@ -308,8 +319,8 @@ mod tests {
         .unwrap();
         // wait() should return the framebuffer
         let fb_back = xfer.wait();
-        assert_eq!(fb_back.width, 4);
-        assert_eq!(fb_back.height, 4);
+        assert_eq!(fb_back.width(), 4);
+        assert_eq!(fb_back.height(), 4);
     }
 
     #[test]

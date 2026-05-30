@@ -215,3 +215,66 @@ where
     let mut fb = FrameBuf::new(SliceBackend(buffer), width, height);
     drawable.draw(&mut fb).map(|_| ()).map_err(|_| ())
 }
+
+#[cfg(test)]
+mod tests {
+    extern crate std;
+
+    use super::*;
+    use embedded_graphics_core::pixelcolor::RgbColor;
+    use embedded_graphics_framebuf::backends::{EndianCorrectedBuffer, EndianCorrection};
+    use nalgebra::Point2;
+
+    struct SingleRedPixel;
+
+    impl Drawable for SingleRedPixel {
+        type Color = Rgb565;
+
+        fn draw<D>(&self, target: &mut D) -> Result<(), D::Error>
+        where
+            D: DrawTarget<Color = Self::Color>,
+        {
+            target.draw_iter([Pixel(Point::new(0, 0), Rgb565::RED)])
+        }
+    }
+
+    #[test]
+    fn point_conversion_helpers_roundtrip() {
+        let n = Point2::new(12, -9);
+        let eg = nalgebra_to_eg(n);
+        assert_eq!(eg, Point::new(12, -9));
+        let n2 = eg_to_nalgebra(eg);
+        assert_eq!(n2, n);
+        assert_eq!(n.as_eg_point(), eg);
+        assert_eq!(eg.as_nalgebra(), n);
+    }
+
+    #[test]
+    fn render_drawable_to_buffer_validates_buffer_size() {
+        let mut too_short = [Rgb565::BLACK; 3];
+        let err = render_drawable_to_buffer(&SingleRedPixel, &mut too_short, 2, 2);
+        assert!(err.is_err());
+    }
+
+    #[test]
+    fn render_drawable_to_buffer_draws_into_slice() {
+        let mut data = [Rgb565::BLACK; 4];
+        render_drawable_to_buffer(&SingleRedPixel, &mut data, 2, 2).unwrap();
+        assert_eq!(data[0], Rgb565::RED);
+    }
+
+    #[test]
+    fn draw_to_writes_primitive_to_target() {
+        let backing = std::vec![Rgb565::BLACK; 4].leak();
+        let mut fb = FrameBuf::new(
+            EndianCorrectedBuffer::new(backing, EndianCorrection::ToLittleEndian),
+            2,
+            2,
+        );
+        draw_to::<Rgb565, _>(
+            DrawPrimitive::ColoredPoint(Point2::new(1, 1), Rgb565::new(31, 0, 0)),
+            &mut fb,
+        );
+        assert_eq!(fb.get_color_at(Point::new(1, 1)), Rgb565::new(31, 0, 0));
+    }
+}

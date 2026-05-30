@@ -106,3 +106,54 @@ impl From<DisplayError> for RenderError {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn budget_kind_key_is_stable() {
+        assert_eq!(
+            BudgetKind::DrawPrimitives {
+                attempted: 1,
+                max: 2
+            }
+            .key(),
+            "DrawPrimitives"
+        );
+        assert_eq!(
+            BudgetKind::FramebufferDimensions {
+                width: 1,
+                height: 1,
+                max_width: 2,
+                max_height: 2
+            }
+            .key(),
+            "FramebufferDimensions"
+        );
+        assert_eq!(
+            BudgetKind::ZBufferLength {
+                expected: 16,
+                got: 8
+            }
+            .key(),
+            "ZBufferLength"
+        );
+    }
+
+    #[test]
+    fn display_error_maps_to_backend_fault() {
+        assert_eq!(
+            RenderError::from(DisplayError::Busy),
+            RenderError::BackendFault(BackendFaultKind::DmaBusyTimeout)
+        );
+        assert_eq!(
+            RenderError::from(DisplayError::HardwareError),
+            RenderError::BackendFault(BackendFaultKind::TransferStartFailed)
+        );
+        assert_eq!(
+            RenderError::from(DisplayError::InvalidBuffer),
+            RenderError::BackendFault(BackendFaultKind::InvalidBufferConfig)
+        );
+    }
+}

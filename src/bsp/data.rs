@@ -129,3 +129,81 @@ pub struct FrustumPlane {
     pub normal: [f32; 3],
     pub d: f32,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bsp_world_new_borrows_all_lumps() {
+        let planes = [Plane {
+            normal: [1.0, 0.0, 0.0],
+            dist: 0.0,
+        }];
+        let nodes = [Node {
+            plane: 0,
+            children: [!0i32, !0i32],
+            mins: [-1, -1, -1],
+            maxs: [1, 1, 1],
+            first_face: 0,
+            num_faces: 0,
+        }];
+        let leaves = [Leaf {
+            cluster: 0,
+            mins: [-1, -1, -1],
+            maxs: [1, 1, 1],
+            first_marksurface: 0,
+            num_marksurfaces: 1,
+        }];
+        let faces = [Face {
+            first_vert: 0,
+            num_verts: 3,
+            texture_id: 7,
+            lightmap_id: 0xFFFF,
+            plane: 0,
+            side: 0,
+        }];
+        let marksurfaces = [0u16];
+        let vertices = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
+        let uvs = [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]];
+        let lm_uvs = [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]];
+        let vis = [0b1u8];
+        let vis_offsets = [0u32];
+
+        let world = BspWorld::new(
+            &planes,
+            &nodes,
+            &leaves,
+            &faces,
+            &marksurfaces,
+            &vertices,
+            &uvs,
+            &lm_uvs,
+            &vis,
+            &vis_offsets,
+            1,
+        );
+
+        assert_eq!(world.planes.len(), 1);
+        assert_eq!(world.nodes.len(), 1);
+        assert_eq!(world.leaves.len(), 1);
+        assert_eq!(world.faces[0].texture_id, 7);
+        assert_eq!(world.vertices.len(), 3);
+        assert_eq!(world.uvs.len(), 3);
+        assert_eq!(world.lm_uvs.len(), 3);
+        assert_eq!(world.vis_offsets[0], 0);
+        assert_eq!(world.num_clusters, 1);
+    }
+
+    #[test]
+    fn frustum_plane_inside_test_matches_definition() {
+        let p = FrustumPlane {
+            normal: [1.0, 0.0, 0.0],
+            d: -2.0,
+        };
+        let inside = p.normal[0] * 3.0 + p.normal[1] * 0.0 + p.normal[2] * 0.0 + p.d;
+        let outside = p.normal[0] * 1.0 + p.normal[1] * 0.0 + p.normal[2] * 0.0 + p.d;
+        assert!(inside >= 0.0);
+        assert!(outside < 0.0);
+    }
+}

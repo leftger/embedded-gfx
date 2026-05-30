@@ -60,8 +60,8 @@ impl SkyConfig {
             top_color: Rgb565::new(6, 16, 31),
             bottom_color: Rgb565::new(1, 4, 12),
             stripe_color: Rgb565::new(18, 30, 31),
-            stripe_strength: 42,
-            stripe_width: 10,
+            stripe_strength: 18,
+            stripe_width: 16,
         }
     }
 }
@@ -168,5 +168,67 @@ impl RetroStyle {
             palette_mode: PaletteMode::Rgb332,
             sky: Some(SkyConfig::retro_blue()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn palette_off_is_identity() {
+        let c = Rgb565::new(17, 45, 23);
+        assert_eq!(PaletteMode::Off.apply(c), c);
+    }
+
+    #[test]
+    fn palette_rgb332_quantizes_channels() {
+        let c = Rgb565::new(17, 45, 23);
+        let q = PaletteMode::Rgb332.apply(c);
+        // Blue channel is reduced to 2 bits; red/green map to 3 bits.
+        assert_eq!(q, Rgb565::new(17, 45, 20));
+    }
+
+    #[test]
+    fn screen_tint_strength_extremes() {
+        let base = Rgb565::new(7, 20, 5);
+        let tint = Rgb565::new(31, 0, 31);
+
+        let off = ScreenTint {
+            color: tint,
+            strength: 0,
+        };
+        assert_eq!(off.apply(base), base);
+
+        let full = ScreenTint {
+            color: tint,
+            strength: 255,
+        };
+        assert_eq!(full.apply(base), tint);
+    }
+
+    #[test]
+    fn doom_walkable_preset_matches_expected_profile() {
+        let s = RetroStyle::doom_walkable();
+        assert!(s.fog.is_none());
+        assert_eq!(s.vertex_snap_bits, 0);
+        assert_eq!(s.texture_mapping, TextureMapping::Affine);
+        assert_eq!(s.light_levels, LightLevels::Doom32);
+        assert_eq!(s.stipple_mode, StippleMode::Off);
+        assert_eq!(s.palette_mode, PaletteMode::Rgb332);
+        assert!(s.sky.is_some());
+        assert!(s.dither.is_some());
+    }
+
+    #[test]
+    fn psx_preset_enables_snap_and_fog() {
+        let s = RetroStyle::psx();
+        assert_eq!(s.vertex_snap_bits, 6);
+        assert_eq!(s.texture_mapping, TextureMapping::Affine);
+        assert_eq!(s.light_levels, LightLevels::Linear);
+        assert_eq!(s.palette_mode, PaletteMode::Rgb332);
+        assert!(s.fog.is_some());
+        assert!(s.dither.is_some());
+        assert!(s.sky.is_some());
     }
 }

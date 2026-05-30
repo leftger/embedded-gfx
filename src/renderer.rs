@@ -183,6 +183,11 @@ fn blend_rgb565(a: Rgb565, b: Rgb565, t_q8: u16) -> Rgb565 {
     Rgb565::new(r, g, bch)
 }
 
+#[inline]
+fn stripe_on_at(x: i32, scroll: i32, stripe_w: i32) -> bool {
+    (((x + scroll).div_euclid(stripe_w)) & 1) == 0
+}
+
 fn draw_sky_background<D>(
     fb: &mut D,
     width: usize,
@@ -205,15 +210,25 @@ where
     let horizon = (h as f32 * (0.5 + camera_dir[1].clamp(-1.0, 1.0) * 0.25)) as i32;
     let stripe_w = sky.stripe_width.max(1) as i32;
     let scroll = (camera_dir[0] * 128.0) as i32;
+    let stripe_fade_span = (h / 6).max(1);
 
     for y in 0..h {
         let dy = (y - horizon + h / 2).clamp(0, h);
         let t_q8 = ((dy as i64 * 255) / h.max(1) as i64) as u16;
         let base = blend_rgb565(sky.top_color, sky.bottom_color, t_q8);
+        let below_horizon = (y - horizon).max(0);
+        let stripe_strength = if below_horizon == 0 {
+            sky.stripe_strength as u16
+        } else if below_horizon >= stripe_fade_span {
+            0
+        } else {
+            let rem = stripe_fade_span - below_horizon;
+            ((sky.stripe_strength as i32 * rem) / stripe_fade_span) as u16
+        };
         for x in 0..w {
-            let stripe_on = (((x + scroll) / stripe_w) & 1) == 0;
-            let mut color = if stripe_on && sky.stripe_strength > 0 {
-                blend_rgb565(base, sky.stripe_color, sky.stripe_strength as u16)
+            let stripe_on = stripe_on_at(x, scroll, stripe_w);
+            let mut color = if stripe_on && stripe_strength > 0 {
+                blend_rgb565(base, sky.stripe_color, stripe_strength)
             } else {
                 base
             };
@@ -223,6 +238,44 @@ where
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::stripe_on_at;
+
+    #[test]
+    fn stripe_phase_is_periodic_with_negative_scroll() {
+        let stripe_w = 10;
+        let scroll = -3;
+        for x in -40..40 {
+            assert_eq!(
+                stripe_on_at(x, scroll, stripe_w),
+                stripe_on_at(x + stripe_w * 2, scroll, stripe_w)
+            );
+        }
+    }
+
+    #[test]
+    fn stripe_runs_do_not_exceed_width() {
+        let stripe_w = 8;
+        let scroll = -5;
+        let mut max_run = 0usize;
+        let mut run = 0usize;
+        let mut prev = stripe_on_at(-64, scroll, stripe_w);
+        for x in -63..=64 {
+            let cur = stripe_on_at(x, scroll, stripe_w);
+            if cur == prev {
+                run += 1;
+            } else {
+                max_run = max_run.max(run);
+                run = 1;
+                prev = cur;
+            }
+        }
+        max_run = max_run.max(run);
+        assert!(max_run <= stripe_w as usize);
+    }
 }
 
 pub fn execute_commands<D, const MAX: usize>(

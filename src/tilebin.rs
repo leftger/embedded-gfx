@@ -108,3 +108,72 @@ pub fn build_bins<const MAX: usize, const BIN_CAP: usize>(
         },
     ))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::command_buffer::RenderCommand;
+    use embedded_graphics_core::pixelcolor::Rgb565;
+    use nalgebra::Point2;
+
+    #[test]
+    fn tile_grid_rejects_zero_tile_size() {
+        let err = tile_grid(
+            64,
+            64,
+            TileConfig {
+                tile_width: 0,
+                tile_height: 8,
+            },
+        )
+        .expect_err("zero tile width must fail");
+        assert!(matches!(err, RenderError::InvalidInput(_)));
+    }
+
+    #[test]
+    fn build_bins_tracks_draw_count_and_bins_used() {
+        let mut commands: CommandBuffer<8> = CommandBuffer::new();
+        commands
+            .push(RenderCommand::Draw(DrawPrimitive::ColoredTriangle(
+                [
+                    Point2::new(18, 18),
+                    Point2::new(30, 18),
+                    Point2::new(24, 30),
+                ],
+                Rgb565::new(31, 0, 0),
+            )))
+            .unwrap();
+
+        let (bins, stats) = build_bins::<8, 64>(
+            &commands,
+            64,
+            64,
+            TileConfig {
+                tile_width: 16,
+                tile_height: 16,
+            },
+        )
+        .expect("binning should succeed");
+
+        assert_eq!(stats.draw_commands, 1);
+        assert_eq!(stats.bins_used, 1);
+        let populated = bins.iter().filter(|b| !b.is_empty()).count();
+        assert_eq!(populated, 1);
+    }
+
+    #[test]
+    fn build_bins_rejects_excessive_grid_for_capacity() {
+        let commands: CommandBuffer<4> = CommandBuffer::new();
+        let err = build_bins::<4, 8>(
+            &commands,
+            64,
+            64,
+            TileConfig {
+                tile_width: 1,
+                tile_height: 1,
+            },
+        )
+        .expect_err("grid should exceed BIN_CAP");
+        assert!(matches!(err, RenderError::InvalidInput(_)));
+    }
+}

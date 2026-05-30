@@ -58,3 +58,48 @@ impl<const MAX: usize> Default for CommandBuffer<MAX> {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use embedded_graphics_core::pixelcolor::Rgb565;
+    use nalgebra::Point2;
+
+    #[test]
+    fn new_buffer_starts_empty() {
+        let buf: CommandBuffer<4> = CommandBuffer::new();
+        assert_eq!(buf.len(), 0);
+        assert!(buf.is_empty());
+    }
+
+    #[test]
+    fn push_and_get_roundtrip() {
+        let mut buf: CommandBuffer<4> = CommandBuffer::new();
+        buf.push(RenderCommand::Draw(DrawPrimitive::ColoredPoint(
+            Point2::new(3, 7),
+            Rgb565::new(31, 0, 0),
+        )))
+        .unwrap();
+        assert_eq!(buf.len(), 1);
+        assert!(matches!(
+            buf.get(0),
+            Some(RenderCommand::Draw(DrawPrimitive::ColoredPoint(_, _)))
+        ));
+    }
+
+    #[test]
+    fn push_over_capacity_returns_budget_error() {
+        let mut buf: CommandBuffer<1> = CommandBuffer::new();
+        buf.push(RenderCommand::ClearDepth(0)).unwrap();
+        let err = buf
+            .push(RenderCommand::ClearDepth(1))
+            .expect_err("overflow must fail");
+        assert_eq!(
+            err,
+            RenderError::OutOfBudget(BudgetKind::DrawPrimitives {
+                attempted: 2,
+                max: 1
+            })
+        );
+    }
+}

@@ -42,7 +42,7 @@ use crate::{
 use coverage::CoverageBuffer;
 use data::{BspWorld, Face};
 use scratch::BspScratch;
-use traverse::{ClipVert, clip_near, frustum_from_vp, project_to_screen, walk_front_to_back};
+use traverse::{ClipVert, frustum_from_vp, project_to_screen, walk_front_to_back};
 
 // ---------------------------------------------------------------------------
 // Telemetry
@@ -78,38 +78,129 @@ struct ProjTri {
     lm_uvs: [[f32; 2]; 3],
 }
 
-/// Clip and project a triangle into 0–2 screen-space triangles.
+#[inline]
+fn lerp_clip_vert(a: ClipVert, b: ClipVert, t: f32) -> ClipVert {
+    ClipVert {
+        clip: a.clip + (b.clip - a.clip) * t,
+        uv: [
+            a.uv[0] + (b.uv[0] - a.uv[0]) * t,
+            a.uv[1] + (b.uv[1] - a.uv[1]) * t,
+        ],
+        lm_uv: [
+            a.lm_uv[0] + (b.lm_uv[0] - a.lm_uv[0]) * t,
+            a.lm_uv[1] + (b.lm_uv[1] - a.lm_uv[1]) * t,
+        ],
+    }
+}
+
+fn clip_polygon_plane(
+    input: &HVec<ClipVert, 10>,
+    output: &mut HVec<ClipVert, 10>,
+    dist: impl Fn(ClipVert) -> f32,
+) {
+    output.clear();
+    let n = input.len();
+    if n == 0 {
+        return;
+    }
+    for i in 0..n {
+        let prev = input[(n + i - 1) % n];
+        let curr = input[i];
+        let d_prev = dist(prev);
+        let d_curr = dist(curr);
+        if d_curr >= 0.0 {
+            if d_prev < 0.0 {
+                let denom = d_prev - d_curr;
+                if denom.abs() > 1e-6 {
+                    let t = d_prev / denom;
+                    let _ = output.push(lerp_clip_vert(prev, curr, t));
+                }
+            }
+            let _ = output.push(curr);
+        } else if d_prev >= 0.0 {
+            let denom = d_prev - d_curr;
+            if denom.abs() > 1e-6 {
+                let t = d_prev / denom;
+                let _ = output.push(lerp_clip_vert(prev, curr, t));
+            }
+        }
+    }
+}
+
+/// Clip and project a triangle into 0–8 screen-space triangles.
 ///
 /// Vertices are given in clip space with associated UV and lightmap UV
-/// coordinates.  Returns at most 2 output triangles (a clipped triangle
-/// becomes a quad = 2 triangles at most).
+/// coordinates. This performs full clip-space frustum clipping (near/far and
+/// side planes), then fan-triangulates the clipped polygon.
 fn clip_and_project(
     v: [ClipVert; 3],
     width: u16,
     height: u16,
     near: f32,
     far: f32,
-) -> HVec<ProjTri, 2> {
-    let mut result: HVec<ProjTri, 2> = HVec::new();
+) -> HVec<ProjTri, 8> {
+    let mut result: HVec<ProjTri, 8> = HVec::new();
 
-    // Build a 3-vertex polygon and clip against the near plane
-    let mut poly: HVec<ClipVert, 4> = HVec::new();
+    // Build a 3-vertex polygon and clip against the canonical clip frustum.
+    let mut a: HVec<ClipVert, 10> = HVec::new();
+    let mut b: HVec<ClipVert, 10> = HVec::new();
     for vert in &v {
-        let _ = poly.push(*vert);
-    }
-    let clipped: HVec<ClipVert, 4> = clip_near(&poly);
-
-    if clipped.len() < 3 {
-        return result; // Entirely behind near plane
+        let _ = a.push(*vert);
     }
 
-    // Project all clipped vertices to screen space
-    // A clipped triangle has 3 or 4 vertices; fan-triangulate
-    let n = clipped.len();
+    // w >= 0
+    clip_polygon_plane(&a, &mut b, |p| p.clip.w);
+    if b.len() < 3 {
+        return result;
+    }
+    core::mem::swap(&mut a, &mut b);
 
-    // We have at most 4 vertices after clipping a triangle → 2 tris
+    // near: z >= -w  => z + w >= 0
+    clip_polygon_plane(&a, &mut b, |p| p.clip.z + p.clip.w);
+    if b.len() < 3 {
+        return result;
+    }
+    core::mem::swap(&mut a, &mut b);
+
+    // far: z <= w  => w - z >= 0
+    clip_polygon_plane(&a, &mut b, |p| p.clip.w - p.clip.z);
+    if b.len() < 3 {
+        return result;
+    }
+    core::mem::swap(&mut a, &mut b);
+
+    // left: x >= -w  => x + w >= 0
+    clip_polygon_plane(&a, &mut b, |p| p.clip.x + p.clip.w);
+    if b.len() < 3 {
+        return result;
+    }
+    core::mem::swap(&mut a, &mut b);
+
+    // right: x <= w  => w - x >= 0
+    clip_polygon_plane(&a, &mut b, |p| p.clip.w - p.clip.x);
+    if b.len() < 3 {
+        return result;
+    }
+    core::mem::swap(&mut a, &mut b);
+
+    // bottom: y >= -w  => y + w >= 0
+    clip_polygon_plane(&a, &mut b, |p| p.clip.y + p.clip.w);
+    if b.len() < 3 {
+        return result;
+    }
+    core::mem::swap(&mut a, &mut b);
+
+    // top: y <= w  => w - y >= 0
+    clip_polygon_plane(&a, &mut b, |p| p.clip.w - p.clip.y);
+    if b.len() < 3 {
+        return result;
+    }
+    core::mem::swap(&mut a, &mut b);
+
+    // Fan-triangulate projected clipped polygon.
+    let n = a.len();
     for i in 1..(n - 1) {
-        let pts = [&clipped[0], &clipped[i], &clipped[i + 1]];
+        let pts = [&a[0], &a[i], &a[i + 1]];
 
         let mut screen = [Point2::new(0i32, 0i32); 3];
         let mut depths = [0.0f32; 3];
@@ -944,5 +1035,80 @@ mod tests {
         assert!(!cov.is_covered(5, 5));
         cov.mark_covered(5, 5);
         assert!(cov.is_covered(5, 5));
+    }
+
+    #[test]
+    fn clip_and_project_triangle_inside_frustum_emits_one() {
+        let tri = [
+            ClipVert {
+                clip: nalgebra::Vector4::new(-0.5, -0.5, 0.0, 1.0),
+                uv: [0.0, 0.0],
+                lm_uv: [0.0, 0.0],
+            },
+            ClipVert {
+                clip: nalgebra::Vector4::new(0.5, -0.5, 0.0, 1.0),
+                uv: [1.0, 0.0],
+                lm_uv: [1.0, 0.0],
+            },
+            ClipVert {
+                clip: nalgebra::Vector4::new(0.0, 0.5, 0.0, 1.0),
+                uv: [0.5, 1.0],
+                lm_uv: [0.5, 1.0],
+            },
+        ];
+        let out = clip_and_project(tri, 320, 240, 0.1, 40.0);
+        assert_eq!(out.len(), 1);
+    }
+
+    #[test]
+    fn clip_and_project_triangle_crossing_side_plane_is_clipped() {
+        let tri = [
+            ClipVert {
+                clip: nalgebra::Vector4::new(0.0, -0.2, 0.0, 1.0),
+                uv: [0.0, 0.0],
+                lm_uv: [0.0, 0.0],
+            },
+            ClipVert {
+                clip: nalgebra::Vector4::new(1.6, 0.0, 0.0, 1.0), // outside right plane
+                uv: [1.0, 0.5],
+                lm_uv: [1.0, 0.5],
+            },
+            ClipVert {
+                clip: nalgebra::Vector4::new(0.0, 0.4, 0.0, 1.0),
+                uv: [0.0, 1.0],
+                lm_uv: [0.0, 1.0],
+            },
+        ];
+        let out = clip_and_project(tri, 320, 240, 0.1, 40.0);
+        assert!(!out.is_empty(), "expected clipped output triangles");
+        for tri in out.iter() {
+            for p in tri.points {
+                assert!(p.x >= 0 && p.x <= 320);
+                assert!(p.y >= 0 && p.y <= 240);
+            }
+        }
+    }
+
+    #[test]
+    fn clip_and_project_triangle_behind_near_plane_is_discarded() {
+        let tri = [
+            ClipVert {
+                clip: nalgebra::Vector4::new(-0.2, -0.2, -2.0, 1.0),
+                uv: [0.0, 0.0],
+                lm_uv: [0.0, 0.0],
+            },
+            ClipVert {
+                clip: nalgebra::Vector4::new(0.2, -0.2, -2.2, 1.0),
+                uv: [1.0, 0.0],
+                lm_uv: [1.0, 0.0],
+            },
+            ClipVert {
+                clip: nalgebra::Vector4::new(0.0, 0.2, -2.1, 1.0),
+                uv: [0.5, 1.0],
+                lm_uv: [0.5, 1.0],
+            },
+        ];
+        let out = clip_and_project(tri, 320, 240, 0.1, 40.0);
+        assert_eq!(out.len(), 0);
     }
 }

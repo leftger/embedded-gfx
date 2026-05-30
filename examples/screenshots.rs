@@ -1049,8 +1049,8 @@ fn capture_retro_doom_preset() {
     let mut engine = K3dengine::new(W as u16, H as u16);
     engine.clear_caps();
     engine.apply_retro_style(RetroStyle::doom_walkable());
-    engine.camera.set_position(Point3::new(0.0, 1.5, 10.0));
-    engine.camera.set_target(Point3::new(0.0, 0.0, 0.0));
+    engine.camera.set_position(Point3::new(0.0, 1.8, 9.5));
+    engine.camera.set_target(Point3::new(0.0, 0.2, 0.0));
 
     let cube_vertices: &[[f32; 3]] = &[
         [-1.0, -1.0, -1.0],
@@ -1086,24 +1086,6 @@ fn capture_retro_doom_preset() {
         uvs: &[],
         texture_id: None,
     };
-    let floor_vertices: &[[f32; 3]] = &[
-        [-10.0, -2.4, -7.0],
-        [10.0, -2.4, -7.0],
-        [10.0, -2.4, 6.0],
-        [-10.0, -2.4, 6.0],
-    ];
-    let floor_faces: &[[usize; 3]] = &[[0, 1, 2], [0, 2, 3]];
-    let floor_normals: &[[f32; 3]] = &[[0.0, 1.0, 0.0], [0.0, 1.0, 0.0]];
-    let floor_geom = Geometry {
-        vertices: floor_vertices,
-        faces: floor_faces,
-        colors: &[],
-        lines: &[],
-        normals: floor_normals,
-        vertex_normals: &[],
-        uvs: &[],
-        texture_id: None,
-    };
 
     let mut left = K3dMesh::new(geom);
     left.set_position(-3.2, 0.0, 0.0);
@@ -1125,13 +1107,10 @@ fn capture_retro_doom_preset() {
     right.set_attitude(0.9, 0.4, 0.3);
     right.set_render_mode(RenderMode::Solid);
     right.set_color(Rgb565::CSS_CYAN);
-    let mut floor = K3dMesh::new(floor_geom);
-    floor.set_render_mode(RenderMode::Solid);
-    floor.set_color(Rgb565::new(8, 18, 8));
 
     display.clear(Rgb565::new(3, 6, 10)).unwrap();
     zbuffer.fill(u32::MAX);
-    let meshes = [&floor, &left, &center, &right];
+    let meshes = [&left, &center, &right];
     engine
         .record(meshes.iter().copied(), &mut commands, None)
         .unwrap();
@@ -1163,9 +1142,10 @@ fn capture_bsp_builder() {
     let mut engine = K3dengine::new(W as u16, H as u16);
     engine.clear_caps();
     engine.apply_retro_style(RetroStyle::modern());
-    engine.camera.set_near_far(0.1, 40.0);
-    engine.camera.set_position(Point3::new(-7.0, 0.0, 0.0));
-    engine.camera.set_target(Point3::new(8.0, 0.0, 0.0));
+    engine.camera.set_fovy(PI / 3.0);
+    engine.camera.set_near_far(0.3, 40.0);
+    engine.camera.set_position(Point3::new(-7.2, -0.6, 0.0));
+    engine.camera.set_target(Point3::new(8.0, -0.3, 0.0));
 
     let rooms = [
         RoomSpec {
@@ -1204,9 +1184,9 @@ fn capture_bsp_builder() {
             let x = i % 8;
             let y = i / 8;
             data[i] = if (x + y) % 2 == 0 {
-                Rgb565::new(4, 10, 4)
+                Rgb565::new(8, 14, 8)
             } else {
-                Rgb565::new(12, 24, 10)
+                Rgb565::new(10, 18, 10)
             };
             i += 1;
         }
@@ -1219,9 +1199,9 @@ fn capture_bsp_builder() {
             let x = i % 8;
             let y = i / 8;
             data[i] = if (x + y) % 2 == 0 {
-                Rgb565::new(8, 8, 16)
+                Rgb565::new(8, 8, 14)
             } else {
-                Rgb565::new(3, 4, 10)
+                Rgb565::new(6, 7, 12)
             };
             i += 1;
         }

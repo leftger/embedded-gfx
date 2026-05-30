@@ -19,3 +19,29 @@ pub struct ExecuteTelemetry {
     pub clear_color_commands: usize,
     pub clear_depth_commands: usize,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{ExecuteTelemetry, RecordTelemetry};
+
+    #[test]
+    fn record_telemetry_defaults_to_zero_and_false() {
+        let t = RecordTelemetry::default();
+        assert_eq!(t.meshes_total, 0);
+        assert_eq!(t.meshes_visible, 0);
+        assert_eq!(t.unique_textures, 0);
+        assert_eq!(t.draw_commands, 0);
+        assert!(!t.fallback_used);
+        assert_eq!(t.degradation_steps_applied, 0);
+        assert_eq!(t.dropped_meshes, 0);
+    }
+
+    #[test]
+    fn execute_telemetry_defaults_to_zero() {
+        let t = ExecuteTelemetry::default();
+        assert_eq!(t.commands_total, 0);
+        assert_eq!(t.draw_commands, 0);
+        assert_eq!(t.clear_color_commands, 0);
+        assert_eq!(t.clear_depth_commands, 0);
+    }
+}

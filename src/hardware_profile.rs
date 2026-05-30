@@ -84,3 +84,22 @@ pub fn emit_trace(_sample: CycleSample) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sample_cycles_wraps_and_updates_last_value() {
+        let sample = sample_cycles("frame", u32::MAX - 3, 5);
+        assert_eq!(sample.label, "frame");
+        assert_eq!(sample.cycles, 9);
+        assert_eq!(last_sample_cycles(), 9);
+    }
+
+    #[test]
+    fn read_cycle_counter_is_none_on_host_builds() {
+        #[cfg(not(all(feature = "dwt-profiler", target_arch = "arm")))]
+        assert_eq!(read_cycle_counter(), None);
+    }
+}

@@ -30,3 +30,37 @@ pub struct InputState {
     /// Sprint modifier — held to move at `run_speed` instead of `walk_speed`.
     pub sprint: bool,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::InputState;
+
+    #[test]
+    fn default_input_state_is_neutral() {
+        let input = InputState::default();
+        assert_eq!(input.forward, 0.0);
+        assert_eq!(input.strafe, 0.0);
+        assert_eq!(input.look_yaw, 0.0);
+        assert_eq!(input.look_pitch, 0.0);
+        assert!(!input.jump);
+        assert!(!input.sprint);
+    }
+
+    #[test]
+    fn input_state_can_store_full_analog_range() {
+        let input = InputState {
+            forward: 1.0,
+            strafe: -1.0,
+            look_yaw: 0.75,
+            look_pitch: -0.5,
+            jump: true,
+            sprint: true,
+        };
+        assert_eq!(input.forward, 1.0);
+        assert_eq!(input.strafe, -1.0);
+        assert_eq!(input.look_yaw, 0.75);
+        assert_eq!(input.look_pitch, -0.5);
+        assert!(input.jump);
+        assert!(input.sprint);
+    }
+}

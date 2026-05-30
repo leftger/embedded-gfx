@@ -144,10 +144,45 @@ fn build_node_recursive(
     Ok(node_index as i32)
 }
 
+fn push_quad_face(
+    out: &mut OwnedBspWorld,
+    verts: [[f32; 3]; 4],
+    texture_id: u32,
+    lightmap_id: u16,
+) -> Result<u16, BuildError> {
+    let first_vert = out.vertices.len() as u32;
+    out.vertices.extend_from_slice(&verts);
+    const QUAD_UVS: [[f32; 2]; 4] = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
+    out.uvs.extend_from_slice(&QUAD_UVS);
+    out.lm_uvs.extend_from_slice(&QUAD_UVS);
+
+    let face_index = out.faces.len();
+    if face_index > u16::MAX as usize {
+        return Err(BuildError::TooManyFaces);
+    }
+    out.faces.push(Face {
+        first_vert,
+        num_verts: 4,
+        texture_id,
+        lightmap_id,
+        plane: 0,
+        side: 0,
+    });
+    Ok(face_index as u16)
+}
+
+fn push_leaf_marksurface(out: &mut OwnedBspWorld, face_idx: u16) -> Result<(), BuildError> {
+    if out.marksurfaces.len() > u16::MAX as usize {
+        return Err(BuildError::TooManyMarksurfaces);
+    }
+    out.marksurfaces.push(face_idx);
+    Ok(())
+}
+
 /// Build a simple BSP world from an X-sorted strip of axis-aligned rooms.
 ///
-/// Generated geometry includes floor + ceiling quads per room (textured), full
-/// visibility PVS, and an X-axis BSP split tree with root at node 0.
+/// Generated geometry includes floor, ceiling, and side/end walls per room,
+/// full-visibility PVS, and an X-axis BSP split tree with root at node 0.
 pub fn build_room_strip(rooms: &[RoomSpec]) -> Result<OwnedBspWorld, BuildError> {
     if rooms.is_empty() {
         return Err(BuildError::NeedAtLeastOneRoom);
@@ -172,62 +207,99 @@ pub fn build_room_strip(rooms: &[RoomSpec]) -> Result<OwnedBspWorld, BuildError>
     }
 
     let mut out = OwnedBspWorld::default();
+    const EPS_X_GAP: f32 = 1e-4;
 
     for (room_idx, room) in rooms.iter().enumerate() {
         let first_marksurface = out.marksurfaces.len();
         if first_marksurface > u16::MAX as usize {
             return Err(BuildError::TooManyMarksurfaces);
         }
+        let mut leaf_faces: Vec<u16> = Vec::with_capacity(6);
 
-        let floor_start = out.vertices.len() as u32;
-        out.vertices.extend_from_slice(&[
-            [room.mins[0], room.mins[1], room.mins[2]],
-            [room.maxs[0], room.mins[1], room.mins[2]],
-            [room.maxs[0], room.mins[1], room.maxs[2]],
-            [room.mins[0], room.mins[1], room.maxs[2]],
-        ]);
-        out.uvs
-            .extend_from_slice(&[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]);
-        out.lm_uvs
-            .extend_from_slice(&[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]);
+        // Floor (y = mins.y) and ceiling (y = maxs.y)
+        leaf_faces.push(push_quad_face(
+            &mut out,
+            [
+                [room.mins[0], room.mins[1], room.mins[2]],
+                [room.maxs[0], room.mins[1], room.mins[2]],
+                [room.maxs[0], room.mins[1], room.maxs[2]],
+                [room.mins[0], room.mins[1], room.maxs[2]],
+            ],
+            room.floor_texture_id,
+            room.lightmap_id,
+        )?);
+        leaf_faces.push(push_quad_face(
+            &mut out,
+            [
+                [room.mins[0], room.maxs[1], room.mins[2]],
+                [room.maxs[0], room.maxs[1], room.mins[2]],
+                [room.maxs[0], room.maxs[1], room.maxs[2]],
+                [room.mins[0], room.maxs[1], room.maxs[2]],
+            ],
+            room.ceiling_texture_id,
+            room.lightmap_id,
+        )?);
 
-        let ceil_start = out.vertices.len() as u32;
-        out.vertices.extend_from_slice(&[
-            [room.mins[0], room.maxs[1], room.mins[2]],
-            [room.maxs[0], room.maxs[1], room.mins[2]],
-            [room.maxs[0], room.maxs[1], room.maxs[2]],
-            [room.mins[0], room.maxs[1], room.maxs[2]],
-        ]);
-        out.uvs
-            .extend_from_slice(&[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]);
-        out.lm_uvs
-            .extend_from_slice(&[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]);
+        // Side walls (z min / z max).
+        leaf_faces.push(push_quad_face(
+            &mut out,
+            [
+                [room.mins[0], room.mins[1], room.mins[2]],
+                [room.maxs[0], room.mins[1], room.mins[2]],
+                [room.maxs[0], room.maxs[1], room.mins[2]],
+                [room.mins[0], room.maxs[1], room.mins[2]],
+            ],
+            room.floor_texture_id,
+            room.lightmap_id,
+        )?);
+        leaf_faces.push(push_quad_face(
+            &mut out,
+            [
+                [room.mins[0], room.mins[1], room.maxs[2]],
+                [room.maxs[0], room.mins[1], room.maxs[2]],
+                [room.maxs[0], room.maxs[1], room.maxs[2]],
+                [room.mins[0], room.maxs[1], room.maxs[2]],
+            ],
+            room.floor_texture_id,
+            room.lightmap_id,
+        )?);
 
-        let floor_face = out.faces.len();
-        let ceil_face = floor_face + 1;
-        if ceil_face > u16::MAX as usize {
-            return Err(BuildError::TooManyFaces);
+        // End-cap walls are only emitted when the room does not directly touch
+        // a neighbor on that side. Shared boundaries become open portals.
+        let has_left_cap = room_idx == 0 || rooms[room_idx - 1].maxs[0] < room.mins[0] - EPS_X_GAP;
+        if has_left_cap {
+            leaf_faces.push(push_quad_face(
+                &mut out,
+                [
+                    [room.mins[0], room.mins[1], room.mins[2]],
+                    [room.mins[0], room.mins[1], room.maxs[2]],
+                    [room.mins[0], room.maxs[1], room.maxs[2]],
+                    [room.mins[0], room.maxs[1], room.mins[2]],
+                ],
+                room.floor_texture_id,
+                room.lightmap_id,
+            )?);
         }
 
-        out.faces.push(Face {
-            first_vert: floor_start,
-            num_verts: 4,
-            texture_id: room.floor_texture_id,
-            lightmap_id: room.lightmap_id,
-            plane: 0,
-            side: 0,
-        });
-        out.faces.push(Face {
-            first_vert: ceil_start,
-            num_verts: 4,
-            texture_id: room.ceiling_texture_id,
-            lightmap_id: room.lightmap_id,
-            plane: 0,
-            side: 0,
-        });
+        let has_right_cap =
+            room_idx + 1 == rooms.len() || room.maxs[0] < rooms[room_idx + 1].mins[0] - EPS_X_GAP;
+        if has_right_cap {
+            leaf_faces.push(push_quad_face(
+                &mut out,
+                [
+                    [room.maxs[0], room.mins[1], room.mins[2]],
+                    [room.maxs[0], room.mins[1], room.maxs[2]],
+                    [room.maxs[0], room.maxs[1], room.maxs[2]],
+                    [room.maxs[0], room.maxs[1], room.mins[2]],
+                ],
+                room.floor_texture_id,
+                room.lightmap_id,
+            )?);
+        }
 
-        out.marksurfaces.push(floor_face as u16);
-        out.marksurfaces.push(ceil_face as u16);
+        for face_idx in &leaf_faces {
+            push_leaf_marksurface(&mut out, *face_idx)?;
+        }
 
         out.leaves.push(Leaf {
             cluster: room_idx as i16,
@@ -242,7 +314,7 @@ pub fn build_room_strip(rooms: &[RoomSpec]) -> Result<OwnedBspWorld, BuildError>
                 to_i16_clamped(room.maxs[2]),
             ],
             first_marksurface: first_marksurface as u16,
-            num_marksurfaces: 2,
+            num_marksurfaces: leaf_faces.len() as u16,
         });
     }
 
@@ -303,14 +375,14 @@ mod tests {
         let owned = build_room_strip(&rooms).expect("builder should succeed");
         assert_eq!(owned.nodes.len(), 1);
         assert_eq!(owned.leaves.len(), 2);
-        assert_eq!(owned.faces.len(), 4);
-        assert_eq!(owned.marksurfaces.len(), 4);
+        assert_eq!(owned.faces.len(), 10);
+        assert_eq!(owned.marksurfaces.len(), 10);
 
         let world = owned.as_world();
         assert_eq!(world.leaf_for_point([-2.0, 0.0, 0.0]), 0);
         assert_eq!(world.leaf_for_point([2.0, 0.0, 0.0]), 1);
 
-        let mut visframe = [0u32; 8];
+        let mut visframe = [0u32; 16];
         let mut scratch = BspScratch::new(&mut visframe);
         let mut engine = K3dengine::new(320, 240);
         engine.camera.set_position(Point3::new(-2.0, 0.0, 0.0));
@@ -361,6 +433,7 @@ mod tests {
         let owned = build_room_strip(&rooms).expect("single room should build");
         assert!(owned.nodes.is_empty());
         assert_eq!(owned.leaves.len(), 1);
-        assert_eq!(owned.faces.len(), 2);
+        assert_eq!(owned.faces.len(), 6);
+        assert_eq!(owned.marksurfaces.len(), 6);
     }
 }

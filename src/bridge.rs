@@ -229,6 +229,7 @@ mod tests {
 
     impl Drawable for SingleRedPixel {
         type Color = Rgb565;
+        type Output = ();
 
         fn draw<D>(&self, target: &mut D) -> Result<(), D::Error>
         where

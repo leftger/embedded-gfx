@@ -258,34 +258,6 @@ impl DitherConfig {
     }
 }
 
-struct Interpolator {
-    x: i32,
-    dx: i32,
-    dy: i32,
-    error: i32,
-}
-
-impl Interpolator {
-    fn new(p_start: Point, p_end: Point) -> Self {
-        Self {
-            x: p_start.x,
-            dx: p_end.x - p_start.x,
-            dy: p_end.y - p_start.y,
-            error: 0,
-        }
-    }
-
-    fn next(&mut self) -> i32 {
-        self.x += self.dx / self.dy;
-        self.error += self.dx % self.dy;
-        if self.error >= self.dy {
-            self.x += 1;
-            self.error -= self.dy;
-        }
-        self.x
-    }
-}
-
 // Fixed-point 16.16 edge stepper — integer-only replacement for f32 invslope.
 const FP_SHIFT: i64 = 16;
 
@@ -355,51 +327,60 @@ fn fill_triangle<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb56
 
     // Top part (p1 to p2)
     if p2.y - p1.y > 0 {
-        let mut a = Interpolator::new(p1, p2);
-        let mut b = Interpolator::new(p1, p3);
+        let mut a = EdgeStepper::new(p1, p2, p1.y);
+        let mut b = EdgeStepper::new(p1, p3, p1.y);
 
         for y in p1.y..p2.y {
-            let ax = a.next();
-            let bx = b.next();
+            let ax = a.current_x();
+            let bx = b.current_x();
             let (start_x, end_x) = if ax < bx { (ax, bx) } else { (bx, ax) };
             let start_x = start_x.clamp(min_x, max_x);
             let end_x = end_x.clamp(min_x, max_x);
-
-            let mut i = 0;
-            for x in start_x..=end_x {
-                pixel_row[i] = embedded_graphics_core::Pixel(Point::new(x, y), color);
-                i += 1;
+            let mut x = start_x;
+            while x <= end_x {
+                let chunk_end = (x + MAX_ROW_WIDTH as i32 - 1).min(end_x);
+                let mut i = 0usize;
+                for sx in x..=chunk_end {
+                    pixel_row[i] = embedded_graphics_core::Pixel(Point::new(sx, y), color);
+                    i += 1;
+                }
+                fb.draw_iter(pixel_row[..i].iter().copied()).unwrap();
+                x = chunk_end + 1;
             }
-
-            fb.draw_iter(pixel_row[..(end_x - start_x + 1) as usize].iter().copied())
-                .unwrap();
+            a.advance();
+            b.advance();
         }
     }
 
     // Bottom part (p2 to p3)
     if p3.y - p2.y > 0 {
-        let mut a = Interpolator::new(p2, p3);
-        let mut b = Interpolator::new(p1, p3);
+        let mut a = EdgeStepper::new(p2, p3, p2.y);
+        let mut b = EdgeStepper::new(p1, p3, p2.y);
 
         for y in p2.y..=p3.y {
-            let ax = a.next();
-            let bx = b.next();
+            let ax = a.current_x();
+            let bx = b.current_x();
             let (start_x, end_x) = if ax < bx { (ax, bx) } else { (bx, ax) };
             let start_x = start_x.clamp(min_x, max_x);
             let end_x = end_x.clamp(min_x, max_x);
-
-            let mut i = 0;
-            for x in start_x..=end_x {
-                pixel_row[i] = embedded_graphics_core::Pixel(Point::new(x, y), color);
-                i += 1;
+            let mut x = start_x;
+            while x <= end_x {
+                let chunk_end = (x + MAX_ROW_WIDTH as i32 - 1).min(end_x);
+                let mut i = 0usize;
+                for sx in x..=chunk_end {
+                    pixel_row[i] = embedded_graphics_core::Pixel(Point::new(sx, y), color);
+                    i += 1;
+                }
+                fb.draw_iter(pixel_row[..i].iter().copied()).unwrap();
+                x = chunk_end + 1;
             }
-
-            fb.draw_iter(pixel_row[..(end_x - start_x + 1) as usize].iter().copied())
-                .unwrap();
+            a.advance();
+            b.advance();
         }
     }
 }
 
+#[allow(dead_code)]
 fn fill_bottom_flat_triangle<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
     p1: Point,
     p2: Point,
@@ -424,6 +405,7 @@ fn fill_bottom_flat_triangle<D: DrawTarget<Color = embedded_graphics_core::pixel
     }
 }
 
+#[allow(dead_code)]
 fn fill_top_flat_triangle<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
     p1: Point,
     p2: Point,
@@ -449,6 +431,7 @@ fn fill_top_flat_triangle<D: DrawTarget<Color = embedded_graphics_core::pixelcol
     }
 }
 
+#[allow(dead_code)]
 fn draw_horizontal_line<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
     p1: Point,
     p2: Point,
@@ -463,6 +446,128 @@ fn draw_horizontal_line<D: DrawTarget<Color = embedded_graphics_core::pixelcolor
     for x in start..=end {
         fb.draw_iter([embedded_graphics_core::Pixel(Point::new(x, p1.y), color)])
             .unwrap();
+    }
+}
+
+#[derive(Clone, Copy, Default)]
+struct ScreenVert {
+    x: f32,
+    y: f32,
+}
+
+#[inline]
+fn clip_polygon_plane_2d(
+    input: &[ScreenVert],
+    output: &mut [ScreenVert; 8],
+    dist: impl Fn(ScreenVert) -> f32,
+) -> usize {
+    let n = input.len();
+    let mut m = 0usize;
+    for i in 0..n {
+        let prev = input[(n + i - 1) % n];
+        let curr = input[i];
+        let d_prev = dist(prev);
+        let d_curr = dist(curr);
+        if d_curr >= 0.0 {
+            if d_prev < 0.0 {
+                let t = d_prev / (d_prev - d_curr);
+                if m < 8 {
+                    output[m] = ScreenVert {
+                        x: prev.x + (curr.x - prev.x) * t,
+                        y: prev.y + (curr.y - prev.y) * t,
+                    };
+                    m += 1;
+                }
+            }
+            if m < 8 {
+                output[m] = curr;
+                m += 1;
+            }
+        } else if d_prev >= 0.0 {
+            let t = d_prev / (d_prev - d_curr);
+            if m < 8 {
+                output[m] = ScreenVert {
+                    x: prev.x + (curr.x - prev.x) * t,
+                    y: prev.y + (curr.y - prev.y) * t,
+                };
+                m += 1;
+            }
+        }
+    }
+    m
+}
+
+#[inline]
+fn tri_area2(a: Point, b: Point, c: Point) -> i32 {
+    (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
+}
+
+#[inline]
+fn round_to_i32(v: f32) -> i32 {
+    if v >= 0.0 {
+        (v + 0.5) as i32
+    } else {
+        (v - 0.5) as i32
+    }
+}
+
+#[inline]
+fn fill_triangle_screen_clipped<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
+    p1: Point,
+    p2: Point,
+    p3: Point,
+    color: embedded_graphics_core::pixelcolor::Rgb565,
+    fb: &mut D,
+) where
+    <D as DrawTarget>::Error: Debug,
+{
+    let bounds = fb.bounding_box();
+    let max_x = bounds.size.width.saturating_sub(1) as f32;
+    let max_y = bounds.size.height.saturating_sub(1) as f32;
+    if max_x < 0.0 || max_y < 0.0 {
+        return;
+    }
+
+    let mut a = [ScreenVert::default(); 8];
+    let mut b = [ScreenVert::default(); 8];
+    a[0] = ScreenVert {
+        x: p1.x as f32,
+        y: p1.y as f32,
+    };
+    a[1] = ScreenVert {
+        x: p2.x as f32,
+        y: p2.y as f32,
+    };
+    a[2] = ScreenVert {
+        x: p3.x as f32,
+        y: p3.y as f32,
+    };
+
+    let n = clip_polygon_plane_2d(&a[..3], &mut b, |v| v.x); // x >= 0
+    if n < 3 {
+        return;
+    }
+    let n = clip_polygon_plane_2d(&b[..n], &mut a, |v| max_x - v.x); // x <= max_x
+    if n < 3 {
+        return;
+    }
+    let n = clip_polygon_plane_2d(&a[..n], &mut b, |v| v.y); // y >= 0
+    if n < 3 {
+        return;
+    }
+    let n = clip_polygon_plane_2d(&b[..n], &mut a, |v| max_y - v.y); // y <= max_y
+    if n < 3 {
+        return;
+    }
+
+    for i in 1..n - 1 {
+        let t0 = Point::new(round_to_i32(a[0].x), round_to_i32(a[0].y));
+        let t1 = Point::new(round_to_i32(a[i].x), round_to_i32(a[i].y));
+        let t2 = Point::new(round_to_i32(a[i + 1].x), round_to_i32(a[i + 1].y));
+        if tri_area2(t0, t1, t2) == 0 {
+            continue;
+        }
+        fill_triangle(t0, t1, t2, color, fb);
     }
 }
 
@@ -497,25 +602,7 @@ pub fn draw<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
                 Point::new(vertices[1].x, vertices[1].y),
                 Point::new(vertices[2].x, vertices[2].y),
             ];
-
-            // Off-screen culling: skip if all vertices are beyond the same edge.
-            let bounds = fb.bounding_box();
-            let scr_w = bounds.size.width as i32;
-            let scr_h = bounds.size.height as i32;
-            if p1.x < 0 && p2.x < 0 && p3.x < 0 {
-                return;
-            }
-            if p1.x >= scr_w && p2.x >= scr_w && p3.x >= scr_w {
-                return;
-            }
-            if p1.y < 0 && p2.y < 0 && p3.y < 0 {
-                return;
-            }
-            if p1.y >= scr_h && p2.y >= scr_h && p3.y >= scr_h {
-                return;
-            }
-
-            fill_triangle(p1, p2, p3, color, fb);
+            fill_triangle_screen_clipped(p1, p2, p3, color, fb);
         }
         DrawPrimitive::ColoredTriangleWithDepth {
             points,
@@ -541,39 +628,7 @@ pub fn draw<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
                     .unwrap();
             }
             let [p1, p2, p3] = buf.into_array().unwrap();
-
-            // Off-screen culling.
-            let bounds = fb.bounding_box();
-            let scr_w = bounds.size.width as i32;
-            let scr_h = bounds.size.height as i32;
-            if p1.x < 0 && p2.x < 0 && p3.x < 0 {
-                return;
-            }
-            if p1.x >= scr_w && p2.x >= scr_w && p3.x >= scr_w {
-                return;
-            }
-            if p1.y < 0 && p2.y < 0 && p3.y < 0 {
-                return;
-            }
-            if p1.y >= scr_h && p2.y >= scr_h && p3.y >= scr_h {
-                return;
-            }
-
-            if p2.y == p3.y {
-                fill_bottom_flat_triangle(p1, p2, p3, color, fb);
-            } else if p1.y == p2.y {
-                fill_top_flat_triangle(p1, p2, p3, color, fb);
-            } else {
-                let p4 = Point::new(
-                    (p1.x as f32
-                        + ((p2.y - p1.y) as f32 / (p3.y - p1.y) as f32) * (p3.x - p1.x) as f32)
-                        as i32,
-                    p2.y,
-                );
-
-                fill_bottom_flat_triangle(p1, p2, p4, color, fb);
-                fill_top_flat_triangle(p2, p4, p3, color, fb);
-            }
+            fill_triangle_screen_clipped(p1, p2, p3, color, fb);
         }
         DrawPrimitive::GouraudTriangle {
             mut points,

@@ -1,6 +1,6 @@
 # embedded-3dgfx Examples
 
-This directory contains 28 interactive examples demonstrating the full capabilities of embedded-3dgfx: 3D rendering, physics, skeletal animation, and soft body dynamics.
+This directory contains 31 interactive examples demonstrating the full capabilities of embedded-3dgfx: 3D rendering, retro/BSP workflows, physics, skeletal animation, and soft body dynamics.
 
 ## Prerequisites
 
@@ -148,6 +148,32 @@ Shows affine texture mapping with multiple patterns.
 
 ```bash
 cargo run --example texture_mapping_demo --features std
+```
+
+#### `retro_presets_demo` - Retro Visual Preset Toggle
+Compares Doom-like, PSX-like, and modern visual styles on the same scene.
+
+**Controls:**
+- `1/2/3` - Switch Doom / PSX / Modern preset
+- `SPACE` - Toggle auto-rotation
+- `ESC` - Exit
+
+```bash
+cargo run --example retro_presets_demo --features std
+```
+
+#### `bsp_builder_demo` - BSP Room Strip Builder
+Builds a small BSP world from room specs at startup and renders it with textured BSP traversal.
+
+**Controls:**
+- `W/S` - Move forward/back
+- `A/D` - Turn left/right
+- `1/2/3` - Switch Doom / PSX / Modern preset
+- `4` - Toggle checkerboard stipple
+- `ESC` - Exit
+
+```bash
+cargo run --example bsp_builder_demo --features std
 ```
 
 #### `dma_rendering_demo` - Double Buffering
@@ -406,6 +432,7 @@ cargo run --example jelly_cube_demo --features std
 - `basic_rendering`, `rotating_cube`, `scene_viewer`
 - `lighting_demo`, `gouraud_demo`, `blinn_phong_demo`
 - `fog_dithering_demo`, `texture_mapping_demo`
+- `retro_presets_demo`, `bsp_builder_demo`
 
 **Physics:**
 - `physics_rolling_ball`, `physics_bouncing_balls`

@@ -215,7 +215,45 @@ pub fn walk_front_to_back<F>(
 ) where
     F: FnMut(usize, &Face),
 {
+    let mut emit_leaf = |leaf_idx: usize, emit: &mut F| {
+        if leaf_idx >= world.leaves.len() {
+            return;
+        }
+        let leaf = &world.leaves[leaf_idx];
+
+        // PVS cull
+        if leaf.cluster >= 0 && !world.cluster_visible(cam_cluster, leaf.cluster) {
+            return;
+        }
+
+        // Frustum cull leaf AABB
+        if !aabb_in_frustum(leaf.mins, leaf.maxs, frustum) {
+            return;
+        }
+
+        // Emit un-duplicated faces referenced by this leaf
+        let end = (leaf.first_marksurface + leaf.num_marksurfaces) as usize;
+        for ms in (leaf.first_marksurface as usize)..end {
+            if ms >= world.marksurfaces.len() {
+                continue;
+            }
+            let fi = world.marksurfaces[ms] as usize;
+            if fi >= world.faces.len() {
+                continue;
+            }
+            if scratch.is_marked(fi) {
+                continue;
+            }
+            scratch.mark(fi);
+            emit(fi, &world.faces[fi]);
+        }
+    };
+
     if world.nodes.is_empty() {
+        // Degenerate BSP containing only leaves (single-room authoring path).
+        for leaf_idx in 0..world.leaves.len() {
+            emit_leaf(leaf_idx, &mut emit);
+        }
         return;
     }
 
@@ -226,37 +264,7 @@ pub fn walk_front_to_back<F>(
         if node_idx < 0 {
             // ---- Leaf ----
             let leaf_idx = (!node_idx) as usize;
-            if leaf_idx >= world.leaves.len() {
-                continue;
-            }
-            let leaf = &world.leaves[leaf_idx];
-
-            // PVS cull
-            if leaf.cluster >= 0 && !world.cluster_visible(cam_cluster, leaf.cluster) {
-                continue;
-            }
-
-            // Frustum cull leaf AABB
-            if !aabb_in_frustum(leaf.mins, leaf.maxs, frustum) {
-                continue;
-            }
-
-            // Emit un-duplicated faces referenced by this leaf
-            let end = (leaf.first_marksurface + leaf.num_marksurfaces) as usize;
-            for ms in (leaf.first_marksurface as usize)..end {
-                if ms >= world.marksurfaces.len() {
-                    continue;
-                }
-                let fi = world.marksurfaces[ms] as usize;
-                if fi >= world.faces.len() {
-                    continue;
-                }
-                if scratch.is_marked(fi) {
-                    continue;
-                }
-                scratch.mark(fi);
-                emit(fi, &world.faces[fi]);
-            }
+            emit_leaf(leaf_idx, &mut emit);
             continue;
         }
 
@@ -581,5 +589,53 @@ mod tests {
         // Face 0 belongs to leaf 0 (near), face 1 to leaf 1 (far)
         assert_eq!(order[0], 0);
         assert_eq!(order[1], 1);
+    }
+
+    #[test]
+    fn walk_handles_leaf_only_world() {
+        static LEAF_ONLY: [Leaf; 1] = [Leaf {
+            cluster: 0,
+            mins: [-4, -2, -2],
+            maxs: [4, 2, 2],
+            first_marksurface: 0,
+            num_marksurfaces: 1,
+        }];
+        static MARKS: [u16; 1] = [0];
+        static FACES: [Face; 1] = [Face {
+            first_vert: 0,
+            num_verts: 3,
+            texture_id: 0,
+            lightmap_id: 0xFFFF,
+            plane: 0,
+            side: 0,
+        }];
+
+        let world = BspWorld::new(
+            &[],
+            &[],
+            &LEAF_ONLY,
+            &FACES,
+            &MARKS,
+            &[],
+            &[],
+            &[],
+            &[], // empty vis => always visible
+            &[],
+            1,
+        );
+        let mut vf = [0u32; 1];
+        let mut scratch = BspScratch::new(&mut vf);
+        scratch.mark_new_frame();
+
+        let mut emitted = 0usize;
+        walk_front_to_back(
+            &world,
+            &mut scratch,
+            [0.0, 0.0, 0.0],
+            -1,
+            &identity_frustum(),
+            |_, _| emitted += 1,
+        );
+        assert_eq!(emitted, 1);
     }
 }

@@ -14,6 +14,8 @@
 //! engine.render_bsp_coverage(&world, &mut scratch, &tex_mgr, fb, &mut cov, Some(&mut tel))?;
 //! ```
 
+#[cfg(feature = "std")]
+pub mod builder;
 pub mod coverage;
 pub mod data;
 pub mod pvs;

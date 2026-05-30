@@ -20,6 +20,7 @@ A `no_std` 3D graphics and physics engine for embedded systems, optimized for re
 - **Particle system** — fixed-capacity, no-alloc billboard emitter (`ParticleSystem<N>`). Supports color and size interpolation over particle lifetime, gravity/acceleration, and camera-facing billboards. Integrates with the record/execute pipeline via `sys.record(&engine, &mut cmd_buf)`.
 - **Runtime depth fog** — `K3dengine::set_fog(FogConfig)` enables per-pixel linear depth fog applied during rasterization across both mesh and BSP paths.
 - **Dynamic point lights** — `K3dengine::add_point_light(PointLight)` registers runtime point lights with squared-distance falloff that are composited as an additive RGB565 tint on top of baked/directional lighting at face granularity.
+- **BSP room-strip builder (std)** — `bsp::builder::build_room_strip` converts high-level room specs into valid BSP lumps for quick tooling/tests/examples.
 
 ## Features
 
@@ -93,6 +94,10 @@ A `no_std` 3D graphics and physics engine for embedded systems, optimized for re
   <tr>
     <td align="center"><img src="assets/screenshot_newtons_cradle.png" alt="Newton's cradle" width="320"><br><em>Newton's cradle (constraints)</em></td>
     <td align="center"><img src="assets/screenshot_blinnphong.png" alt="Blinn-Phong shading" width="320"><br><em>Blinn-Phong specular</em></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="assets/screenshot_retro_doom.png" alt="Doom-style retro preset" width="320"><br><em>Retro preset (Doom-style)</em></td>
+    <td align="center"><img src="assets/screenshot_bsp_builder.png" alt="BSP room-strip builder output" width="320"><br><em>BSP room-strip builder + textured BSP path</em></td>
   </tr>
 </table>
 
@@ -285,7 +290,7 @@ Available pre-built shapes: `create_cloth`, `create_jelly_cube`, `create_soft_sp
 
 ## Examples
 
-29 interactive examples — run any with:
+31 interactive examples — run any with:
 
 ```bash
 cargo run --example <name> --features std
@@ -302,6 +307,8 @@ cargo run --example <name> --features std
 | `blinn_phong_demo` | Specular highlights |
 | `fog_dithering_demo` | Atmospheric fog + Bayer dithering |
 | `texture_mapping_demo` | Perspective-correct UV textures |
+| `retro_presets_demo` | Toggle Doom/PSX/Modern retro rendering presets |
+| `bsp_builder_demo` | Runtime BSP room-strip building + textured BSP render |
 | `dma_rendering_demo` | Double-buffer DMA performance |
 | `billboard_demo` | Camera-facing quads |
 | `lod_demo` | Distance-based mesh LOD switching |
@@ -505,7 +512,7 @@ src/
   lut.rs              # Precomputed lookup tables
 
 load_stl/             # STL file embedding macro
-examples/             # 29 interactive demos
+examples/             # 31 interactive demos
 tests/                # 255 unit tests
 ```
 

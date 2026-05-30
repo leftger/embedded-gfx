@@ -8,7 +8,9 @@ use std::fs::File;
 use std::time::Instant;
 
 use embedded_3dgfx::DrawPrimitive;
-use embedded_3dgfx::K3dengine;
+use embedded_3dgfx::bsp::BspTelemetry;
+use embedded_3dgfx::bsp::builder::{RoomSpec, build_room_strip};
+use embedded_3dgfx::bsp::scratch::BspScratch;
 use embedded_3dgfx::command_buffer::CommandBuffer;
 use embedded_3dgfx::draw::{
     DitherConfig, FogConfig, draw_zbuffered, draw_zbuffered_with_effects,
@@ -19,8 +21,10 @@ use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
 use embedded_3dgfx::particles::{ParticleSpawn, ParticleSystem};
 use embedded_3dgfx::physics::{Collider, PhysicsWorld, RigidBody, sync_body_to_mesh};
 use embedded_3dgfx::renderer::FrameCtx;
+use embedded_3dgfx::retro::StippleMode;
 use embedded_3dgfx::softbody::SoftBody;
 use embedded_3dgfx::texture::{Texture, TextureManager};
+use embedded_3dgfx::{K3dengine, RetroStyle};
 use embedded_graphics::mono_font::{MonoTextStyle, ascii::FONT_6X10};
 use embedded_graphics::prelude::Primitive;
 use embedded_graphics::primitives::{PrimitiveStyleBuilder, Rectangle};
@@ -97,6 +101,8 @@ fn main() {
     capture_texture();
     capture_particles_fog();
     capture_point_lights();
+    capture_retro_doom_preset();
+    capture_bsp_builder();
     // GIFs
     gif_rotating_cube();
     gif_suzanne();
@@ -1031,6 +1037,203 @@ fn capture_texture() {
     }
 
     save(&display, "assets/screenshot_texture.png");
+}
+
+// ── Scene 11: Retro preset (Doom-style) ───────────────────────────────────────
+
+fn capture_retro_doom_preset() {
+    const W: usize = 800;
+    const H: usize = 600;
+    let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(W as u32, H as u32));
+    let mut zbuffer = vec![u32::MAX; W * H];
+    let mut commands = CommandBuffer::<8192>::new();
+    let mut engine = K3dengine::new(W as u16, H as u16);
+    engine.clear_caps();
+    engine.apply_retro_style(RetroStyle::doom_walkable());
+    engine.camera.set_position(Point3::new(0.0, 1.8, 9.5));
+    engine.camera.set_target(Point3::new(0.0, 0.2, 0.0));
+
+    let cube_vertices: &[[f32; 3]] = &[
+        [-1.0, -1.0, -1.0],
+        [1.0, -1.0, -1.0],
+        [1.0, 1.0, -1.0],
+        [-1.0, 1.0, -1.0],
+        [-1.0, -1.0, 1.0],
+        [1.0, -1.0, 1.0],
+        [1.0, 1.0, 1.0],
+        [-1.0, 1.0, 1.0],
+    ];
+    let cube_faces: &[[usize; 3]] = &[
+        [0, 1, 2],
+        [0, 2, 3],
+        [1, 5, 6],
+        [1, 6, 2],
+        [5, 4, 7],
+        [5, 7, 6],
+        [4, 0, 3],
+        [4, 3, 7],
+        [3, 2, 6],
+        [3, 6, 7],
+        [4, 5, 1],
+        [4, 1, 0],
+    ];
+    let geom = Geometry {
+        vertices: cube_vertices,
+        faces: cube_faces,
+        colors: &[],
+        lines: &[],
+        normals: &[],
+        vertex_normals: &[],
+        uvs: &[],
+        texture_id: None,
+    };
+
+    let mut left = K3dMesh::new(geom);
+    left.set_position(-3.2, 0.0, 0.0);
+    left.set_scale(1.5);
+    left.set_attitude(0.5, 0.8, 0.2);
+    left.set_render_mode(RenderMode::Solid);
+    left.set_color(Rgb565::CSS_RED);
+
+    let mut center = K3dMesh::new(geom);
+    center.set_position(0.0, 0.0, 0.0);
+    center.set_scale(1.6);
+    center.set_attitude(0.2, 1.5, 0.1);
+    center.set_render_mode(RenderMode::Solid);
+    center.set_color(Rgb565::new(30, 42, 8));
+
+    let mut right = K3dMesh::new(geom);
+    right.set_position(3.2, 0.0, 0.0);
+    right.set_scale(1.5);
+    right.set_attitude(0.9, 0.4, 0.3);
+    right.set_render_mode(RenderMode::Solid);
+    right.set_color(Rgb565::CSS_CYAN);
+
+    display.clear(Rgb565::new(3, 6, 10)).unwrap();
+    zbuffer.fill(u32::MAX);
+    let meshes = [&left, &center, &right];
+    engine
+        .record(meshes.iter().copied(), &mut commands, None)
+        .unwrap();
+    let mut frame = FrameCtx {
+        zbuffer: &mut zbuffer,
+        width: W,
+        height: H,
+    };
+    engine
+        .execute::<_, 8192>(&mut display, &mut frame, &commands, None)
+        .unwrap();
+
+    draw_hud(
+        &mut display,
+        "retro preset | Doom style",
+        "palette rgb332 + affine + dither + sky",
+    );
+    save(&display, "assets/screenshot_retro_doom.png");
+}
+
+// ── Scene 12: BSP room strip built at runtime ─────────────────────────────────
+
+fn capture_bsp_builder() {
+    const W: usize = 800;
+    const H: usize = 600;
+    let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(W as u32, H as u32));
+    let mut zbuffer = vec![u32::MAX; W * H];
+    let mut commands = CommandBuffer::<8192>::new();
+    let mut engine = K3dengine::new(W as u16, H as u16);
+    engine.clear_caps();
+    engine.apply_retro_style(RetroStyle::psx());
+    engine.set_stipple_mode(StippleMode::Checkerboard);
+    engine.camera.set_near_far(0.1, 40.0);
+    engine.camera.set_position(Point3::new(-7.0, 0.0, 0.2));
+    engine.camera.set_target(Point3::new(8.0, 0.0, 0.0));
+
+    let rooms = [
+        RoomSpec {
+            mins: [-9.0, -2.0, -3.0],
+            maxs: [-3.0, 2.0, 3.0],
+            floor_texture_id: 0,
+            ceiling_texture_id: 1,
+            lightmap_id: 0xFFFF,
+        },
+        RoomSpec {
+            mins: [-3.0, -2.0, -3.0],
+            maxs: [3.0, 2.0, 3.0],
+            floor_texture_id: 0,
+            ceiling_texture_id: 1,
+            lightmap_id: 0xFFFF,
+        },
+        RoomSpec {
+            mins: [3.0, -2.0, -3.0],
+            maxs: [9.0, 2.0, 3.0],
+            floor_texture_id: 0,
+            ceiling_texture_id: 1,
+            lightmap_id: 0xFFFF,
+        },
+    ];
+    let owned = build_room_strip(&rooms).expect("build_room_strip failed");
+    let world = owned.as_world();
+
+    let mut visframe = vec![0u32; world.faces.len()];
+    let mut scratch = BspScratch::new(&mut visframe);
+    let mut bsp_tel = BspTelemetry::default();
+
+    static FLOOR_TEX: [Rgb565; 64] = {
+        let mut data = [Rgb565::new(0, 0, 0); 64];
+        let mut i = 0usize;
+        while i < 64 {
+            let x = i % 8;
+            let y = i / 8;
+            data[i] = if (x + y) % 2 == 0 {
+                Rgb565::new(4, 10, 4)
+            } else {
+                Rgb565::new(12, 24, 10)
+            };
+            i += 1;
+        }
+        data
+    };
+    static CEIL_TEX: [Rgb565; 64] = {
+        let mut data = [Rgb565::new(0, 0, 0); 64];
+        let mut i = 0usize;
+        while i < 64 {
+            let x = i % 8;
+            let y = i / 8;
+            data[i] = if (x + y) % 2 == 0 {
+                Rgb565::new(8, 8, 16)
+            } else {
+                Rgb565::new(3, 4, 10)
+            };
+            i += 1;
+        }
+        data
+    };
+    let mut tex_mgr = TextureManager::<4>::new();
+    tex_mgr.add_texture(Texture::new(&FLOOR_TEX, 8, 8)).unwrap();
+    tex_mgr.add_texture(Texture::new(&CEIL_TEX, 8, 8)).unwrap();
+
+    display.clear(Rgb565::new(2, 3, 7)).unwrap();
+    zbuffer.fill(u32::MAX);
+    engine
+        .record_bsp(&world, &mut scratch, &mut commands, Some(&mut bsp_tel))
+        .unwrap();
+    let mut frame = FrameCtx {
+        zbuffer: &mut zbuffer,
+        width: W,
+        height: H,
+    };
+    engine
+        .execute_bsp_textured::<_, 8192, 4>(&mut display, &mut frame, &commands, &tex_mgr, None)
+        .unwrap();
+    draw_hud(
+        &mut display,
+        &format!(
+            "bsp builder | {} faces {} tris",
+            bsp_tel.faces_visible, bsp_tel.triangles_emitted
+        ),
+        "record_bsp + execute_bsp_textured",
+    );
+    save(&display, "assets/screenshot_bsp_builder.png");
 }
 
 // ── GIF 1: rotating wireframe cube ────────────────────────────────────────────

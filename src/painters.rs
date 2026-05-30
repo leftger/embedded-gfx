@@ -22,6 +22,7 @@ use crate::mesh::{K3dMesh, RenderMode};
 use crate::{DrawPrimitive, K3dengine};
 use core::cmp::Ordering;
 use embedded_graphics_core::pixelcolor::{Rgb565, RgbColor};
+use nalgebra::{Vector3, Vector4};
 use std::vec::Vec;
 
 /// A triangle with its average depth for sorting
@@ -83,49 +84,141 @@ impl K3dengine {
             let geometry = mesh.select_lod(distance);
 
             let transform_matrix = self.camera.vp_matrix * mesh.model_matrix;
+            let render_mode = self.resolve_render_mode(&mesh.render_mode);
 
-            // Only collect renderable triangles (Solid modes)
-            match mesh.render_mode {
+            // Only collect renderable triangles (solid-style modes)
+            match render_mode {
                 RenderMode::Solid
                 | RenderMode::SolidLightDir(_)
-                | RenderMode::BlinnPhong { .. } => {
-                    for face in geometry.faces {
-                        if let Some([p1, p2, p3]) =
-                            self.transform_points(face, geometry.vertices, transform_matrix)
-                        {
-                            // Backface culling
-                            let v1 = (p2.x - p1.x, p2.y - p1.y);
-                            let v2 = (p3.x - p1.x, p3.y - p1.y);
-                            let cross = v1.0 * v2.1 - v1.1 * v2.0;
-                            if cross <= 0 {
-                                continue;
-                            }
+                | RenderMode::BlinnPhong { .. }
+                | RenderMode::SectorBright(_) => {
+                    for (face_idx, face) in geometry.faces.iter().enumerate() {
+                        let v = geometry.vertices;
+                        if face[0] >= v.len() || face[1] >= v.len() || face[2] >= v.len() {
+                            continue;
+                        }
 
-                            // Calculate average depth for sorting
-                            let avg_depth = (p1.z + p2.z + p3.z) as f32 / 3.0;
+                        let v0_world = mesh.model_matrix.transform_point(&nalgebra::Point3::new(
+                            v[face[0]][0],
+                            v[face[0]][1],
+                            v[face[0]][2],
+                        ));
 
-                            // Determine color based on render mode
-                            let color = match mesh.render_mode {
-                                RenderMode::SolidLightDir(light_dir) => self.calculate_lit_color(
+                        // Determine a usable world-space face normal.
+                        //
+                        // If explicit per-face normals are available, trust those and use
+                        // position-based backface culling.
+                        //
+                        // If normals are absent, keep faces (no backface cull). Many existing
+                        // demo meshes use mixed winding; forcing cull from inferred winding
+                        // makes Painter mode appear "corrupted" because visible faces are
+                        // incorrectly discarded.
+                        let mut normal_world_opt: Option<Vector3<f32>> = None;
+                        if !geometry.normals.is_empty() && face_idx < geometry.normals.len() {
+                            let n = geometry.normals[face_idx];
+                            let n_world = mesh
+                                .model_matrix
+                                .transform_vector(&Vector3::new(n[0], n[1], n[2]));
+                            if n_world.norm_squared() > 1e-8 {
+                                let n_world = n_world.normalize();
+                                if self.is_backface(
                                     face,
                                     geometry.vertices,
-                                    geometry.normals,
-                                    mesh.color,
-                                    light_dir,
-                                ),
-                                RenderMode::BlinnPhong { .. } => {
-                                    // For Painter's Algorithm, fall back to simple lighting
-                                    // Full Blinn-Phong requires per-pixel depth
-                                    mesh.color
+                                    mesh.model_matrix,
+                                    &n_world,
+                                ) {
+                                    continue;
                                 }
-                                _ => mesh.color,
-                            };
-
-                            let primitive =
-                                DrawPrimitive::ColoredTriangle([p1.xy(), p2.xy(), p3.xy()], color);
-
-                            triangles.push(DepthSortedTriangle::new(primitive, avg_depth));
+                                normal_world_opt = Some(n_world);
+                            }
                         }
+
+                        // Fallback normal for flat lighting when explicit normals are absent.
+                        let v0 = Vector3::new(v[face[0]][0], v[face[0]][1], v[face[0]][2]);
+                        let v1 = Vector3::new(v[face[1]][0], v[face[1]][1], v[face[1]][2]);
+                        let v2 = Vector3::new(v[face[2]][0], v[face[2]][1], v[face[2]][2]);
+                        let normal_world = if let Some(n) = normal_world_opt {
+                            n
+                        } else {
+                            let normal_model = (v1 - v0).cross(&(v2 - v0));
+                            if normal_model.norm_squared() <= 1e-8 {
+                                continue;
+                            }
+                            let mut n = mesh
+                                .model_matrix
+                                .transform_vector(&normal_model)
+                                .normalize();
+                            // Flip inferred normal toward camera so flat directional lighting
+                            // remains visually stable for mixed-winding assets.
+                            if (self.camera.position - v0_world).dot(&n) < 0.0 {
+                                n = -n;
+                            }
+                            n
+                        };
+
+                        // Determine flat color based on render mode.
+                        let mut color = match render_mode {
+                            RenderMode::SolidLightDir(light_dir) => {
+                                let adjusted_dir =
+                                    Vector3::new(light_dir.x, light_dir.y, -light_dir.z)
+                                        .normalize();
+                                let intensity = normal_world.dot(&adjusted_dir).max(0.0);
+                                let ambient = 0.1;
+                                let final_intensity =
+                                    (ambient + (1.0 - ambient) * intensity).clamp(0.0, 1.0);
+                                Rgb565::new(
+                                    (mesh.color.r() as f32 * final_intensity) as u8,
+                                    (mesh.color.g() as f32 * final_intensity) as u8,
+                                    (mesh.color.b() as f32 * final_intensity) as u8,
+                                )
+                            }
+                            RenderMode::SectorBright(brightness) => {
+                                let wc = Self::face_world_center(
+                                    face,
+                                    geometry.vertices,
+                                    mesh.model_matrix,
+                                );
+                                self.sector_shaded_color(mesh.color, brightness, wc)
+                            }
+                            // Full per-pixel Blinn-Phong is not supported in painter mode.
+                            RenderMode::BlinnPhong { .. } | RenderMode::Solid => mesh.color,
+                            _ => mesh.color,
+                        };
+
+                        if !self.point_lights.is_empty() {
+                            let wc =
+                                Self::face_world_center(face, geometry.vertices, mesh.model_matrix);
+                            color = Self::add_tint(color, self.light_tint_at(wc));
+                        }
+
+                        let clip = [
+                            transform_matrix
+                                * Vector4::new(v[face[0]][0], v[face[0]][1], v[face[0]][2], 1.0),
+                            transform_matrix
+                                * Vector4::new(v[face[1]][0], v[face[1]][1], v[face[1]][2], 1.0),
+                            transform_matrix
+                                * Vector4::new(v[face[2]][0], v[face[2]][1], v[face[2]][2], 1.0),
+                        ];
+                        // Use a face-coherent sort depth so all clipped fan pieces of the same
+                        // source polygon remain locked together during rotation.
+                        let face_sort_depth = {
+                            let d = (clip[0].w + clip[1].w + clip[2].w) / 3.0;
+                            if d.is_finite() { d } else { 0.0 }
+                        };
+
+                        self.emit_clipped(clip, color, &mut |prim| {
+                            if let DrawPrimitive::ColoredTriangleWithDepth {
+                                points,
+                                depths: _,
+                                color,
+                            } = prim
+                            {
+                                triangles.push(DepthSortedTriangle::new(
+                                    DrawPrimitive::ColoredTriangle(points, color),
+                                    face_sort_depth,
+                                ));
+                            }
+                        });
                     }
                 }
                 // Lines and Points don't need depth sorting
@@ -202,6 +295,7 @@ mod tests {
     extern crate std;
     use super::*;
     use embedded_graphics_core::pixelcolor::Rgb565;
+    use nalgebra::Point3;
     use std::cmp::Ordering;
 
     #[test]
@@ -240,5 +334,75 @@ mod tests {
         assert_eq!(triangles[0].avg_depth, 15.0);
         assert_eq!(triangles[1].avg_depth, 10.0);
         assert_eq!(triangles[2].avg_depth, 5.0);
+    }
+
+    #[test]
+    fn painters_algorithm_clips_partially_offscreen_triangle() {
+        let mut engine = K3dengine::new(320, 240);
+        engine.camera.set_position(Point3::new(0.0, 0.0, 5.0));
+        engine.camera.set_target(Point3::new(0.0, 0.0, 0.0));
+
+        let vertices = [
+            [-1.0f32, -1.0, 0.0],
+            [1.0f32, -1.0, 0.0],
+            [20.0f32, 2.0, 0.0], // intentionally far outside horizontal frustum
+        ];
+        let faces = [[0usize, 1usize, 2usize]];
+        let geometry = crate::mesh::Geometry {
+            vertices: &vertices,
+            faces: &faces,
+            colors: &[],
+            lines: &[],
+            normals: &[],
+            vertex_normals: &[],
+            uvs: &[],
+            texture_id: None,
+        };
+        let mut mesh = crate::mesh::K3dMesh::new(geometry);
+        mesh.set_render_mode(crate::mesh::RenderMode::Solid);
+        mesh.set_color(Rgb565::new(31, 0, 0));
+
+        let mut triangles = std::vec::Vec::new();
+        let count =
+            engine.render_painters_algorithm(std::iter::once(&mesh), &mut triangles, |_| {});
+
+        // Regression guard: painter mode must clip partially off-screen faces
+        // instead of dropping them entirely.
+        assert!(count > 0);
+        assert_eq!(count, triangles.len());
+    }
+
+    #[test]
+    fn painters_clipped_fan_pieces_share_sort_depth() {
+        let mut engine = K3dengine::new(320, 240);
+        engine.camera.set_position(Point3::new(0.0, 0.0, 5.0));
+        engine.camera.set_target(Point3::new(0.0, 0.0, 0.0));
+
+        let vertices = [
+            [-1.0f32, -1.0, 0.0],
+            [1.0f32, -1.0, 0.0],
+            [30.0f32, 2.0, 0.0], // heavily clipped, typically produces a fan
+        ];
+        let faces = [[0usize, 1usize, 2usize]];
+        let geometry = crate::mesh::Geometry {
+            vertices: &vertices,
+            faces: &faces,
+            colors: &[],
+            lines: &[],
+            normals: &[],
+            vertex_normals: &[],
+            uvs: &[],
+            texture_id: None,
+        };
+        let mut mesh = crate::mesh::K3dMesh::new(geometry);
+        mesh.set_render_mode(crate::mesh::RenderMode::Solid);
+        mesh.set_color(Rgb565::new(0, 63, 0));
+
+        let mut triangles = std::vec::Vec::new();
+        let count =
+            engine.render_painters_algorithm(std::iter::once(&mesh), &mut triangles, |_| {});
+        assert!(count > 0);
+        let first = triangles[0].avg_depth;
+        assert!(triangles.iter().all(|t| (t.avg_depth - first).abs() < 1e-5));
     }
 }

@@ -11,6 +11,7 @@
 //!
 //! Controls:
 //! - 1/2/3: Switch textures
+//! - 4: Animated texture sequence
 //! - SPACE: Toggle auto-rotation
 //! - ESC: Exit
 
@@ -153,8 +154,12 @@ fn main() {
     ];
 
     let mut current_texture_id = tex_id_checker;
-    let texture_names = ["Checkerboard", "Brick", "Gradient"];
-    let texture_ids = [tex_id_checker, tex_id_brick, tex_id_gradient];
+    let tex_id_anim = texture_manager
+        .add_animation(&[tex_id_checker, tex_id_brick, tex_id_gradient], 10, true)
+        .unwrap();
+
+    let texture_names = ["Checkerboard", "Brick", "Gradient", "Animated Cycle"];
+    let texture_ids = [tex_id_checker, tex_id_brick, tex_id_gradient, tex_id_anim];
 
     let cube_geom = Geometry {
         vertices: &cube_vertices,
@@ -187,6 +192,7 @@ fn main() {
     println!("  1           - Checkerboard texture");
     println!("  2           - Brick texture");
     println!("  3           - Gradient texture");
+    println!("  4           - Animated texture cycle");
     println!("  SPACE       - Toggle auto-rotation");
     println!("  ESC         - Exit");
     println!("\nStarting render loop...");
@@ -219,6 +225,10 @@ fn main() {
                         current_texture_id = texture_ids[2];
                         println!("Switched to: {}", texture_names[2]);
                     }
+                    Keycode::Num4 => {
+                        current_texture_id = texture_ids[3];
+                        println!("Switched to: {}", texture_names[3]);
+                    }
                     _ => {}
                 },
                 SimulatorEvent::Quit => break 'running,
@@ -236,6 +246,7 @@ fn main() {
         cube1.set_attitude(time * 0.5, time * 0.7, time * 0.3);
         cube2.set_attitude(time * 0.7 + 1.0, time * 0.5 + 1.0, time * 0.4 + 1.0);
         cube3.set_attitude(time * 0.4 + 2.0, time * 0.6 + 2.0, time * 0.5 + 2.0);
+        texture_manager.tick(1);
 
         // Update texture IDs for all cubes
         let mut updated_geom = cube_geom;

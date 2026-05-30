@@ -107,12 +107,73 @@ impl Texture {
     }
 }
 
+const ANIMATION_ID_FLAG: u32 = 0x8000_0000;
+const ANIMATION_ID_MASK: u32 = !ANIMATION_ID_FLAG;
+const MAX_ANIMATIONS: usize = 16;
+const MAX_ANIMATION_FRAMES: usize = 8;
+
+#[derive(Debug, Clone, Copy)]
+struct TextureAnimation {
+    frames: [u32; MAX_ANIMATION_FRAMES],
+    frame_count: u8,
+    ticks_per_frame: u16,
+    tick_accum: u16,
+    current_frame: u8,
+    looping: bool,
+}
+
+impl TextureAnimation {
+    fn new(frame_ids: &[u32], ticks_per_frame: u16, looping: bool) -> Option<Self> {
+        if frame_ids.is_empty() || frame_ids.len() > MAX_ANIMATION_FRAMES {
+            return None;
+        }
+        let mut frames = [0u32; MAX_ANIMATION_FRAMES];
+        for (i, frame_id) in frame_ids.iter().copied().enumerate() {
+            frames[i] = frame_id;
+        }
+        Some(Self {
+            frames,
+            frame_count: frame_ids.len() as u8,
+            ticks_per_frame: ticks_per_frame.max(1),
+            tick_accum: 0,
+            current_frame: 0,
+            looping,
+        })
+    }
+
+    #[inline]
+    fn current_texture_id(&self) -> u32 {
+        self.frames[self.current_frame as usize]
+    }
+
+    fn tick(&mut self, ticks: u16) {
+        if self.frame_count <= 1 {
+            return;
+        }
+        let mut accum = self.tick_accum.saturating_add(ticks);
+        while accum >= self.ticks_per_frame {
+            accum -= self.ticks_per_frame;
+            if self.current_frame + 1 < self.frame_count {
+                self.current_frame += 1;
+            } else if self.looping {
+                self.current_frame = 0;
+            } else {
+                // Clamp to final frame for non-looping animations.
+                accum = 0;
+                break;
+            }
+        }
+        self.tick_accum = accum;
+    }
+}
+
 /// Texture manager for storing multiple textures
 ///
 /// Uses a fixed-size heapless vector for no_std compatibility.
 /// The capacity N determines how many textures can be stored.
 pub struct TextureManager<const N: usize> {
     textures: HeaplessVec<Texture, N>,
+    animations: HeaplessVec<TextureAnimation, MAX_ANIMATIONS>,
 }
 
 impl<const N: usize> TextureManager<N> {
@@ -120,6 +181,7 @@ impl<const N: usize> TextureManager<N> {
     pub fn new() -> Self {
         Self {
             textures: HeaplessVec::new(),
+            animations: HeaplessVec::new(),
         }
     }
 
@@ -142,7 +204,57 @@ impl<const N: usize> TextureManager<N> {
     /// # Returns
     /// `Some(&Texture)` if the ID is valid, `None` otherwise
     pub fn get(&self, id: u32) -> Option<&Texture> {
-        self.textures.get(id as usize)
+        let resolved = self.resolve_texture_id(id)?;
+        self.textures.get(resolved as usize)
+    }
+
+    /// Add an animated texture sequence.
+    ///
+    /// Returns an animation ID that can be used anywhere a texture ID is accepted.
+    pub fn add_animation(
+        &mut self,
+        frame_ids: &[u32],
+        ticks_per_frame: u16,
+        looping: bool,
+    ) -> Option<u32> {
+        // Ensure all frame IDs resolve to concrete texture slots.
+        for frame_id in frame_ids {
+            let resolved = self.resolve_texture_id(*frame_id)?;
+            if resolved as usize >= self.textures.len() {
+                return None;
+            }
+        }
+
+        let animation = TextureAnimation::new(frame_ids, ticks_per_frame, looping)?;
+        self.animations.push(animation).ok()?;
+        let index = (self.animations.len() - 1) as u32;
+        Some(ANIMATION_ID_FLAG | (index & ANIMATION_ID_MASK))
+    }
+
+    /// Advance all registered texture animations by `ticks`.
+    pub fn tick(&mut self, ticks: u16) {
+        for animation in &mut self.animations {
+            animation.tick(ticks);
+        }
+    }
+
+    /// Check whether an ID represents an animation handle.
+    #[inline]
+    pub fn is_animation_id(id: u32) -> bool {
+        (id & ANIMATION_ID_FLAG) != 0
+    }
+
+    /// Resolve an ID to a concrete texture slot.
+    ///
+    /// For static textures this returns the same ID. For animation IDs it
+    /// returns the current frame's texture ID.
+    pub fn resolve_texture_id(&self, id: u32) -> Option<u32> {
+        if !Self::is_animation_id(id) {
+            return Some(id);
+        }
+        let anim_idx = (id & ANIMATION_ID_MASK) as usize;
+        let animation = self.animations.get(anim_idx)?;
+        Some(animation.current_texture_id())
     }
 
     /// Get the number of stored textures
@@ -285,5 +397,62 @@ mod tests {
 
         // Try to add one more (should fail)
         assert!(manager.add_texture(Texture::new(&DATA, 4, 4)).is_none());
+    }
+
+    #[test]
+    fn test_texture_animation_looping_sequence() {
+        static RED: [Rgb565; 16] = [Rgb565::CSS_RED; 16];
+        static GREEN: [Rgb565; 16] = [Rgb565::CSS_GREEN; 16];
+        static BLUE: [Rgb565; 16] = [Rgb565::CSS_BLUE; 16];
+
+        let mut manager = TextureManager::<8>::new();
+        let red = manager.add_texture(Texture::new(&RED, 4, 4)).unwrap();
+        let green = manager.add_texture(Texture::new(&GREEN, 4, 4)).unwrap();
+        let blue = manager.add_texture(Texture::new(&BLUE, 4, 4)).unwrap();
+
+        let anim_id = manager.add_animation(&[red, green, blue], 2, true).unwrap();
+        assert!(TextureManager::<8>::is_animation_id(anim_id));
+
+        assert_eq!(
+            manager.get(anim_id).unwrap().sample(0.0, 0.0),
+            Rgb565::CSS_RED
+        );
+        manager.tick(2);
+        assert_eq!(
+            manager.get(anim_id).unwrap().sample(0.0, 0.0),
+            Rgb565::CSS_GREEN
+        );
+        manager.tick(2);
+        assert_eq!(
+            manager.get(anim_id).unwrap().sample(0.0, 0.0),
+            Rgb565::CSS_BLUE
+        );
+        manager.tick(2);
+        assert_eq!(
+            manager.get(anim_id).unwrap().sample(0.0, 0.0),
+            Rgb565::CSS_RED
+        );
+    }
+
+    #[test]
+    fn test_texture_animation_non_looping_clamps_final_frame() {
+        static RED: [Rgb565; 16] = [Rgb565::CSS_RED; 16];
+        static GREEN: [Rgb565; 16] = [Rgb565::CSS_GREEN; 16];
+
+        let mut manager = TextureManager::<4>::new();
+        let red = manager.add_texture(Texture::new(&RED, 4, 4)).unwrap();
+        let green = manager.add_texture(Texture::new(&GREEN, 4, 4)).unwrap();
+
+        let anim_id = manager.add_animation(&[red, green], 1, false).unwrap();
+        manager.tick(1);
+        assert_eq!(
+            manager.get(anim_id).unwrap().sample(0.0, 0.0),
+            Rgb565::CSS_GREEN
+        );
+        manager.tick(10);
+        assert_eq!(
+            manager.get(anim_id).unwrap().sample(0.0, 0.0),
+            Rgb565::CSS_GREEN
+        );
     }
 }

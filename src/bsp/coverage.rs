@@ -104,7 +104,11 @@ impl<'a> CoverageBuffer<'a> {
     #[cfg(feature = "std")]
     pub fn fill_ratio(&self) -> f32 {
         let pixels = self.width * self.height;
-        let covered = self.data.iter().map(|b| b.count_ones() as usize).sum::<usize>();
+        let covered = self
+            .data
+            .iter()
+            .map(|b| b.count_ones() as usize)
+            .sum::<usize>();
         let covered = covered.min(pixels);
         covered as f32 / pixels as f32
     }

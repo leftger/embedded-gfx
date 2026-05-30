@@ -140,7 +140,14 @@ where
                 frame.zbuffer.fill(*value);
             }
             RenderCommand::Draw(primitive) => {
-                draw_zbuffered_with_effects(primitive.clone(), fb, frame.zbuffer, frame.width, fog, None);
+                draw_zbuffered_with_effects(
+                    primitive.clone(),
+                    fb,
+                    frame.zbuffer,
+                    frame.width,
+                    fog,
+                    None,
+                );
                 let (min_x, min_y, max_x, max_y) = primitive_bounds(primitive);
                 if let Some((min_x, min_y, max_x, max_y)) =
                     clamp_bounds_to_frame(min_x, min_y, max_x, max_y, frame.width, frame.height)
@@ -206,7 +213,14 @@ where
             let Some(RenderCommand::Draw(primitive)) = cmd.get(idx) else {
                 continue;
             };
-            draw_zbuffered_with_effects(primitive.clone(), fb, frame.zbuffer, frame.width, fog, None);
+            draw_zbuffered_with_effects(
+                primitive.clone(),
+                fb,
+                frame.zbuffer,
+                frame.width,
+                fog,
+                None,
+            );
             executed_draw[idx] = true;
         }
     }

@@ -27,10 +27,7 @@ impl<'a> BspWorld<'a> {
                 break;
             }
             let pl = &self.planes[n.plane as usize];
-            let d = pl.normal[0] * p[0]
-                + pl.normal[1] * p[1]
-                + pl.normal[2] * p[2]
-                - pl.dist;
+            let d = pl.normal[0] * p[0] + pl.normal[1] * p[1] + pl.normal[2] * p[2] - pl.dist;
             node = n.children[if d >= 0.0 { 0 } else { 1 }];
         }
         (!node) as usize
@@ -138,7 +135,17 @@ mod tests {
 
     fn make_world_no_vis<'a>() -> BspWorld<'a> {
         BspWorld::new(
-            &PLANES, &NODES, &LEAVES, &[], &[], &[], &[], &[], &[], &[], 2,
+            &PLANES,
+            &NODES,
+            &LEAVES,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            2,
         )
     }
 

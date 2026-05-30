@@ -1958,9 +1958,15 @@ pub fn draw_zbuffered_lightmapped<
             lm_uvs.swap($i, $j);
         };
     }
-    if points[0].y > points[1].y { swap_all!(0, 1); }
-    if points[0].y > points[2].y { swap_all!(0, 2); }
-    if points[1].y > points[2].y { swap_all!(1, 2); }
+    if points[0].y > points[1].y {
+        swap_all!(0, 1);
+    }
+    if points[0].y > points[2].y {
+        swap_all!(0, 2);
+    }
+    if points[1].y > points[2].y {
+        swap_all!(1, 2);
+    }
 
     let [p1, p2, p3] = points;
     let [z1, z2, z3] = depths;
@@ -1970,10 +1976,18 @@ pub fn draw_zbuffered_lightmapped<
 
     let scr_w = width as i32;
     let scr_h = (zbuffer.len() / width) as i32;
-    if p1.x < 0 && p2.x < 0 && p3.x < 0 { return; }
-    if p1.x >= scr_w && p2.x >= scr_w && p3.x >= scr_w { return; }
-    if p1.y < 0 && p2.y < 0 && p3.y < 0 { return; }
-    if p1.y >= scr_h && p2.y >= scr_h && p3.y >= scr_h { return; }
+    if p1.x < 0 && p2.x < 0 && p3.x < 0 {
+        return;
+    }
+    if p1.x >= scr_w && p2.x >= scr_w && p3.x >= scr_w {
+        return;
+    }
+    if p1.y < 0 && p2.y < 0 && p3.y < 0 {
+        return;
+    }
+    if p1.y >= scr_h && p2.y >= scr_h && p3.y >= scr_h {
+        return;
+    }
 
     let z1_int = (z1 * 65536.0) as u32;
     let z2_int = (z2 * 65536.0) as u32;
@@ -1981,13 +1995,55 @@ pub fn draw_zbuffered_lightmapped<
 
     // Split into flat-bottom + flat-top halves (same as existing textured path)
     if p2.y == p3.y {
-        fill_lm_bottom_flat(p1, p2, p3, z1_int, z2_int, z3_int,
-            w1, w2, w3, uv1, uv2, uv3, luv1, luv2, luv3,
-            dynamic_tint, fog_config, surf, lm, fb, zbuffer, width);
+        fill_lm_bottom_flat(
+            p1,
+            p2,
+            p3,
+            z1_int,
+            z2_int,
+            z3_int,
+            w1,
+            w2,
+            w3,
+            uv1,
+            uv2,
+            uv3,
+            luv1,
+            luv2,
+            luv3,
+            dynamic_tint,
+            fog_config,
+            surf,
+            lm,
+            fb,
+            zbuffer,
+            width,
+        );
     } else if p1.y == p2.y {
-        fill_lm_top_flat(p1, p2, p3, z1_int, z2_int, z3_int,
-            w1, w2, w3, uv1, uv2, uv3, luv1, luv2, luv3,
-            dynamic_tint, fog_config, surf, lm, fb, zbuffer, width);
+        fill_lm_top_flat(
+            p1,
+            p2,
+            p3,
+            z1_int,
+            z2_int,
+            z3_int,
+            w1,
+            w2,
+            w3,
+            uv1,
+            uv2,
+            uv3,
+            luv1,
+            luv2,
+            luv3,
+            dynamic_tint,
+            fog_config,
+            surf,
+            lm,
+            fb,
+            zbuffer,
+            width,
+        );
     } else {
         // Split at the middle vertex
         let dy31 = (p3.y - p1.y) as f32;
@@ -1997,26 +2053,84 @@ pub fn draw_zbuffered_lightmapped<
         let p4 = embedded_graphics_core::prelude::Point::new(p4x, p2.y);
         let z4_int = (z1_int as f32 + (z3_int as f32 - z1_int as f32) * t) as u32;
         let w4 = w1 + (w3 - w1) * t;
-        let uv4 = [uv1[0] + (uv3[0] - uv1[0]) * t, uv1[1] + (uv3[1] - uv1[1]) * t];
-        let luv4 = [luv1[0] + (luv3[0] - luv1[0]) * t, luv1[1] + (luv3[1] - luv1[1]) * t];
+        let uv4 = [
+            uv1[0] + (uv3[0] - uv1[0]) * t,
+            uv1[1] + (uv3[1] - uv1[1]) * t,
+        ];
+        let luv4 = [
+            luv1[0] + (luv3[0] - luv1[0]) * t,
+            luv1[1] + (luv3[1] - luv1[1]) * t,
+        ];
         let p4_2 = nalgebra::Point2::new(p4.x, p4.y);
-        fill_lm_bottom_flat(p1, p2, p4_2, z1_int, z2_int, z4_int,
-            w1, w2, w4, uv1, uv2, uv4, luv1, luv2, luv4,
-            dynamic_tint, fog_config, surf, lm, fb, zbuffer, width);
-        fill_lm_top_flat(p2, p4_2, p3, z2_int, z4_int, z3_int,
-            w2, w4, w3, uv2, uv4, uv3, luv2, luv4, luv3,
-            dynamic_tint, fog_config, surf, lm, fb, zbuffer, width);
+        fill_lm_bottom_flat(
+            p1,
+            p2,
+            p4_2,
+            z1_int,
+            z2_int,
+            z4_int,
+            w1,
+            w2,
+            w4,
+            uv1,
+            uv2,
+            uv4,
+            luv1,
+            luv2,
+            luv4,
+            dynamic_tint,
+            fog_config,
+            surf,
+            lm,
+            fb,
+            zbuffer,
+            width,
+        );
+        fill_lm_top_flat(
+            p2,
+            p4_2,
+            p3,
+            z2_int,
+            z4_int,
+            z3_int,
+            w2,
+            w4,
+            w3,
+            uv2,
+            uv4,
+            uv3,
+            luv2,
+            luv4,
+            luv3,
+            dynamic_tint,
+            fog_config,
+            surf,
+            lm,
+            fb,
+            zbuffer,
+            width,
+        );
     }
 }
 
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]
 fn fill_lm_bottom_flat<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
-    p1: nalgebra::Point2<i32>, p2: nalgebra::Point2<i32>, p3: nalgebra::Point2<i32>,
-    z1: u32, z2: u32, z3: u32,
-    w1: f32, w2: f32, w3: f32,
-    uv1: [f32; 2], uv2: [f32; 2], uv3: [f32; 2],
-    luv1: [f32; 2], luv2: [f32; 2], luv3: [f32; 2],
+    p1: nalgebra::Point2<i32>,
+    p2: nalgebra::Point2<i32>,
+    p3: nalgebra::Point2<i32>,
+    z1: u32,
+    z2: u32,
+    z3: u32,
+    w1: f32,
+    w2: f32,
+    w3: f32,
+    uv1: [f32; 2],
+    uv2: [f32; 2],
+    uv3: [f32; 2],
+    luv1: [f32; 2],
+    luv2: [f32; 2],
+    luv3: [f32; 2],
     dynamic_tint: embedded_graphics_core::pixelcolor::Rgb565,
     fog_config: Option<&FogConfig>,
     surf: &crate::texture::Texture,
@@ -2024,9 +2138,13 @@ fn fill_lm_bottom_flat<D: DrawTarget<Color = embedded_graphics_core::pixelcolor:
     fb: &mut D,
     zbuffer: &mut [u32],
     width: usize,
-) where <D as DrawTarget>::Error: core::fmt::Debug {
+) where
+    <D as DrawTarget>::Error: core::fmt::Debug,
+{
     let height = p2.y - p1.y;
-    if height == 0 { return; }
+    if height == 0 {
+        return;
+    }
     let invslope1 = ((p2.x - p1.x) << 16) / height;
     let invslope2 = ((p3.x - p1.x) << 16) / height;
     let mut curx1 = p1.x << 16;
@@ -2038,12 +2156,42 @@ fn fill_lm_bottom_flat<D: DrawTarget<Color = embedded_graphics_core::pixelcolor:
         let z_r = (z1 as i64 + (z3 as i64 - z1 as i64) * dy as i64 / height as i64) as u32;
         let wl = w1 + t * (w2 - w1);
         let wr = w1 + t * (w3 - w1);
-        let uvl = [uv1[0] + t * (uv2[0] - uv1[0]), uv1[1] + t * (uv2[1] - uv1[1])];
-        let uvr = [uv1[0] + t * (uv3[0] - uv1[0]), uv1[1] + t * (uv3[1] - uv1[1])];
-        let luvl = [luv1[0] + t * (luv2[0] - luv1[0]), luv1[1] + t * (luv2[1] - luv1[1])];
-        let luvr = [luv1[0] + t * (luv3[0] - luv1[0]), luv1[1] + t * (luv3[1] - luv1[1])];
-        draw_scanline_lm(curx1 >> 16, curx2 >> 16, scanline_y, z_l, z_r,
-            wl, wr, uvl, uvr, luvl, luvr, dynamic_tint, fog_config, surf, lm, fb, zbuffer, width);
+        let uvl = [
+            uv1[0] + t * (uv2[0] - uv1[0]),
+            uv1[1] + t * (uv2[1] - uv1[1]),
+        ];
+        let uvr = [
+            uv1[0] + t * (uv3[0] - uv1[0]),
+            uv1[1] + t * (uv3[1] - uv1[1]),
+        ];
+        let luvl = [
+            luv1[0] + t * (luv2[0] - luv1[0]),
+            luv1[1] + t * (luv2[1] - luv1[1]),
+        ];
+        let luvr = [
+            luv1[0] + t * (luv3[0] - luv1[0]),
+            luv1[1] + t * (luv3[1] - luv1[1]),
+        ];
+        draw_scanline_lm(
+            curx1 >> 16,
+            curx2 >> 16,
+            scanline_y,
+            z_l,
+            z_r,
+            wl,
+            wr,
+            uvl,
+            uvr,
+            luvl,
+            luvr,
+            dynamic_tint,
+            fog_config,
+            surf,
+            lm,
+            fb,
+            zbuffer,
+            width,
+        );
         curx1 += invslope1;
         curx2 += invslope2;
     }
@@ -2052,11 +2200,21 @@ fn fill_lm_bottom_flat<D: DrawTarget<Color = embedded_graphics_core::pixelcolor:
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]
 fn fill_lm_top_flat<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
-    p1: nalgebra::Point2<i32>, p2: nalgebra::Point2<i32>, p3: nalgebra::Point2<i32>,
-    z1: u32, z2: u32, z3: u32,
-    w1: f32, w2: f32, w3: f32,
-    uv1: [f32; 2], uv2: [f32; 2], uv3: [f32; 2],
-    luv1: [f32; 2], luv2: [f32; 2], luv3: [f32; 2],
+    p1: nalgebra::Point2<i32>,
+    p2: nalgebra::Point2<i32>,
+    p3: nalgebra::Point2<i32>,
+    z1: u32,
+    z2: u32,
+    z3: u32,
+    w1: f32,
+    w2: f32,
+    w3: f32,
+    uv1: [f32; 2],
+    uv2: [f32; 2],
+    uv3: [f32; 2],
+    luv1: [f32; 2],
+    luv2: [f32; 2],
+    luv3: [f32; 2],
     dynamic_tint: embedded_graphics_core::pixelcolor::Rgb565,
     fog_config: Option<&FogConfig>,
     surf: &crate::texture::Texture,
@@ -2064,9 +2222,13 @@ fn fill_lm_top_flat<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rg
     fb: &mut D,
     zbuffer: &mut [u32],
     width: usize,
-) where <D as DrawTarget>::Error: core::fmt::Debug {
+) where
+    <D as DrawTarget>::Error: core::fmt::Debug,
+{
     let height = p3.y - p1.y;
-    if height == 0 { return; }
+    if height == 0 {
+        return;
+    }
     let invslope1 = ((p3.x - p1.x) << 16) / height;
     let invslope2 = ((p3.x - p2.x) << 16) / height;
     let mut curx1 = p3.x << 16;
@@ -2078,12 +2240,42 @@ fn fill_lm_top_flat<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rg
         let z_r = (z2 as i64 + (z3 as i64 - z2 as i64) * dy as i64 / height as i64) as u32;
         let wl = w1 + t * (w3 - w1);
         let wr = w2 + t * (w3 - w2);
-        let uvl = [uv1[0] + t * (uv3[0] - uv1[0]), uv1[1] + t * (uv3[1] - uv1[1])];
-        let uvr = [uv2[0] + t * (uv3[0] - uv2[0]), uv2[1] + t * (uv3[1] - uv2[1])];
-        let luvl = [luv1[0] + t * (luv3[0] - luv1[0]), luv1[1] + t * (luv3[1] - luv1[1])];
-        let luvr = [luv2[0] + t * (luv3[0] - luv2[0]), luv2[1] + t * (luv3[1] - luv2[1])];
-        draw_scanline_lm(curx1 >> 16, curx2 >> 16, scanline_y, z_l, z_r,
-            wl, wr, uvl, uvr, luvl, luvr, dynamic_tint, fog_config, surf, lm, fb, zbuffer, width);
+        let uvl = [
+            uv1[0] + t * (uv3[0] - uv1[0]),
+            uv1[1] + t * (uv3[1] - uv1[1]),
+        ];
+        let uvr = [
+            uv2[0] + t * (uv3[0] - uv2[0]),
+            uv2[1] + t * (uv3[1] - uv2[1]),
+        ];
+        let luvl = [
+            luv1[0] + t * (luv3[0] - luv1[0]),
+            luv1[1] + t * (luv3[1] - luv1[1]),
+        ];
+        let luvr = [
+            luv2[0] + t * (luv3[0] - luv2[0]),
+            luv2[1] + t * (luv3[1] - luv2[1]),
+        ];
+        draw_scanline_lm(
+            curx1 >> 16,
+            curx2 >> 16,
+            scanline_y,
+            z_l,
+            z_r,
+            wl,
+            wr,
+            uvl,
+            uvr,
+            luvl,
+            luvr,
+            dynamic_tint,
+            fog_config,
+            surf,
+            lm,
+            fb,
+            zbuffer,
+            width,
+        );
         curx1 -= invslope1;
         curx2 -= invslope2;
     }
@@ -2092,11 +2284,17 @@ fn fill_lm_top_flat<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rg
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]
 fn draw_scanline_lm<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
-    x1: i32, x2: i32, y: i32,
-    z1: u32, z2: u32,
-    w1: f32, w2: f32,
-    uv1: [f32; 2], uv2: [f32; 2],
-    luv1: [f32; 2], luv2: [f32; 2],
+    x1: i32,
+    x2: i32,
+    y: i32,
+    z1: u32,
+    z2: u32,
+    w1: f32,
+    w2: f32,
+    uv1: [f32; 2],
+    uv2: [f32; 2],
+    luv1: [f32; 2],
+    luv2: [f32; 2],
     dynamic_tint: embedded_graphics_core::pixelcolor::Rgb565,
     fog_config: Option<&FogConfig>,
     surf: &crate::texture::Texture,
@@ -2104,19 +2302,31 @@ fn draw_scanline_lm<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rg
     fb: &mut D,
     zbuffer: &mut [u32],
     width: usize,
-) where <D as DrawTarget>::Error: core::fmt::Debug {
+) where
+    <D as DrawTarget>::Error: core::fmt::Debug,
+{
     use embedded_graphics_core::pixelcolor::RgbColor;
     let start = x1.min(x2);
     let end = x1.max(x2);
     let span = end - start;
     for x in start..=end {
-        if x < 0 || y < 0 { continue; }
+        if x < 0 || y < 0 {
+            continue;
+        }
         let zbuf_idx = y as usize * width + x as usize;
-        if zbuf_idx >= zbuffer.len() { continue; }
-        let t = if span > 0 { (x - start) as f32 / span as f32 } else { 0.0 };
-        let z = (z1 as i64 + (z2 as i64 - z1 as i64) * (x - start) as i64
-            / span.max(1) as i64) as u32;
-        if z >= zbuffer[zbuf_idx].saturating_add(DEPTH_EPSILON) { continue; }
+        if zbuf_idx >= zbuffer.len() {
+            continue;
+        }
+        let t = if span > 0 {
+            (x - start) as f32 / span as f32
+        } else {
+            0.0
+        };
+        let z =
+            (z1 as i64 + (z2 as i64 - z1 as i64) * (x - start) as i64 / span.max(1) as i64) as u32;
+        if z >= zbuffer[zbuf_idx].saturating_add(DEPTH_EPSILON) {
+            continue;
+        }
         zbuffer[zbuf_idx] = z;
 
         let ow1 = 1.0 / w1;
@@ -2155,7 +2365,8 @@ fn draw_scanline_lm<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rg
         fb.draw_iter([embedded_graphics_core::Pixel(
             embedded_graphics_core::prelude::Point::new(x, y),
             final_c,
-        )]).unwrap();
+        )])
+        .unwrap();
     }
 }
 
@@ -2179,16 +2390,30 @@ pub fn draw_bsp_coverage<
     texture_manager: &crate::texture::TextureManager<N>,
     fb: &mut D,
     coverage: &mut crate::bsp::coverage::CoverageBuffer<'_>,
-) where <D as DrawTarget>::Error: core::fmt::Debug {
+) where
+    <D as DrawTarget>::Error: core::fmt::Debug,
+{
     let tex = match texture_manager.get(texture_id) {
         Some(t) => t,
         None => return,
     };
 
     // Sort by Y
-    if points[0].y > points[1].y { points.swap(0, 1); ws.swap(0, 1); uvs.swap(0, 1); }
-    if points[0].y > points[2].y { points.swap(0, 2); ws.swap(0, 2); uvs.swap(0, 2); }
-    if points[1].y > points[2].y { points.swap(1, 2); ws.swap(1, 2); uvs.swap(1, 2); }
+    if points[0].y > points[1].y {
+        points.swap(0, 1);
+        ws.swap(0, 1);
+        uvs.swap(0, 1);
+    }
+    if points[0].y > points[2].y {
+        points.swap(0, 2);
+        ws.swap(0, 2);
+        uvs.swap(0, 2);
+    }
+    if points[1].y > points[2].y {
+        points.swap(1, 2);
+        ws.swap(1, 2);
+        uvs.swap(1, 2);
+    }
 
     let [p1, p2, p3] = points;
     let [w1, w2, w3] = ws;
@@ -2196,79 +2421,137 @@ pub fn draw_bsp_coverage<
 
     let w = coverage.width as i32;
     let h = coverage.height as i32;
-    if p1.x < 0 && p2.x < 0 && p3.x < 0 { return; }
-    if p1.x >= w  && p2.x >= w  && p3.x >= w  { return; }
-    if p1.y < 0 && p2.y < 0 && p3.y < 0 { return; }
-    if p1.y >= h  && p2.y >= h  && p3.y >= h  { return; }
+    if p1.x < 0 && p2.x < 0 && p3.x < 0 {
+        return;
+    }
+    if p1.x >= w && p2.x >= w && p3.x >= w {
+        return;
+    }
+    if p1.y < 0 && p2.y < 0 && p3.y < 0 {
+        return;
+    }
+    if p1.y >= h && p2.y >= h && p3.y >= h {
+        return;
+    }
 
-    let rasterize_span = |x1: i32, x2: i32, y: i32,
-                           wl: f32, wr: f32,
-                           uvl: [f32; 2], uvr: [f32; 2],
-                           fb: &mut D,
-                           coverage: &mut crate::bsp::coverage::CoverageBuffer<'_>| {
-        let start = x1.min(x2);
-        let end   = x1.max(x2);
-        let span  = end - start;
-        for x in start..=end {
-            if x < 0 || y < 0 || x >= w || y >= h { continue; }
-            if coverage.is_covered(x as usize, y as usize) { continue; }
-            let t = if span > 0 { (x - start) as f32 / span as f32 } else { 0.0 };
-            let ow1 = 1.0 / wl; let ow2 = 1.0 / wr;
-            let one_over_w = ow1 + t * (ow2 - ow1);
-            let su = (uvl[0]*ow1 + t*(uvr[0]*ow2 - uvl[0]*ow1)) / one_over_w;
-            let sv = (uvl[1]*ow1 + t*(uvr[1]*ow2 - uvl[1]*ow1)) / one_over_w;
-            let color = tex.sample(su, sv);
-            coverage.mark_covered(x as usize, y as usize);
-            fb.draw_iter([embedded_graphics_core::Pixel(
-                embedded_graphics_core::prelude::Point::new(x, y), color,
-            )]).unwrap();
-        }
-    };
+    let rasterize_span =
+        |x1: i32,
+         x2: i32,
+         y: i32,
+         wl: f32,
+         wr: f32,
+         uvl: [f32; 2],
+         uvr: [f32; 2],
+         fb: &mut D,
+         coverage: &mut crate::bsp::coverage::CoverageBuffer<'_>| {
+            let start = x1.min(x2);
+            let end = x1.max(x2);
+            let span = end - start;
+            for x in start..=end {
+                if x < 0 || y < 0 || x >= w || y >= h {
+                    continue;
+                }
+                if coverage.is_covered(x as usize, y as usize) {
+                    continue;
+                }
+                let t = if span > 0 {
+                    (x - start) as f32 / span as f32
+                } else {
+                    0.0
+                };
+                let ow1 = 1.0 / wl;
+                let ow2 = 1.0 / wr;
+                let one_over_w = ow1 + t * (ow2 - ow1);
+                let su = (uvl[0] * ow1 + t * (uvr[0] * ow2 - uvl[0] * ow1)) / one_over_w;
+                let sv = (uvl[1] * ow1 + t * (uvr[1] * ow2 - uvl[1] * ow1)) / one_over_w;
+                let color = tex.sample(su, sv);
+                coverage.mark_covered(x as usize, y as usize);
+                fb.draw_iter([embedded_graphics_core::Pixel(
+                    embedded_graphics_core::prelude::Point::new(x, y),
+                    color,
+                )])
+                .unwrap();
+            }
+        };
 
     // Flat-bottom triangle
-    let draw_flat_bottom = |p1: nalgebra::Point2<i32>, p2: nalgebra::Point2<i32>,
-                             p3: nalgebra::Point2<i32>,
-                             w1: f32, w2: f32, w3: f32,
-                             uv1: [f32;2], uv2: [f32;2], uv3: [f32;2],
-                             fb: &mut D,
-                             coverage: &mut crate::bsp::coverage::CoverageBuffer<'_>| {
-        let height = p2.y - p1.y;
-        if height == 0 { return; }
-        let invslope1 = ((p2.x - p1.x) << 16) / height;
-        let invslope2 = ((p3.x - p1.x) << 16) / height;
-        let mut cx1 = p1.x << 16; let mut cx2 = p1.x << 16;
-        for sy in p1.y..=p2.y {
-            let dy = sy - p1.y;
-            let t = dy as f32 / height as f32;
-            let wl = w1 + t * (w2 - w1); let wr = w1 + t * (w3 - w1);
-            let uvl = [uv1[0]+t*(uv2[0]-uv1[0]), uv1[1]+t*(uv2[1]-uv1[1])];
-            let uvr = [uv1[0]+t*(uv3[0]-uv1[0]), uv1[1]+t*(uv3[1]-uv1[1])];
-            rasterize_span(cx1>>16, cx2>>16, sy, wl, wr, uvl, uvr, fb, coverage);
-            cx1 += invslope1; cx2 += invslope2;
-        }
-    };
+    let draw_flat_bottom =
+        |p1: nalgebra::Point2<i32>,
+         p2: nalgebra::Point2<i32>,
+         p3: nalgebra::Point2<i32>,
+         w1: f32,
+         w2: f32,
+         w3: f32,
+         uv1: [f32; 2],
+         uv2: [f32; 2],
+         uv3: [f32; 2],
+         fb: &mut D,
+         coverage: &mut crate::bsp::coverage::CoverageBuffer<'_>| {
+            let height = p2.y - p1.y;
+            if height == 0 {
+                return;
+            }
+            let invslope1 = ((p2.x - p1.x) << 16) / height;
+            let invslope2 = ((p3.x - p1.x) << 16) / height;
+            let mut cx1 = p1.x << 16;
+            let mut cx2 = p1.x << 16;
+            for sy in p1.y..=p2.y {
+                let dy = sy - p1.y;
+                let t = dy as f32 / height as f32;
+                let wl = w1 + t * (w2 - w1);
+                let wr = w1 + t * (w3 - w1);
+                let uvl = [
+                    uv1[0] + t * (uv2[0] - uv1[0]),
+                    uv1[1] + t * (uv2[1] - uv1[1]),
+                ];
+                let uvr = [
+                    uv1[0] + t * (uv3[0] - uv1[0]),
+                    uv1[1] + t * (uv3[1] - uv1[1]),
+                ];
+                rasterize_span(cx1 >> 16, cx2 >> 16, sy, wl, wr, uvl, uvr, fb, coverage);
+                cx1 += invslope1;
+                cx2 += invslope2;
+            }
+        };
 
-    let draw_flat_top = |p1: nalgebra::Point2<i32>, p2: nalgebra::Point2<i32>,
-                          p3: nalgebra::Point2<i32>,
-                          w1: f32, w2: f32, w3: f32,
-                          uv1: [f32;2], uv2: [f32;2], uv3: [f32;2],
-                          fb: &mut D,
-                          coverage: &mut crate::bsp::coverage::CoverageBuffer<'_>| {
-        let height = p3.y - p1.y;
-        if height == 0 { return; }
-        let invslope1 = ((p3.x - p1.x) << 16) / height;
-        let invslope2 = ((p3.x - p2.x) << 16) / height;
-        let mut cx1 = p3.x << 16; let mut cx2 = p3.x << 16;
-        for sy in (p1.y..=p3.y).rev() {
-            let dy = sy - p1.y;
-            let t = dy as f32 / height as f32;
-            let wl = w1 + t * (w3 - w1); let wr = w2 + t * (w3 - w2);
-            let uvl = [uv1[0]+t*(uv3[0]-uv1[0]), uv1[1]+t*(uv3[1]-uv1[1])];
-            let uvr = [uv2[0]+t*(uv3[0]-uv2[0]), uv2[1]+t*(uv3[1]-uv2[1])];
-            rasterize_span(cx1>>16, cx2>>16, sy, wl, wr, uvl, uvr, fb, coverage);
-            cx1 -= invslope1; cx2 -= invslope2;
-        }
-    };
+    let draw_flat_top =
+        |p1: nalgebra::Point2<i32>,
+         p2: nalgebra::Point2<i32>,
+         p3: nalgebra::Point2<i32>,
+         w1: f32,
+         w2: f32,
+         w3: f32,
+         uv1: [f32; 2],
+         uv2: [f32; 2],
+         uv3: [f32; 2],
+         fb: &mut D,
+         coverage: &mut crate::bsp::coverage::CoverageBuffer<'_>| {
+            let height = p3.y - p1.y;
+            if height == 0 {
+                return;
+            }
+            let invslope1 = ((p3.x - p1.x) << 16) / height;
+            let invslope2 = ((p3.x - p2.x) << 16) / height;
+            let mut cx1 = p3.x << 16;
+            let mut cx2 = p3.x << 16;
+            for sy in (p1.y..=p3.y).rev() {
+                let dy = sy - p1.y;
+                let t = dy as f32 / height as f32;
+                let wl = w1 + t * (w3 - w1);
+                let wr = w2 + t * (w3 - w2);
+                let uvl = [
+                    uv1[0] + t * (uv3[0] - uv1[0]),
+                    uv1[1] + t * (uv3[1] - uv1[1]),
+                ];
+                let uvr = [
+                    uv2[0] + t * (uv3[0] - uv2[0]),
+                    uv2[1] + t * (uv3[1] - uv2[1]),
+                ];
+                rasterize_span(cx1 >> 16, cx2 >> 16, sy, wl, wr, uvl, uvr, fb, coverage);
+                cx1 -= invslope1;
+                cx2 -= invslope2;
+            }
+        };
 
     if p2.y == p3.y {
         draw_flat_bottom(p1, p2, p3, w1, w2, w3, uv1, uv2, uv3, fb, coverage);
@@ -2281,7 +2564,10 @@ pub fn draw_bsp_coverage<
         let p4x = p1.x + ((p3.x - p1.x) as f32 * t) as i32;
         let p4 = nalgebra::Point2::new(p4x, p2.y);
         let w4 = w1 + (w3 - w1) * t;
-        let uv4 = [uv1[0]+(uv3[0]-uv1[0])*t, uv1[1]+(uv3[1]-uv1[1])*t];
+        let uv4 = [
+            uv1[0] + (uv3[0] - uv1[0]) * t,
+            uv1[1] + (uv3[1] - uv1[1]) * t,
+        ];
         draw_flat_bottom(p1, p2, p4, w1, w2, w4, uv1, uv2, uv4, fb, coverage);
         draw_flat_top(p2, p4, p3, w2, w4, w3, uv2, uv4, uv3, fb, coverage);
     }

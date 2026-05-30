@@ -33,9 +33,7 @@ const STACK_DEPTH: usize = 64;
 /// length); the AABB test below handles this correctly by using the p-vertex
 /// technique.
 pub fn frustum_from_vp(m: &Matrix4<f32>) -> [FrustumPlane; 6] {
-    let r = |row: usize| -> [f32; 4] {
-        [m[(row, 0)], m[(row, 1)], m[(row, 2)], m[(row, 3)]]
-    };
+    let r = |row: usize| -> [f32; 4] { [m[(row, 0)], m[(row, 1)], m[(row, 2)], m[(row, 3)]] };
     let r0 = r(0);
     let r1 = r(1);
     let r2 = r(2);
@@ -43,21 +41,17 @@ pub fn frustum_from_vp(m: &Matrix4<f32>) -> [FrustumPlane; 6] {
 
     let make = |a: [f32; 4], b: [f32; 4], s: f32| -> FrustumPlane {
         FrustumPlane {
-            normal: [
-                a[0] + s * b[0],
-                a[1] + s * b[1],
-                a[2] + s * b[2],
-            ],
+            normal: [a[0] + s * b[0], a[1] + s * b[1], a[2] + s * b[2]],
             d: a[3] + s * b[3],
         }
     };
 
     [
-        make(r3, r0,  1.0), // Left:   row3 + row0
+        make(r3, r0, 1.0),  // Left:   row3 + row0
         make(r3, r0, -1.0), // Right:  row3 - row0
-        make(r3, r1,  1.0), // Bottom: row3 + row1
+        make(r3, r1, 1.0),  // Bottom: row3 + row1
         make(r3, r1, -1.0), // Top:    row3 - row1
-        make(r3, r2,  1.0), // Near:   row3 + row2
+        make(r3, r2, 1.0),  // Near:   row3 + row2
         make(r3, r2, -1.0), // Far:    row3 - row2
     ]
 }
@@ -117,10 +111,7 @@ fn lerp_f32(a: f32, b: f32, t: f32) -> f32 {
 fn lerp_clip(a: &ClipVert, b: &ClipVert, t: f32) -> ClipVert {
     ClipVert {
         clip: a.clip + (b.clip - a.clip) * t,
-        uv: [
-            lerp_f32(a.uv[0], b.uv[0], t),
-            lerp_f32(a.uv[1], b.uv[1], t),
-        ],
+        uv: [lerp_f32(a.uv[0], b.uv[0], t), lerp_f32(a.uv[1], b.uv[1], t)],
         lm_uv: [
             lerp_f32(a.lm_uv[0], b.lm_uv[0], t),
             lerp_f32(a.lm_uv[1], b.lm_uv[1], t),
@@ -285,9 +276,7 @@ pub fn walk_front_to_back<F>(
             continue;
         }
         let pl = &world.planes[node.plane as usize];
-        let d = pl.normal[0] * cam_pos[0]
-            + pl.normal[1] * cam_pos[1]
-            + pl.normal[2] * cam_pos[2]
+        let d = pl.normal[0] * cam_pos[0] + pl.normal[1] * cam_pos[1] + pl.normal[2] * cam_pos[2]
             - pl.dist;
 
         let (near_child, far_child) = if d >= 0.0 {
@@ -339,10 +328,8 @@ mod tests {
         // A point directly in front of the camera should be inside all planes
         let p = [0.0f32, 0.0, 0.0];
         for plane in &f {
-            let dot = plane.normal[0] * p[0]
-                + plane.normal[1] * p[1]
-                + plane.normal[2] * p[2]
-                + plane.d;
+            let dot =
+                plane.normal[0] * p[0] + plane.normal[1] * p[1] + plane.normal[2] * p[2] + plane.d;
             assert!(dot >= 0.0, "origin outside plane {plane:?}");
         }
     }
@@ -362,9 +349,21 @@ mod tests {
     #[test]
     fn clip_triangle_entirely_in_front_unchanged() {
         // All 3 vertices satisfy z + w > 0
-        let v0 = ClipVert { clip: Vector4::new(0.0, 0.0, 1.0, 2.0), uv: [0.0, 0.0], lm_uv: [0.0, 0.0] };
-        let v1 = ClipVert { clip: Vector4::new(1.0, 0.0, 1.0, 2.0), uv: [1.0, 0.0], lm_uv: [0.0, 0.0] };
-        let v2 = ClipVert { clip: Vector4::new(0.0, 1.0, 1.0, 2.0), uv: [0.0, 1.0], lm_uv: [0.0, 0.0] };
+        let v0 = ClipVert {
+            clip: Vector4::new(0.0, 0.0, 1.0, 2.0),
+            uv: [0.0, 0.0],
+            lm_uv: [0.0, 0.0],
+        };
+        let v1 = ClipVert {
+            clip: Vector4::new(1.0, 0.0, 1.0, 2.0),
+            uv: [1.0, 0.0],
+            lm_uv: [0.0, 0.0],
+        };
+        let v2 = ClipVert {
+            clip: Vector4::new(0.0, 1.0, 1.0, 2.0),
+            uv: [0.0, 1.0],
+            lm_uv: [0.0, 0.0],
+        };
         let mut input: HVec<ClipVert, 4> = HVec::new();
         let _ = input.push(v0);
         let _ = input.push(v1);
@@ -382,9 +381,9 @@ mod tests {
             lm_uv: [0.0, 0.0],
         };
         let mut input: HVec<ClipVert, 4> = HVec::new();
-        let _ = input.push(v(-2.0, 1.0));  // z+w = -1 < 0
-        let _ = input.push(v(-3.0, 1.0));  // z+w = -2 < 0
-        let _ = input.push(v(-4.0, 1.0));  // z+w = -3 < 0
+        let _ = input.push(v(-2.0, 1.0)); // z+w = -1 < 0
+        let _ = input.push(v(-3.0, 1.0)); // z+w = -2 < 0
+        let _ = input.push(v(-4.0, 1.0)); // z+w = -3 < 0
         let out: HVec<ClipVert, 4> = clip_near(&input);
         assert_eq!(out.len(), 0);
     }
@@ -413,7 +412,10 @@ mod tests {
 
     // ---- Walk ----
 
-    static PLANES_WALK: [Plane; 1] = [Plane { normal: [1.0, 0.0, 0.0], dist: 0.0 }];
+    static PLANES_WALK: [Plane; 1] = [Plane {
+        normal: [1.0, 0.0, 0.0],
+        dist: 0.0,
+    }];
 
     // Root node: children[0]=!1 (front=leaf1), children[1]=!0 (back=leaf0)
     static NODES_WALK: [Node; 1] = [Node {
@@ -426,15 +428,41 @@ mod tests {
     }];
 
     static LEAVES_WALK: [Leaf; 2] = [
-        Leaf { cluster: 0, mins: [-10, -10, -10], maxs: [0, 10, 10], first_marksurface: 0, num_marksurfaces: 1 },
-        Leaf { cluster: 1, mins: [0, -10, -10],   maxs: [10, 10, 10], first_marksurface: 1, num_marksurfaces: 1 },
+        Leaf {
+            cluster: 0,
+            mins: [-10, -10, -10],
+            maxs: [0, 10, 10],
+            first_marksurface: 0,
+            num_marksurfaces: 1,
+        },
+        Leaf {
+            cluster: 1,
+            mins: [0, -10, -10],
+            maxs: [10, 10, 10],
+            first_marksurface: 1,
+            num_marksurfaces: 1,
+        },
     ];
     static MARKSURFACES_WALK: [u16; 2] = [0, 1];
 
     use crate::bsp::data::Face;
     static FACES_WALK: [Face; 2] = [
-        Face { first_vert: 0, num_verts: 3, texture_id: 0, lightmap_id: 0xFFFF, plane: 0, side: 0 },
-        Face { first_vert: 3, num_verts: 3, texture_id: 0, lightmap_id: 0xFFFF, plane: 0, side: 0 },
+        Face {
+            first_vert: 0,
+            num_verts: 3,
+            texture_id: 0,
+            lightmap_id: 0xFFFF,
+            plane: 0,
+            side: 0,
+        },
+        Face {
+            first_vert: 3,
+            num_verts: 3,
+            texture_id: 0,
+            lightmap_id: 0xFFFF,
+            plane: 0,
+            side: 0,
+        },
     ];
 
     fn make_walk_world<'a>() -> BspWorld<'a> {
@@ -455,7 +483,10 @@ mod tests {
 
     fn identity_frustum() -> [FrustumPlane; 6] {
         // All-pass frustum: every point is inside
-        [FrustumPlane { normal: [0.0, 0.0, 0.0], d: 1.0 }; 6]
+        [FrustumPlane {
+            normal: [0.0, 0.0, 0.0],
+            d: 1.0,
+        }; 6]
     }
 
     #[test]
@@ -483,12 +514,33 @@ mod tests {
         // Make both marksurfaces point to face 0 (shared face)
         static MS_SHARED: [u16; 2] = [0, 0];
         static LEAVES_SHARED: [Leaf; 2] = [
-            Leaf { cluster: 0, mins: [-10, -10, -10], maxs: [0, 10, 10], first_marksurface: 0, num_marksurfaces: 1 },
-            Leaf { cluster: 1, mins: [0, -10, -10],   maxs: [10, 10, 10], first_marksurface: 1, num_marksurfaces: 1 },
+            Leaf {
+                cluster: 0,
+                mins: [-10, -10, -10],
+                maxs: [0, 10, 10],
+                first_marksurface: 0,
+                num_marksurfaces: 1,
+            },
+            Leaf {
+                cluster: 1,
+                mins: [0, -10, -10],
+                maxs: [10, 10, 10],
+                first_marksurface: 1,
+                num_marksurfaces: 1,
+            },
         ];
         let world = BspWorld::new(
-            &PLANES_WALK, &NODES_WALK, &LEAVES_SHARED, &FACES_WALK,
-            &MS_SHARED, &[], &[], &[], &[], &[], 2,
+            &PLANES_WALK,
+            &NODES_WALK,
+            &LEAVES_SHARED,
+            &FACES_WALK,
+            &MS_SHARED,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            2,
         );
 
         let mut fb = [0u32; 2];
@@ -497,8 +549,12 @@ mod tests {
 
         let mut count = 0usize;
         walk_front_to_back(
-            &world, &mut scratch, [0.0, 0.0, 0.0], -1,
-            &identity_frustum(), |_, _| count += 1,
+            &world,
+            &mut scratch,
+            [0.0, 0.0, 0.0],
+            -1,
+            &identity_frustum(),
+            |_, _| count += 1,
         );
         assert_eq!(count, 1, "shared face emitted twice");
     }
@@ -513,8 +569,12 @@ mod tests {
         // Camera at x=-5: behind the X=0 plane → leaf 0 is nearer
         let mut order: std::vec::Vec<usize> = std::vec::Vec::new();
         walk_front_to_back(
-            &world, &mut scratch, [-5.0, 0.0, 0.0], -1,
-            &identity_frustum(), |fi, _| order.push(fi),
+            &world,
+            &mut scratch,
+            [-5.0, 0.0, 0.0],
+            -1,
+            &identity_frustum(),
+            |fi, _| order.push(fi),
         );
 
         assert_eq!(order.len(), 2);

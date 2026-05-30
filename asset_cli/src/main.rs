@@ -26,13 +26,28 @@ fn read_u16_le(data: &[u8], offset: usize) -> u16 {
     u16::from_le_bytes([data[offset], data[offset + 1]])
 }
 fn read_i32_le(data: &[u8], offset: usize) -> i32 {
-    i32::from_le_bytes([data[offset], data[offset + 1], data[offset + 2], data[offset + 3]])
+    i32::from_le_bytes([
+        data[offset],
+        data[offset + 1],
+        data[offset + 2],
+        data[offset + 3],
+    ])
 }
 fn read_u32_le(data: &[u8], offset: usize) -> u32 {
-    u32::from_le_bytes([data[offset], data[offset + 1], data[offset + 2], data[offset + 3]])
+    u32::from_le_bytes([
+        data[offset],
+        data[offset + 1],
+        data[offset + 2],
+        data[offset + 3],
+    ])
 }
 fn read_f32_le(data: &[u8], offset: usize) -> f32 {
-    f32::from_le_bytes([data[offset], data[offset + 1], data[offset + 2], data[offset + 3]])
+    f32::from_le_bytes([
+        data[offset],
+        data[offset + 1],
+        data[offset + 2],
+        data[offset + 3],
+    ])
 }
 
 struct LumpDir {
@@ -41,17 +56,27 @@ struct LumpDir {
 }
 
 fn parse_lump_dirs(data: &[u8]) -> io::Result<Vec<LumpDir>> {
-    if data.len() < 4 { return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "bsp too small")); }
+    if data.len() < 4 {
+        return Err(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "bsp too small",
+        ));
+    }
     let ver = read_u32_le(data, 0);
     if ver != BSP_VERSION {
-        return Err(io::Error::new(io::ErrorKind::InvalidData,
-            format!("unsupported BSP version {ver}, expected {BSP_VERSION}")));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("unsupported BSP version {ver}, expected {BSP_VERSION}"),
+        ));
     }
     let mut lumps = Vec::with_capacity(15);
     for i in 0..15usize {
         let base = 4 + i * 8;
         if base + 8 > data.len() {
-            return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "lump dir truncated"));
+            return Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "lump dir truncated",
+            ));
         }
         lumps.push(LumpDir {
             offset: read_u32_le(data, base) as usize,
@@ -64,78 +89,131 @@ fn parse_lump_dirs(data: &[u8]) -> io::Result<Vec<LumpDir>> {
 fn lump_slice<'a>(data: &'a [u8], lumps: &[LumpDir], idx: usize) -> io::Result<&'a [u8]> {
     let l = &lumps[idx];
     if l.offset + l.length > data.len() {
-        return Err(io::Error::new(io::ErrorKind::UnexpectedEof,
-            format!("lump {idx} out of range")));
+        return Err(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            format!("lump {idx} out of range"),
+        ));
     }
     Ok(&data[l.offset..l.offset + l.length])
 }
 
 // Quake BSP plane: normal[3] f32, dist f32, type i32 (20 bytes)
-struct QPlane { normal: [f32; 3], dist: f32 }
+struct QPlane {
+    normal: [f32; 3],
+    dist: f32,
+}
 fn parse_planes(raw: &[u8]) -> Vec<QPlane> {
-    raw.chunks_exact(20).map(|c| QPlane {
-        normal: [read_f32_le(c, 0), read_f32_le(c, 4), read_f32_le(c, 8)],
-        dist:    read_f32_le(c, 12),
-    }).collect()
+    raw.chunks_exact(20)
+        .map(|c| QPlane {
+            normal: [read_f32_le(c, 0), read_f32_le(c, 4), read_f32_le(c, 8)],
+            dist: read_f32_le(c, 12),
+        })
+        .collect()
 }
 
 // Quake BSP node: planenum i32, children[2] i16, mins/maxs[6] i16, firstface u16, numfaces u16 (24 bytes)
-struct QNode { plane: u32, children: [i16; 2], mins: [i16; 3], maxs: [i16; 3], first_face: u16, num_faces: u16 }
+struct QNode {
+    plane: u32,
+    children: [i16; 2],
+    mins: [i16; 3],
+    maxs: [i16; 3],
+    first_face: u16,
+    num_faces: u16,
+}
 fn parse_nodes(raw: &[u8]) -> Vec<QNode> {
-    raw.chunks_exact(24).map(|c| QNode {
-        plane:      read_u32_le(c, 0),
-        children:   [read_i16_le(c, 4), read_i16_le(c, 6)],
-        mins:       [read_i16_le(c, 8), read_i16_le(c, 10), read_i16_le(c, 12)],
-        maxs:       [read_i16_le(c, 14), read_i16_le(c, 16), read_i16_le(c, 18)],
-        first_face: read_u16_le(c, 20),
-        num_faces:  read_u16_le(c, 22),
-    }).collect()
+    raw.chunks_exact(24)
+        .map(|c| QNode {
+            plane: read_u32_le(c, 0),
+            children: [read_i16_le(c, 4), read_i16_le(c, 6)],
+            mins: [read_i16_le(c, 8), read_i16_le(c, 10), read_i16_le(c, 12)],
+            maxs: [read_i16_le(c, 14), read_i16_le(c, 16), read_i16_le(c, 18)],
+            first_face: read_u16_le(c, 20),
+            num_faces: read_u16_le(c, 22),
+        })
+        .collect()
 }
 
 // Quake BSP leaf: contents i32, visofs i32, mins/maxs[6] i16, firstmark u16, nummark u16, ambient[4] u8 (28 bytes)
-struct QLeaf { contents: i32, visofs: i32, mins: [i16; 3], maxs: [i16; 3], first_mark: u16, num_mark: u16 }
+struct QLeaf {
+    contents: i32,
+    visofs: i32,
+    mins: [i16; 3],
+    maxs: [i16; 3],
+    first_mark: u16,
+    num_mark: u16,
+}
 fn parse_leaves(raw: &[u8]) -> Vec<QLeaf> {
-    raw.chunks_exact(28).map(|c| QLeaf {
-        contents:   read_i32_le(c, 0),
-        visofs:     read_i32_le(c, 4),
-        mins:       [read_i16_le(c, 8), read_i16_le(c, 10), read_i16_le(c, 12)],
-        maxs:       [read_i16_le(c, 14), read_i16_le(c, 16), read_i16_le(c, 18)],
-        first_mark: read_u16_le(c, 20),
-        num_mark:   read_u16_le(c, 22),
-    }).collect()
+    raw.chunks_exact(28)
+        .map(|c| QLeaf {
+            contents: read_i32_le(c, 0),
+            visofs: read_i32_le(c, 4),
+            mins: [read_i16_le(c, 8), read_i16_le(c, 10), read_i16_le(c, 12)],
+            maxs: [read_i16_le(c, 14), read_i16_le(c, 16), read_i16_le(c, 18)],
+            first_mark: read_u16_le(c, 20),
+            num_mark: read_u16_le(c, 22),
+        })
+        .collect()
 }
 
 // Quake BSP texinfo: vecs[2][4] f32, miptex i32, flags i32 (40 bytes)
-struct QTexinfo { vecs: [[f32; 4]; 2], miptex: i32 }
+struct QTexinfo {
+    vecs: [[f32; 4]; 2],
+    miptex: i32,
+}
 fn parse_texinfos(raw: &[u8]) -> Vec<QTexinfo> {
-    raw.chunks_exact(40).map(|c| QTexinfo {
-        vecs: [
-            [read_f32_le(c, 0), read_f32_le(c, 4), read_f32_le(c, 8), read_f32_le(c, 12)],
-            [read_f32_le(c, 16), read_f32_le(c, 20), read_f32_le(c, 24), read_f32_le(c, 28)],
-        ],
-        miptex: read_i32_le(c, 32),
-    }).collect()
+    raw.chunks_exact(40)
+        .map(|c| QTexinfo {
+            vecs: [
+                [
+                    read_f32_le(c, 0),
+                    read_f32_le(c, 4),
+                    read_f32_le(c, 8),
+                    read_f32_le(c, 12),
+                ],
+                [
+                    read_f32_le(c, 16),
+                    read_f32_le(c, 20),
+                    read_f32_le(c, 24),
+                    read_f32_le(c, 28),
+                ],
+            ],
+            miptex: read_i32_le(c, 32),
+        })
+        .collect()
 }
 
 // Quake BSP face: planenum u16, side i16, firstedge i32, numedges i16, texinfo u16, styles[4] u8, lightofs i32 (20 bytes)
-struct QFace { planenum: u16, side: i16, firstedge: i32, numedges: i16, texinfo: u16, lightofs: i32 }
+struct QFace {
+    planenum: u16,
+    side: i16,
+    firstedge: i32,
+    numedges: i16,
+    texinfo: u16,
+    lightofs: i32,
+}
 fn parse_faces(raw: &[u8]) -> Vec<QFace> {
-    raw.chunks_exact(20).map(|c| QFace {
-        planenum:  read_u16_le(c, 0),
-        side:      read_i16_le(c, 2),
-        firstedge: read_i32_le(c, 4),
-        numedges:  read_i16_le(c, 8),
-        texinfo:   read_u16_le(c, 10),
-        // styles[4] at offset 12
-        lightofs:  read_i32_le(c, 16),
-    }).collect()
+    raw.chunks_exact(20)
+        .map(|c| QFace {
+            planenum: read_u16_le(c, 0),
+            side: read_i16_le(c, 2),
+            firstedge: read_i32_le(c, 4),
+            numedges: read_i16_le(c, 8),
+            texinfo: read_u16_le(c, 10),
+            // styles[4] at offset 12
+            lightofs: read_i32_le(c, 16),
+        })
+        .collect()
 }
 
 fn parse_vertices(raw: &[u8]) -> Vec<[f32; 3]> {
-    raw.chunks_exact(12).map(|c| [read_f32_le(c, 0), read_f32_le(c, 4), read_f32_le(c, 8)]).collect()
+    raw.chunks_exact(12)
+        .map(|c| [read_f32_le(c, 0), read_f32_le(c, 4), read_f32_le(c, 8)])
+        .collect()
 }
 fn parse_edges(raw: &[u8]) -> Vec<[u16; 2]> {
-    raw.chunks_exact(4).map(|c| [read_u16_le(c, 0), read_u16_le(c, 2)]).collect()
+    raw.chunks_exact(4)
+        .map(|c| [read_u16_le(c, 0), read_u16_le(c, 2)])
+        .collect()
 }
 fn parse_surfedges(raw: &[u8]) -> Vec<i32> {
     raw.chunks_exact(4).map(|c| read_i32_le(c, 0)).collect()
@@ -171,9 +249,13 @@ fn quake_child_to_i32(c: i16) -> i32 {
 
 // Next-power-of-two for textures
 fn next_pow2(x: usize) -> usize {
-    if x == 0 { return 1; }
+    if x == 0 {
+        return 1;
+    }
     let mut p = 1usize;
-    while p < x { p <<= 1; }
+    while p < x {
+        p <<= 1;
+    }
     p
 }
 
@@ -187,9 +269,9 @@ fn lm_byte_to_rgb565_pair(v: u8) -> [u8; 2] {
 
 // Lightmap for one face
 struct FaceLightmap {
-    width: usize,  // texels
+    width: usize, // texels
     height: usize,
-    pixels: Vec<[u8; 2]>,  // RGB565 little-endian pairs
+    pixels: Vec<[u8; 2]>, // RGB565 little-endian pairs
     s_min: f32,
     t_min: f32,
 }
@@ -202,7 +284,9 @@ fn compute_face_lightmap(
     texinfo: &QTexinfo,
     lighting: &[u8],
 ) -> Option<FaceLightmap> {
-    if face.lightofs < 0 { return None; }
+    if face.lightofs < 0 {
+        return None;
+    }
 
     let mut s_coords: Vec<f32> = Vec::new();
     let mut t_coords: Vec<f32> = Vec::new();
@@ -210,8 +294,14 @@ fn compute_face_lightmap(
         let se = surfedges[face.firstedge as usize + k];
         let vi = surfedge_vert(se, edges);
         let v = &q_verts[vi];
-        let s = v[0]*texinfo.vecs[0][0] + v[1]*texinfo.vecs[0][1] + v[2]*texinfo.vecs[0][2] + texinfo.vecs[0][3];
-        let t = v[0]*texinfo.vecs[1][0] + v[1]*texinfo.vecs[1][1] + v[2]*texinfo.vecs[1][2] + texinfo.vecs[1][3];
+        let s = v[0] * texinfo.vecs[0][0]
+            + v[1] * texinfo.vecs[0][1]
+            + v[2] * texinfo.vecs[0][2]
+            + texinfo.vecs[0][3];
+        let t = v[0] * texinfo.vecs[1][0]
+            + v[1] * texinfo.vecs[1][1]
+            + v[2] * texinfo.vecs[1][2]
+            + texinfo.vecs[1][3];
         s_coords.push(s);
         t_coords.push(t);
     }
@@ -231,7 +321,9 @@ fn compute_face_lightmap(
     let n_texels = lm_w * lm_h;
 
     let lo = face.lightofs as usize;
-    if lo + n_texels > lighting.len() { return None; }
+    if lo + n_texels > lighting.len() {
+        return None;
+    }
 
     let pixels: Vec<[u8; 2]> = lighting[lo..lo + n_texels]
         .iter()
@@ -251,7 +343,7 @@ fn compute_face_lightmap(
 struct LightmapAtlas {
     width: usize,
     height: usize,
-    pixels: Vec<u16>,     // RGB565 as u16
+    pixels: Vec<u16>, // RGB565 as u16
     shelf_x: usize,
     shelf_y: usize,
     shelf_h: usize,
@@ -277,7 +369,9 @@ impl LightmapAtlas {
             self.shelf_x = 0;
             self.shelf_h = 0;
         }
-        if self.shelf_y + lm.height > self.height { return None; }
+        if self.shelf_y + lm.height > self.height {
+            return None;
+        }
 
         let ax = self.shelf_x;
         let ay = self.shelf_y;
@@ -291,7 +385,9 @@ impl LightmapAtlas {
         }
 
         self.shelf_x += lm.width;
-        if lm.height > self.shelf_h { self.shelf_h = lm.height; }
+        if lm.height > self.shelf_h {
+            self.shelf_h = lm.height;
+        }
         Some((ax, ay))
     }
 
@@ -304,24 +400,24 @@ pub fn import_bsp(bsp_path: &Path, out_path: &Path, with_lightmaps: bool) -> io:
     let data = fs::read(bsp_path)?;
     let lumps = parse_lump_dirs(&data)?;
 
-    let q_planes      = parse_planes(lump_slice(&data, &lumps, LUMP_PLANES)?);
-    let q_vertices    = parse_vertices(lump_slice(&data, &lumps, LUMP_VERTICES)?);
-    let vis_raw       = lump_slice(&data, &lumps, LUMP_VIS)?;
-    let q_nodes       = parse_nodes(lump_slice(&data, &lumps, LUMP_NODES)?);
-    let q_texinfos    = parse_texinfos(lump_slice(&data, &lumps, LUMP_TEXINFO)?);
-    let q_faces       = parse_faces(lump_slice(&data, &lumps, LUMP_FACES)?);
-    let lighting_raw  = lump_slice(&data, &lumps, LUMP_LIGHTING)?;
-    let q_leaves      = parse_leaves(lump_slice(&data, &lumps, LUMP_LEAVES)?);
-    let q_marksurfs   = parse_marksurfaces(lump_slice(&data, &lumps, LUMP_MARKSURFACES)?);
-    let q_edges       = parse_edges(lump_slice(&data, &lumps, LUMP_EDGES)?);
-    let q_surfedges   = parse_surfedges(lump_slice(&data, &lumps, LUMP_SURFEDGES)?);
+    let q_planes = parse_planes(lump_slice(&data, &lumps, LUMP_PLANES)?);
+    let q_vertices = parse_vertices(lump_slice(&data, &lumps, LUMP_VERTICES)?);
+    let vis_raw = lump_slice(&data, &lumps, LUMP_VIS)?;
+    let q_nodes = parse_nodes(lump_slice(&data, &lumps, LUMP_NODES)?);
+    let q_texinfos = parse_texinfos(lump_slice(&data, &lumps, LUMP_TEXINFO)?);
+    let q_faces = parse_faces(lump_slice(&data, &lumps, LUMP_FACES)?);
+    let lighting_raw = lump_slice(&data, &lumps, LUMP_LIGHTING)?;
+    let q_leaves = parse_leaves(lump_slice(&data, &lumps, LUMP_LEAVES)?);
+    let q_marksurfs = parse_marksurfaces(lump_slice(&data, &lumps, LUMP_MARKSURFACES)?);
+    let q_edges = parse_edges(lump_slice(&data, &lumps, LUMP_EDGES)?);
+    let q_surfedges = parse_surfedges(lump_slice(&data, &lumps, LUMP_SURFEDGES)?);
 
     // ----- Build output vertices, UVs, and faces -----
     // For each Quake face, we build a vertex fan and append to flat arrays.
     let mut out_vertices: Vec<[f32; 3]> = Vec::new();
-    let mut out_uvs:      Vec<[f32; 2]> = Vec::new();
-    let mut out_lm_uvs:   Vec<[f32; 2]> = Vec::new();
-    let mut out_faces:    Vec<(u32, u16, u16, u8, u16, u16)> = Vec::new();
+    let mut out_uvs: Vec<[f32; 2]> = Vec::new();
+    let mut out_lm_uvs: Vec<[f32; 2]> = Vec::new();
+    let mut out_faces: Vec<(u32, u16, u16, u8, u16, u16)> = Vec::new();
     // (first_vert, num_verts, plane, side, texture_id, lightmap_id)
 
     // Use texinfo miptex index as texture_id (0xFFFF if invalid)
@@ -336,8 +432,13 @@ pub fn import_bsp(bsp_path: &Path, out_path: &Path, with_lightmaps: bool) -> io:
 
     for face in &q_faces {
         let te_idx = face.texinfo as usize;
-        let texinfo = if te_idx < q_texinfos.len() { &q_texinfos[te_idx] } else {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "texinfo out of range"));
+        let texinfo = if te_idx < q_texinfos.len() {
+            &q_texinfos[te_idx]
+        } else {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "texinfo out of range",
+            ));
         };
 
         // Surface texture ID (unique per miptex index)
@@ -349,7 +450,9 @@ pub fn import_bsp(bsp_path: &Path, out_path: &Path, with_lightmaps: bool) -> io:
 
         let first_vert = out_vertices.len() as u32;
         let n = face.numedges as usize;
-        if n < 3 { continue; }
+        if n < 3 {
+            continue;
+        }
 
         // Build surface UVs — we need texel-space UV normalised to [0,1]
         // We don't have texture dimensions here, so use raw texel coords and
@@ -359,19 +462,36 @@ pub fn import_bsp(bsp_path: &Path, out_path: &Path, with_lightmaps: bool) -> io:
 
         // Compute lightmap for this face
         let lm_data = if with_lightmaps {
-            compute_face_lightmap(face, &q_vertices, &q_surfedges, &q_edges, texinfo, lighting_raw)
-        } else { None };
+            compute_face_lightmap(
+                face,
+                &q_vertices,
+                &q_surfedges,
+                &q_edges,
+                texinfo,
+                lighting_raw,
+            )
+        } else {
+            None
+        };
 
         let lm_atlas_pos = if let Some(ref lm) = lm_data {
             atlas.pack(lm)
-        } else { None };
+        } else {
+            None
+        };
 
         for k in 0..n {
             let se = q_surfedges[(face.firstedge as usize) + k];
             let vi = surfedge_vert(se, &q_edges);
             let v = q_vertices[vi];
-            let s = v[0]*texinfo.vecs[0][0] + v[1]*texinfo.vecs[0][1] + v[2]*texinfo.vecs[0][2] + texinfo.vecs[0][3];
-            let t = v[0]*texinfo.vecs[1][0] + v[1]*texinfo.vecs[1][1] + v[2]*texinfo.vecs[1][2] + texinfo.vecs[1][3];
+            let s = v[0] * texinfo.vecs[0][0]
+                + v[1] * texinfo.vecs[0][1]
+                + v[2] * texinfo.vecs[0][2]
+                + texinfo.vecs[0][3];
+            let t = v[0] * texinfo.vecs[1][0]
+                + v[1] * texinfo.vecs[1][1]
+                + v[2] * texinfo.vecs[1][2]
+                + texinfo.vecs[1][3];
             out_vertices.push(v);
             out_uvs.push([s / assumed_tex_size, t / assumed_tex_size]);
 
@@ -390,11 +510,23 @@ pub fn import_bsp(bsp_path: &Path, out_path: &Path, with_lightmaps: bool) -> io:
         }
 
         let lightmap_id: u16 = if lm_atlas_pos.is_some() {
-            if lm_texture_id.is_none() { lm_texture_id = Some(next_tex_id); next_tex_id += 1; }
+            if lm_texture_id.is_none() {
+                lm_texture_id = Some(next_tex_id);
+                next_tex_id += 1;
+            }
             lm_texture_id.unwrap() as u16
-        } else { 0xFFFF };
+        } else {
+            0xFFFF
+        };
 
-        out_faces.push((first_vert, n as u16, face.planenum, face.side as u8, tex_id as u16, lightmap_id));
+        out_faces.push((
+            first_vert,
+            n as u16,
+            face.planenum,
+            face.side as u8,
+            tex_id as u16,
+            lightmap_id,
+        ));
     }
 
     // ----- Marksurfaces: indices into q_faces which map 1:1 to out_faces -----
@@ -404,27 +536,56 @@ pub fn import_bsp(bsp_path: &Path, out_path: &Path, with_lightmaps: bool) -> io:
     // q_nodes: children are i16 (negative = leaf via -(n+1))
     // Quake leaf 0 is the outside solid leaf; actual content leaves start at 1.
     // We keep indices as-is and translate children.
-    let out_nodes: Vec<(u16, i32, i32, i16, i16, i16, i16, i16, i16, u16, u16)> = q_nodes.iter().map(|n| {
-        (n.plane as u16,
-         quake_child_to_i32(n.children[0]),
-         quake_child_to_i32(n.children[1]),
-         n.mins[0], n.mins[1], n.mins[2],
-         n.maxs[0], n.maxs[1], n.maxs[2],
-         n.first_face, n.num_faces)
-    }).collect();
+    let out_nodes: Vec<(u16, i32, i32, i16, i16, i16, i16, i16, i16, u16, u16)> = q_nodes
+        .iter()
+        .map(|n| {
+            (
+                n.plane as u16,
+                quake_child_to_i32(n.children[0]),
+                quake_child_to_i32(n.children[1]),
+                n.mins[0],
+                n.mins[1],
+                n.mins[2],
+                n.maxs[0],
+                n.maxs[1],
+                n.maxs[2],
+                n.first_face,
+                n.num_faces,
+            )
+        })
+        .collect();
 
     // ----- Leaves -----
     // cluster = leaf_index (Quake 1: one cluster per leaf, leaf 0 = solid)
     // We map leaf_index directly. vis_offsets[leaf_i] = leaf.visofs (or u32::MAX if -1).
     let mut vis_offsets: Vec<u32> = Vec::with_capacity(q_leaves.len());
-    let out_leaves: Vec<(i16, i16, i16, i16, i16, i16, i16, u16, u16)> = q_leaves.iter().enumerate().map(|(li, l)| {
-        let cluster = if l.contents < 0 && l.visofs >= 0 { li as i16 } else { -1i16 };
-        vis_offsets.push(if l.visofs >= 0 { l.visofs as u32 } else { u32::MAX });
-        (cluster,
-         l.mins[0], l.mins[1], l.mins[2],
-         l.maxs[0], l.maxs[1], l.maxs[2],
-         l.first_mark, l.num_mark)
-    }).collect();
+    let out_leaves: Vec<(i16, i16, i16, i16, i16, i16, i16, u16, u16)> = q_leaves
+        .iter()
+        .enumerate()
+        .map(|(li, l)| {
+            let cluster = if l.contents < 0 && l.visofs >= 0 {
+                li as i16
+            } else {
+                -1i16
+            };
+            vis_offsets.push(if l.visofs >= 0 {
+                l.visofs as u32
+            } else {
+                u32::MAX
+            });
+            (
+                cluster,
+                l.mins[0],
+                l.mins[1],
+                l.mins[2],
+                l.maxs[0],
+                l.maxs[1],
+                l.maxs[2],
+                l.first_mark,
+                l.num_mark,
+            )
+        })
+        .collect();
 
     let num_clusters = q_leaves.len() as u16;
 
@@ -437,15 +598,23 @@ pub fn import_bsp(bsp_path: &Path, out_path: &Path, with_lightmaps: bool) -> io:
     out.push_str("use embedded_3dgfx::bsp::data::*;\n\n");
 
     // Planes
-    out.push_str(&format!("pub static BSP_PLANES: [Plane; {}] = [\n", q_planes.len()));
+    out.push_str(&format!(
+        "pub static BSP_PLANES: [Plane; {}] = [\n",
+        q_planes.len()
+    ));
     for p in &q_planes {
-        out.push_str(&format!("    Plane {{ normal: [{:.6}, {:.6}, {:.6}], dist: {:.6} }},\n",
-            p.normal[0], p.normal[1], p.normal[2], p.dist));
+        out.push_str(&format!(
+            "    Plane {{ normal: [{:.6}, {:.6}, {:.6}], dist: {:.6} }},\n",
+            p.normal[0], p.normal[1], p.normal[2], p.dist
+        ));
     }
     out.push_str("];\n\n");
 
     // Nodes
-    out.push_str(&format!("pub static BSP_NODES: [Node; {}] = [\n", out_nodes.len()));
+    out.push_str(&format!(
+        "pub static BSP_NODES: [Node; {}] = [\n",
+        out_nodes.len()
+    ));
     for (plane, c0, c1, mn0, mn1, mn2, mx0, mx1, mx2, ff, nf) in &out_nodes {
         out.push_str(&format!(
             "    Node {{ plane: {plane}, children: [{c0}, {c1}], mins: [{mn0}, {mn1}, {mn2}], maxs: [{mx0}, {mx1}, {mx2}], first_face: {ff}, num_faces: {nf} }},\n"
@@ -454,7 +623,10 @@ pub fn import_bsp(bsp_path: &Path, out_path: &Path, with_lightmaps: bool) -> io:
     out.push_str("];\n\n");
 
     // Leaves
-    out.push_str(&format!("pub static BSP_LEAVES: [Leaf; {}] = [\n", out_leaves.len()));
+    out.push_str(&format!(
+        "pub static BSP_LEAVES: [Leaf; {}] = [\n",
+        out_leaves.len()
+    ));
     for (cl, mn0, mn1, mn2, mx0, mx1, mx2, fm, nm) in &out_leaves {
         out.push_str(&format!(
             "    Leaf {{ cluster: {cl}, mins: [{mn0}, {mn1}, {mn2}], maxs: [{mx0}, {mx1}, {mx2}], first_marksurface: {fm}, num_marksurfaces: {nm} }},\n"
@@ -463,7 +635,10 @@ pub fn import_bsp(bsp_path: &Path, out_path: &Path, with_lightmaps: bool) -> io:
     out.push_str("];\n\n");
 
     // Faces
-    out.push_str(&format!("pub static BSP_FACES: [Face; {}] = [\n", out_faces.len()));
+    out.push_str(&format!(
+        "pub static BSP_FACES: [Face; {}] = [\n",
+        out_faces.len()
+    ));
     for (fv, nv, plane, side, tex, lm) in &out_faces {
         out.push_str(&format!(
             "    Face {{ first_vert: {fv}, num_verts: {nv}, texture_id: {tex}, lightmap_id: {lm}, plane: {plane}, side: {side} }},\n"
@@ -472,22 +647,33 @@ pub fn import_bsp(bsp_path: &Path, out_path: &Path, with_lightmaps: bool) -> io:
     out.push_str("];\n\n");
 
     // Marksurfaces
-    out.push_str(&format!("pub static BSP_MARKSURFACES: [u16; {}] = [", out_marksurfs.len()));
+    out.push_str(&format!(
+        "pub static BSP_MARKSURFACES: [u16; {}] = [",
+        out_marksurfs.len()
+    ));
     for (i, ms) in out_marksurfs.iter().enumerate() {
-        if i % 16 == 0 { out.push_str("\n    "); }
+        if i % 16 == 0 {
+            out.push_str("\n    ");
+        }
         out.push_str(&format!("{ms}, "));
     }
     out.push_str("\n];\n\n");
 
     // Vertices
-    out.push_str(&format!("pub static BSP_VERTICES: [[f32; 3]; {}] = [\n", out_vertices.len()));
+    out.push_str(&format!(
+        "pub static BSP_VERTICES: [[f32; 3]; {}] = [\n",
+        out_vertices.len()
+    ));
     for v in &out_vertices {
         out.push_str(&format!("    [{:.6}, {:.6}, {:.6}],\n", v[0], v[1], v[2]));
     }
     out.push_str("];\n\n");
 
     // UVs
-    out.push_str(&format!("pub static BSP_UVS: [[f32; 2]; {}] = [\n", out_uvs.len()));
+    out.push_str(&format!(
+        "pub static BSP_UVS: [[f32; 2]; {}] = [\n",
+        out_uvs.len()
+    ));
     for uv in &out_uvs {
         out.push_str(&format!("    [{:.6}, {:.6}],\n", uv[0], uv[1]));
     }
@@ -495,7 +681,10 @@ pub fn import_bsp(bsp_path: &Path, out_path: &Path, with_lightmaps: bool) -> io:
 
     // Lightmap UVs
     if with_lightmaps {
-        out.push_str(&format!("pub static BSP_LM_UVS: [[f32; 2]; {}] = [\n", out_lm_uvs.len()));
+        out.push_str(&format!(
+            "pub static BSP_LM_UVS: [[f32; 2]; {}] = [\n",
+            out_lm_uvs.len()
+        ));
         for uv in &out_lm_uvs {
             out.push_str(&format!("    [{:.6}, {:.6}],\n", uv[0], uv[1]));
         }
@@ -503,36 +692,57 @@ pub fn import_bsp(bsp_path: &Path, out_path: &Path, with_lightmaps: bool) -> io:
     }
 
     // VIS blob
-    out.push_str(&format!("pub static BSP_VIS: [u8; {}] = [\n    ", vis_raw.len()));
+    out.push_str(&format!(
+        "pub static BSP_VIS: [u8; {}] = [\n    ",
+        vis_raw.len()
+    ));
     for (i, b) in vis_raw.iter().enumerate() {
         out.push_str(&format!("0x{b:02X}, "));
-        if i % 16 == 15 { out.push_str("\n    "); }
+        if i % 16 == 15 {
+            out.push_str("\n    ");
+        }
     }
     out.push_str("\n];\n\n");
 
     // VIS offsets
-    out.push_str(&format!("pub static BSP_VIS_OFFSETS: [u32; {}] = [", vis_offsets.len()));
+    out.push_str(&format!(
+        "pub static BSP_VIS_OFFSETS: [u32; {}] = [",
+        vis_offsets.len()
+    ));
     for (i, v) in vis_offsets.iter().enumerate() {
-        if i % 16 == 0 { out.push_str("\n    "); }
+        if i % 16 == 0 {
+            out.push_str("\n    ");
+        }
         out.push_str(&format!("{v}, "));
     }
     out.push_str("\n];\n\n");
 
-    out.push_str(&format!("pub const BSP_NUM_CLUSTERS: u16 = {num_clusters};\n\n"));
+    out.push_str(&format!(
+        "pub const BSP_NUM_CLUSTERS: u16 = {num_clusters};\n\n"
+    ));
 
     // Lightmap atlas texture data
     if with_lightmaps {
         let atlas_w = atlas.width;
         let atlas_h = atlas.height;
         let atlas_bytes = atlas.into_rgb565_bytes();
-        out.push_str(&format!("pub static BSP_LIGHTMAP_ATLAS: [u8; {}] = [\n    ", atlas_bytes.len()));
+        out.push_str(&format!(
+            "pub static BSP_LIGHTMAP_ATLAS: [u8; {}] = [\n    ",
+            atlas_bytes.len()
+        ));
         for (i, b) in atlas_bytes.iter().enumerate() {
             out.push_str(&format!("0x{b:02X}, "));
-            if i % 16 == 15 { out.push_str("\n    "); }
+            if i % 16 == 15 {
+                out.push_str("\n    ");
+            }
         }
         out.push_str("\n];\n\n");
-        out.push_str(&format!("pub const BSP_LIGHTMAP_ATLAS_WIDTH: u32 = {atlas_w};\n"));
-        out.push_str(&format!("pub const BSP_LIGHTMAP_ATLAS_HEIGHT: u32 = {atlas_h};\n\n"));
+        out.push_str(&format!(
+            "pub const BSP_LIGHTMAP_ATLAS_WIDTH: u32 = {atlas_w};\n"
+        ));
+        out.push_str(&format!(
+            "pub const BSP_LIGHTMAP_ATLAS_HEIGHT: u32 = {atlas_h};\n\n"
+        ));
     }
 
     // bsp_world() constructor
@@ -550,7 +760,11 @@ pub fn import_bsp(bsp_path: &Path, out_path: &Path, with_lightmaps: bool) -> io:
     eprintln!(
         "Wrote {}: {} planes, {} nodes, {} leaves, {} faces, {} vertices",
         out_path.display(),
-        q_planes.len(), out_nodes.len(), out_leaves.len(), out_faces.len(), out_vertices.len()
+        q_planes.len(),
+        out_nodes.len(),
+        out_leaves.len(),
+        out_faces.len(),
+        out_vertices.len()
     );
     Ok(())
 }

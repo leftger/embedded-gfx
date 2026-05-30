@@ -235,16 +235,12 @@ impl<const N: usize> ParticleSystem<N> {
             let quad = billboard.generate_quad(engine.camera.position, camera_up);
 
             // Triangle 1: bottom-left (0), bottom-right (1), top-right (2)
-            let Some((pts1, _)) =
-                engine.transform_points_with_w(&[0usize, 1, 2], &quad, vp)
-            else {
+            let Some((pts1, _)) = engine.transform_points_with_w(&[0usize, 1, 2], &quad, vp) else {
                 continue;
             };
 
             // Triangle 2: bottom-left (0), top-right (2), top-left (3)
-            let Some((pts2, _)) =
-                engine.transform_points_with_w(&[0usize, 2, 3], &quad, vp)
-            else {
+            let Some((pts2, _)) = engine.transform_points_with_w(&[0usize, 2, 3], &quad, vp) else {
                 continue;
             };
 

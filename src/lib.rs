@@ -18,8 +18,8 @@ use nalgebra::ComplexField;
 
 pub mod animation;
 pub mod billboard;
-pub mod bsp;
 pub mod bridge;
+pub mod bsp;
 pub mod camera;
 pub mod command_buffer;
 pub mod config;
@@ -541,7 +541,11 @@ impl K3dengine {
                                 (final_color.z * 31.0) as u8,
                             );
                             if !self.point_lights.is_empty() {
-                                let wc = Self::face_world_center(face, geometry.vertices, mesh.model_matrix);
+                                let wc = Self::face_world_center(
+                                    face,
+                                    geometry.vertices,
+                                    mesh.model_matrix,
+                                );
                                 color = Self::add_tint(color, self.light_tint_at(wc));
                             }
                             callback(DrawPrimitive::ColoredTriangleWithDepth {
@@ -591,9 +595,9 @@ impl K3dengine {
                                 );
                                 if !self.point_lights.is_empty() {
                                     let vpos = geometry.vertices[face[k]];
-                                    let wp = mesh.model_matrix.transform_point(
-                                        &Point3::new(vpos[0], vpos[1], vpos[2])
-                                    );
+                                    let wp = mesh
+                                        .model_matrix
+                                        .transform_point(&Point3::new(vpos[0], vpos[1], vpos[2]));
                                     vc = Self::add_tint(vc, self.light_tint_at(wp));
                                 }
                                 vc
@@ -687,7 +691,8 @@ impl K3dengine {
                                 (final_color.z * 31.0) as u8,
                             );
                             if !self.point_lights.is_empty() {
-                                color = Self::add_tint(color, self.light_tint_at(face_center_world));
+                                color =
+                                    Self::add_tint(color, self.light_tint_at(face_center_world));
                             }
                             callback(DrawPrimitive::ColoredTriangleWithDepth {
                                 points: [p1.xy(), p2.xy(), p3.xy()],
@@ -705,7 +710,11 @@ impl K3dengine {
                                 self.transform_points(face, geometry.vertices, transform_matrix)
                             {
                                 let color = if !self.point_lights.is_empty() {
-                                    let wc = Self::face_world_center(face, geometry.vertices, mesh.model_matrix);
+                                    let wc = Self::face_world_center(
+                                        face,
+                                        geometry.vertices,
+                                        mesh.model_matrix,
+                                    );
                                     Self::add_tint(mesh.color, self.light_tint_at(wc))
                                 } else {
                                     mesh.color
@@ -728,7 +737,11 @@ impl K3dengine {
                                 self.transform_points(face, geometry.vertices, transform_matrix)
                             {
                                 let color = if !self.point_lights.is_empty() {
-                                    let wc = Self::face_world_center(face, geometry.vertices, mesh.model_matrix);
+                                    let wc = Self::face_world_center(
+                                        face,
+                                        geometry.vertices,
+                                        mesh.model_matrix,
+                                    );
                                     Self::add_tint(mesh.color, self.light_tint_at(wc))
                                 } else {
                                     mesh.color
@@ -756,7 +769,11 @@ impl K3dengine {
                                 self.transform_points(face, geometry.vertices, transform_matrix)
                             {
                                 let color = if !self.point_lights.is_empty() {
-                                    let wc = Self::face_world_center(face, geometry.vertices, mesh.model_matrix);
+                                    let wc = Self::face_world_center(
+                                        face,
+                                        geometry.vertices,
+                                        mesh.model_matrix,
+                                    );
                                     Self::add_tint(scaled_color, self.light_tint_at(wc))
                                 } else {
                                     scaled_color
@@ -779,7 +796,11 @@ impl K3dengine {
                                 self.transform_points(face, geometry.vertices, transform_matrix)
                             {
                                 let color = if !self.point_lights.is_empty() {
-                                    let wc = Self::face_world_center(face, geometry.vertices, mesh.model_matrix);
+                                    let wc = Self::face_world_center(
+                                        face,
+                                        geometry.vertices,
+                                        mesh.model_matrix,
+                                    );
                                     Self::add_tint(scaled_color, self.light_tint_at(wc))
                                 } else {
                                     scaled_color
@@ -1117,7 +1138,13 @@ impl K3dengine {
             + embedded_graphics_core::prelude::OriginDimensions,
         <D as embedded_graphics_core::draw_target::DrawTarget>::Error: core::fmt::Debug,
     {
-        crate::renderer::execute_commands_tiled::<D, MAX, BIN_CAP>(fb, frame, commands, tile, self.fog.as_ref())
+        crate::renderer::execute_commands_tiled::<D, MAX, BIN_CAP>(
+            fb,
+            frame,
+            commands,
+            tile,
+            self.fog.as_ref(),
+        )
     }
 }
 

@@ -169,8 +169,16 @@ mod tests {
     #[test]
     fn test_point_light_set_accumulates() {
         let mut set: PointLightSet<4> = PointLightSet::new();
-        set.add(PointLight::new(Point3::new(0.0, 0.0, 0.0), Rgb565::new(10, 20, 10), 5.0));
-        set.add(PointLight::new(Point3::new(0.0, 0.0, 0.0), Rgb565::new(5, 10, 5), 5.0));
+        set.add(PointLight::new(
+            Point3::new(0.0, 0.0, 0.0),
+            Rgb565::new(10, 20, 10),
+            5.0,
+        ));
+        set.add(PointLight::new(
+            Point3::new(0.0, 0.0, 0.0),
+            Rgb565::new(5, 10, 5),
+            5.0,
+        ));
         let tint = set.accumulate(Point3::new(0.0, 0.0, 0.0));
         assert!(tint.r() >= 10);
     }
@@ -188,8 +196,16 @@ mod tests {
     fn test_point_light_set_saturation() {
         let mut set: PointLightSet<4> = PointLightSet::new();
         // Two max-brightness lights at the same point saturate all channels
-        set.add(PointLight::new(Point3::new(0.0, 0.0, 0.0), Rgb565::CSS_WHITE, 5.0));
-        set.add(PointLight::new(Point3::new(0.0, 0.0, 0.0), Rgb565::CSS_WHITE, 5.0));
+        set.add(PointLight::new(
+            Point3::new(0.0, 0.0, 0.0),
+            Rgb565::CSS_WHITE,
+            5.0,
+        ));
+        set.add(PointLight::new(
+            Point3::new(0.0, 0.0, 0.0),
+            Rgb565::CSS_WHITE,
+            5.0,
+        ));
         let tint = set.accumulate(Point3::new(0.0, 0.0, 0.0));
         assert_eq!(tint.r(), 31);
         assert_eq!(tint.g(), 63);

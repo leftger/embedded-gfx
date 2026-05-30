@@ -37,11 +37,7 @@ impl<'a> BspScratch<'a> {
     /// Returns `true` if face `face_idx` was already emitted this frame.
     #[inline]
     pub fn is_marked(&self, face_idx: usize) -> bool {
-        self.face_visframe
-            .get(face_idx)
-            .copied()
-            .unwrap_or(0)
-            == self.frame
+        self.face_visframe.get(face_idx).copied().unwrap_or(0) == self.frame
     }
 
     /// Mark face `face_idx` as emitted for the current frame.

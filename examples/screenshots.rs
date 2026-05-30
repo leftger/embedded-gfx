@@ -1594,9 +1594,15 @@ fn gif_cloth() {
 
 // ── Scene 9: Particle fountain with depth fog ────────────────────────────────
 //
-// Three emitters (centre, left, right) advance 1.5 s of simulation so
-// particles are mid-flight.  Engine fog is set via K3dengine::set_fog so
-// distant sparks fade into the background.
+// Camera is placed close to the emitter so near particles (z_stored ≈ 10–14)
+// fall below fog.near and remain bright while the floor and particles that
+// travel away from the camera (z_stored ≈ 16–19) fade into the fog haze.
+//
+// The z-buffer stores (ndc_z * (far-near) + near) as an integer, so "fog
+// distance" is measured in those linearised NDC units, not raw world units.
+// With camera.near=0.4, camera.far=20.0 the useful range is ~10–19.
+// fog.near=12.0 keeps the nearest particles clear; fog.far=19.4 fully foggs
+// the floor and the particles that have drifted deepest into the scene.
 
 fn capture_particles_fog() {
     const W: usize = 800;
@@ -1606,69 +1612,61 @@ fn capture_particles_fog() {
     let mut commands = CommandBuffer::<8192>::new();
     let mut engine = K3dengine::new(W as u16, H as u16);
     engine.clear_caps();
-    engine.camera.set_position(Point3::new(0.0, 3.5, 11.0));
-    engine.camera.set_target(Point3::new(0.0, 2.0, 0.0));
 
-    let fog_color = Rgb565::new(1, 2, 5);
-    engine.set_fog(FogConfig::new(fog_color, 6.0, 22.0));
+    // Close camera so particles span the usable fog depth range.
+    engine.camera.set_position(Point3::new(0.0, 1.0, 3.5));
+    engine.camera.set_target(Point3::new(0.0, 2.5, 0.0));
+
+    // Fog in linearised-NDC units: below 12 → clear, above 19.4 → fully fogged.
+    let fog_color = Rgb565::new(3, 8, 20); // dark steel-blue haze
+    engine.set_fog(FogConfig::new(fog_color, 12.0, 19.4));
 
     let mut sys: ParticleSystem<256> = ParticleSystem::new();
 
-    // Centre – yellow-white sparks arcing upward
-    for i in 0..90u32 {
-        let a = i as f32 * 0.14;
-        let speed = 3.0 + (i % 5) as f32 * 0.35;
+    // Central fountain – bright yellow-orange sparks arc upward and outward in
+    // all horizontal directions.  Particles heading away from the camera
+    // (negative-z cone) travel deeper into the scene and pick up more fog.
+    for i in 0..100u32 {
+        let a = i as f32 * 0.1257; // covers full 2π
+        let speed = 2.8 + (i % 6) as f32 * 0.3;
         sys.spawn(ParticleSpawn {
-            position: Point3::new(0.0, 0.0, 0.0),
-            velocity: Vector3::new(a.cos() * 0.7, speed, a.sin() * 0.7),
+            position: Point3::new(0.0, 0.05, 0.0),
+            velocity: Vector3::new(a.cos() * 1.2, speed, a.sin() * 1.2),
             acceleration: Vector3::zeros(),
-            color_start: Rgb565::new(31, 60, 15),
-            color_end: Rgb565::new(28, 8, 0),
-            size_start: 0.22,
+            color_start: Rgb565::new(31, 58, 8), // bright yellow-green
+            color_end: Rgb565::new(31, 12, 0),   // deep orange
+            size_start: 0.24,
             size_end: 0.0,
-            lifetime: 1.8,
+            lifetime: 1.6,
         });
     }
-    // Left – blue-cyan jets
-    for i in 0..50u32 {
-        let a = i as f32 * 0.25;
+    // Secondary ring – cyan sparks, slightly lower launch speed
+    for i in 0..60u32 {
+        let a = i as f32 * 0.2094 + 0.5;
         sys.spawn(ParticleSpawn {
-            position: Point3::new(-3.5, 0.3, 0.0),
-            velocity: Vector3::new(a.cos() * 0.4, 2.5 + (i % 4) as f32 * 0.3, a.sin() * 0.4),
+            position: Point3::new(0.0, 0.05, 0.0),
+            velocity: Vector3::new(a.cos() * 0.9, 1.8 + (i % 4) as f32 * 0.35, a.sin() * 0.9),
             acceleration: Vector3::zeros(),
-            color_start: Rgb565::new(0, 45, 31),
-            color_end: Rgb565::new(0, 63, 20),
+            color_start: Rgb565::new(0, 55, 31), // cyan
+            color_end: Rgb565::new(0, 20, 18),   // teal
             size_start: 0.18,
             size_end: 0.0,
-            lifetime: 1.4,
-        });
-    }
-    // Right – magenta trails
-    for i in 0..50u32 {
-        let a = i as f32 * 0.25;
-        sys.spawn(ParticleSpawn {
-            position: Point3::new(3.5, 0.3, 0.0),
-            velocity: Vector3::new(a.cos() * 0.4, 2.5 + (i % 4) as f32 * 0.3, a.sin() * 0.4),
-            acceleration: Vector3::zeros(),
-            color_start: Rgb565::new(31, 15, 20),
-            color_end: Rgb565::new(18, 0, 8),
-            size_start: 0.18,
-            size_end: 0.0,
-            lifetime: 1.4,
+            lifetime: 1.3,
         });
     }
 
+    // Advance to roughly the peak of the fountain (≈ 0.83 s).
     let gravity = Vector3::new(0.0, -3.5, 0.0);
-    for _ in 0..45 {
+    for _ in 0..25 {
         sys.update(1.0 / 30.0, gravity);
     }
 
-    // Floor platform
+    // Wide floor so the fog gradient is visible in the background.
     let fv: &[[f32; 3]] = &[
-        [-9.0, 0.0, 5.0],
-        [9.0, 0.0, 5.0],
-        [9.0, 0.0, -5.0],
-        [-9.0, 0.0, -5.0],
+        [-12.0, 0.0, 8.0],
+        [12.0, 0.0, 8.0],
+        [12.0, 0.0, -8.0],
+        [-12.0, 0.0, -8.0],
     ];
     let ff: &[[usize; 3]] = &[[0, 1, 2], [0, 2, 3]];
     let fn_: &[[f32; 3]] = &[[0.0, 1.0, 0.0], [0.0, 1.0, 0.0]];
@@ -1684,7 +1682,7 @@ fn capture_particles_fog() {
     };
     let mut floor = K3dMesh::new(fgeom);
     floor.set_render_mode(RenderMode::SolidLightDir(Vector3::new(0.4, 1.0, 0.3)));
-    floor.set_color(Rgb565::new(5, 10, 7));
+    floor.set_color(Rgb565::new(8, 16, 10)); // brighter so fog tint is visible
 
     display.clear(fog_color).unwrap();
     zbuffer.fill(u32::MAX);
@@ -1728,36 +1726,20 @@ fn capture_point_lights() {
     engine.camera.set_target(Point3::new(0.0, 0.0, 0.0));
 
     engine.add_point_light(
-        PointLight::new(
-            Point3::new(-5.0, 1.5, 2.5),
-            Rgb565::new(31, 0, 0),
-            9.0,
-        )
-        .with_intensity(1.3),
+        PointLight::new(Point3::new(-5.0, 1.5, 2.5), Rgb565::new(31, 0, 0), 9.0)
+            .with_intensity(1.3),
     ); // red – left
     engine.add_point_light(
-        PointLight::new(
-            Point3::new(5.0, 1.5, 2.5),
-            Rgb565::new(0, 25, 31),
-            9.0,
-        )
-        .with_intensity(1.3),
+        PointLight::new(Point3::new(5.0, 1.5, 2.5), Rgb565::new(0, 25, 31), 9.0)
+            .with_intensity(1.3),
     ); // cyan – right
     engine.add_point_light(
-        PointLight::new(
-            Point3::new(0.0, 5.0, 0.0),
-            Rgb565::new(10, 55, 10),
-            8.0,
-        )
-        .with_intensity(1.0),
+        PointLight::new(Point3::new(0.0, 5.0, 0.0), Rgb565::new(10, 55, 10), 8.0)
+            .with_intensity(1.0),
     ); // green – overhead
     engine.add_point_light(
-        PointLight::new(
-            Point3::new(0.0, 0.5, 5.0),
-            Rgb565::new(31, 22, 8),
-            7.0,
-        )
-        .with_intensity(0.9),
+        PointLight::new(Point3::new(0.0, 0.5, 5.0), Rgb565::new(31, 22, 8), 7.0)
+            .with_intensity(0.9),
     ); // warm – front
 
     let (sv, sf, sn) = make_uv_sphere(10, 16);
@@ -1817,18 +1799,18 @@ fn gif_particles() {
     let mut commands = CommandBuffer::<4096>::new();
     let mut engine = K3dengine::new(W, H);
     engine.clear_caps();
-    engine.camera.set_position(Point3::new(0.0, 2.5, 8.5));
-    engine.camera.set_target(Point3::new(0.0, 1.5, 0.0));
+    engine.camera.set_position(Point3::new(0.0, 1.0, 3.5));
+    engine.camera.set_target(Point3::new(0.0, 2.5, 0.0));
 
-    let fog_color = Rgb565::new(1, 2, 4);
-    engine.set_fog(FogConfig::new(fog_color, 5.0, 18.0));
+    let fog_color = Rgb565::new(3, 8, 20);
+    engine.set_fog(FogConfig::new(fog_color, 12.0, 19.4));
 
     // Floor
     let fv: &[[f32; 3]] = &[
-        [-6.0, 0.0, 4.0],
-        [6.0, 0.0, 4.0],
-        [6.0, 0.0, -4.0],
-        [-6.0, 0.0, -4.0],
+        [-10.0, 0.0, 6.0],
+        [10.0, 0.0, 6.0],
+        [10.0, 0.0, -6.0],
+        [-10.0, 0.0, -6.0],
     ];
     let ff: &[[usize; 3]] = &[[0, 1, 2], [0, 2, 3]];
     let fn_: &[[f32; 3]] = &[[0.0, 1.0, 0.0], [0.0, 1.0, 0.0]];
@@ -1856,37 +1838,35 @@ fn gif_particles() {
     for i in 0..total {
         let t = Instant::now();
 
-        // Continuous spawn: 6 new particles per frame from three emitters
-        let a_base = i as f32 * 0.7;
-        for j in 0u32..3 {
-            let a = a_base + j as f32 * 2.094; // 2π/3
-            let speed = 2.8 + (j % 2) as f32 * 0.5;
+        // Continuous spawn: main fountain + cyan ring, 8 new particles/frame.
+        // Particles fly in all horizontal directions; those heading away from
+        // the camera pick up more fog as they travel deeper into the scene.
+        let a_base = i as f32 * 0.5;
+        for j in 0u32..5 {
+            let a = a_base + j as f32 * 1.257; // ~2π/5
+            let speed = 2.8 + (j % 3) as f32 * 0.4;
             sys.spawn(ParticleSpawn {
-                position: Point3::new(0.0, 0.1, 0.0),
-                velocity: Vector3::new(a.cos() * 0.6, speed, a.sin() * 0.6),
+                position: Point3::new(0.0, 0.05, 0.0),
+                velocity: Vector3::new(a.cos() * 1.2, speed, a.sin() * 1.2),
                 acceleration: Vector3::zeros(),
-                color_start: Rgb565::new(31, 58, 10),
-                color_end: Rgb565::new(25, 5, 0),
-                size_start: 0.18,
+                color_start: Rgb565::new(31, 58, 8),
+                color_end: Rgb565::new(31, 12, 0),
+                size_start: 0.22,
                 size_end: 0.0,
-                lifetime: 1.5,
+                lifetime: 1.6,
             });
-            // side emitters
-            let side_a = a + 1.0;
-            let side_x = if j % 2 == 0 { -2.5 } else { 2.5 };
+        }
+        for j in 0u32..3 {
+            let a = a_base + j as f32 * 2.094 + 0.5;
             sys.spawn(ParticleSpawn {
-                position: Point3::new(side_x, 0.1, 0.0),
-                velocity: Vector3::new(side_a.cos() * 0.3, 1.8 + j as f32 * 0.2, side_a.sin() * 0.3),
+                position: Point3::new(0.0, 0.05, 0.0),
+                velocity: Vector3::new(a.cos() * 0.9, 1.8 + (j % 3) as f32 * 0.3, a.sin() * 0.9),
                 acceleration: Vector3::zeros(),
-                color_start: if j % 2 == 0 {
-                    Rgb565::new(0, 40, 31)
-                } else {
-                    Rgb565::new(28, 15, 20)
-                },
-                color_end: Rgb565::new(0, 5, 8),
-                size_start: 0.15,
+                color_start: Rgb565::new(0, 55, 31),
+                color_end: Rgb565::new(0, 20, 18),
+                size_start: 0.16,
                 size_end: 0.0,
-                lifetime: 1.2,
+                lifetime: 1.3,
             });
         }
 

@@ -411,6 +411,8 @@ impl K3dengine {
                                 frame.zbuffer,
                                 frame.width,
                                 self.texture_mapping,
+                                self.stipple_mode,
+                                self.screen_tint,
                             );
                         }
                         other => {
@@ -423,6 +425,8 @@ impl K3dengine {
                                 self.fog.as_ref(),
                                 self.dither.as_ref(),
                                 self.texture_mapping,
+                                self.stipple_mode,
+                                self.screen_tint,
                             );
                         }
                     }
@@ -523,6 +527,8 @@ impl K3dengine {
                             self.fog.as_ref(),
                             self.dither.as_ref(),
                             self.texture_mapping,
+                            self.stipple_mode,
+                            self.screen_tint,
                         );
                     } else {
                         draw_zbuffered_lightmapped_mapped(
@@ -540,6 +546,8 @@ impl K3dengine {
                             frame.zbuffer,
                             frame.width,
                             self.texture_mapping,
+                            self.stipple_mode,
+                            self.screen_tint,
                         );
                     }
                     tel.triangles_emitted += 1;
@@ -630,6 +638,8 @@ impl K3dengine {
                         fb,
                         coverage,
                         self.texture_mapping,
+                        self.stipple_mode,
+                        self.screen_tint,
                     );
                     tel.triangles_emitted += 1;
                     emitted_any = true;

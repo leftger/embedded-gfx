@@ -12,6 +12,7 @@ use crate::{
     command_buffer::{CommandBuffer, RenderCommand},
     draw::{DitherConfig, FogConfig, draw_zbuffered_with_effects},
     error::{BudgetKind, RenderError},
+    retro::{ScreenTint, StippleMode},
 };
 
 pub struct FrameCtx<'a> {
@@ -95,6 +96,77 @@ fn clamp_bounds_to_frame(
     Some((clamped_min_x, clamped_min_y, clamped_max_x, clamped_max_y))
 }
 
+#[inline]
+fn apply_tint(color: Rgb565, tint: Option<ScreenTint>) -> Rgb565 {
+    if let Some(t) = tint {
+        t.apply(color)
+    } else {
+        color
+    }
+}
+
+fn tint_primitive(primitive: &DrawPrimitive, tint: Option<ScreenTint>) -> DrawPrimitive {
+    match primitive.clone() {
+        DrawPrimitive::ColoredPoint(p, color) => {
+            DrawPrimitive::ColoredPoint(p, apply_tint(color, tint))
+        }
+        DrawPrimitive::Line(points, color) => DrawPrimitive::Line(points, apply_tint(color, tint)),
+        DrawPrimitive::ColoredTriangle(points, color) => {
+            DrawPrimitive::ColoredTriangle(points, apply_tint(color, tint))
+        }
+        DrawPrimitive::ColoredTriangleWithDepth {
+            points,
+            depths,
+            color,
+        } => DrawPrimitive::ColoredTriangleWithDepth {
+            points,
+            depths,
+            color: apply_tint(color, tint),
+        },
+        DrawPrimitive::GouraudTriangle { points, colors } => DrawPrimitive::GouraudTriangle {
+            points,
+            colors: [
+                apply_tint(colors[0], tint),
+                apply_tint(colors[1], tint),
+                apply_tint(colors[2], tint),
+            ],
+        },
+        DrawPrimitive::GouraudTriangleWithDepth {
+            points,
+            depths,
+            colors,
+        } => DrawPrimitive::GouraudTriangleWithDepth {
+            points,
+            depths,
+            colors: [
+                apply_tint(colors[0], tint),
+                apply_tint(colors[1], tint),
+                apply_tint(colors[2], tint),
+            ],
+        },
+        DrawPrimitive::LightmappedTriangle {
+            points,
+            depths,
+            ws,
+            surface_uvs,
+            lm_uvs,
+            texture_id,
+            lightmap_id,
+            dynamic_tint,
+        } => DrawPrimitive::LightmappedTriangle {
+            points,
+            depths,
+            ws,
+            surface_uvs,
+            lm_uvs,
+            texture_id,
+            lightmap_id,
+            dynamic_tint: apply_tint(dynamic_tint, tint),
+        },
+        other => other,
+    }
+}
+
 pub fn execute_commands<D, const MAX: usize>(
     fb: &mut D,
     frame: &mut FrameCtx<'_>,
@@ -105,7 +177,15 @@ where
     D: DrawTarget<Color = Rgb565> + OriginDimensions,
     D::Error: Debug,
 {
-    let _ = execute_commands_with_dirty_region_effects(fb, frame, cmd, fog, None)?;
+    let _ = execute_commands_with_dirty_region_effects(
+        fb,
+        frame,
+        cmd,
+        fog,
+        None,
+        None,
+        StippleMode::Off,
+    )?;
     Ok(())
 }
 
@@ -119,7 +199,7 @@ where
     D: DrawTarget<Color = Rgb565> + OriginDimensions,
     D::Error: Debug,
 {
-    execute_commands_with_dirty_region_effects(fb, frame, cmd, fog, None)
+    execute_commands_with_dirty_region_effects(fb, frame, cmd, fog, None, None, StippleMode::Off)
 }
 
 pub fn execute_commands_with_dirty_region_effects<D, const MAX: usize>(
@@ -128,6 +208,8 @@ pub fn execute_commands_with_dirty_region_effects<D, const MAX: usize>(
     cmd: &CommandBuffer<MAX>,
     fog: Option<&FogConfig>,
     dither: Option<&DitherConfig>,
+    screen_tint: Option<ScreenTint>,
+    _stipple_mode: StippleMode,
 ) -> Result<Option<DirtyRegion>, RenderError>
 where
     D: DrawTarget<Color = Rgb565> + OriginDimensions,
@@ -141,9 +223,10 @@ where
             RenderCommand::ClearColor(color) => {
                 let w = frame.width as i32;
                 let h = frame.height as i32;
+                let clear_color = apply_tint(*color, screen_tint);
                 for y in 0..h {
                     for x in 0..w {
-                        fb.draw_iter([Pixel(Point::new(x, y), *color)])
+                        fb.draw_iter([Pixel(Point::new(x, y), clear_color)])
                             .map_err(|_| {
                                 RenderError::InvalidInput("draw target rejected clear write")
                             })?;
@@ -154,14 +237,8 @@ where
                 frame.zbuffer.fill(*value);
             }
             RenderCommand::Draw(primitive) => {
-                draw_zbuffered_with_effects(
-                    primitive.clone(),
-                    fb,
-                    frame.zbuffer,
-                    frame.width,
-                    fog,
-                    dither,
-                );
+                let prim = tint_primitive(primitive, screen_tint);
+                draw_zbuffered_with_effects(prim, fb, frame.zbuffer, frame.width, fog, dither);
                 let (min_x, min_y, max_x, max_y) = primitive_bounds(primitive);
                 if let Some((min_x, min_y, max_x, max_y)) =
                     clamp_bounds_to_frame(min_x, min_y, max_x, max_y, frame.width, frame.height)
@@ -195,7 +272,16 @@ where
     D: DrawTarget<Color = Rgb565> + OriginDimensions,
     D::Error: Debug,
 {
-    execute_commands_tiled_effects::<D, MAX, BIN_CAP>(fb, frame, cmd, tile, fog, None)
+    execute_commands_tiled_effects::<D, MAX, BIN_CAP>(
+        fb,
+        frame,
+        cmd,
+        tile,
+        fog,
+        None,
+        None,
+        StippleMode::Off,
+    )
 }
 
 pub fn execute_commands_tiled_effects<D, const MAX: usize, const BIN_CAP: usize>(
@@ -205,6 +291,8 @@ pub fn execute_commands_tiled_effects<D, const MAX: usize, const BIN_CAP: usize>
     tile: crate::tilebin::TileConfig,
     fog: Option<&FogConfig>,
     dither: Option<&DitherConfig>,
+    screen_tint: Option<ScreenTint>,
+    _stipple_mode: StippleMode,
 ) -> Result<crate::tilebin::TileBinStats, RenderError>
 where
     D: DrawTarget<Color = Rgb565> + OriginDimensions,
@@ -220,9 +308,10 @@ where
             RenderCommand::ClearColor(color) => {
                 let w = frame.width as i32;
                 let h = frame.height as i32;
+                let clear_color = apply_tint(*color, screen_tint);
                 for y in 0..h {
                     for x in 0..w {
-                        fb.draw_iter([Pixel(Point::new(x, y), *color)])
+                        fb.draw_iter([Pixel(Point::new(x, y), clear_color)])
                             .map_err(|_| {
                                 RenderError::InvalidInput("draw target rejected clear write")
                             })?;
@@ -242,14 +331,8 @@ where
             let Some(RenderCommand::Draw(primitive)) = cmd.get(idx) else {
                 continue;
             };
-            draw_zbuffered_with_effects(
-                primitive.clone(),
-                fb,
-                frame.zbuffer,
-                frame.width,
-                fog,
-                dither,
-            );
+            let prim = tint_primitive(primitive, screen_tint);
+            draw_zbuffered_with_effects(prim, fb, frame.zbuffer, frame.width, fog, dither);
             executed_draw[idx] = true;
         }
     }

@@ -72,7 +72,7 @@ pub use input::InputState;
 pub use lights::{PointLight, PointLightSet};
 pub use particles::{ParticleSpawn, ParticleSystem};
 pub use renderer::{DirtyRegion, FrameCtx};
-pub use retro::{RetroStyle, TextureMapping};
+pub use retro::{LightLevels, RetroStyle, ScreenTint, StippleMode, TextureMapping};
 pub use tilebin::{TileBinStats, TileConfig};
 pub use transform_anim::{AnimationPlayer, SampledTransform, TransformKeyframe, TransformTrack};
 pub use tween::{Easing, Tween, Tween3, apply_easing, lerp, lerp3, scale_rgb565};
@@ -143,6 +143,12 @@ pub struct K3dengine {
     vertex_snap_bits: u8,
     /// Texture interpolation mode for textured raster paths.
     texture_mapping: crate::retro::TextureMapping,
+    /// Sector brightness behavior.
+    light_levels: crate::retro::LightLevels,
+    /// Optional stipple mode for textured/lightmapped passes.
+    stipple_mode: crate::retro::StippleMode,
+    /// Optional full-screen tint blended during rasterization.
+    screen_tint: Option<crate::retro::ScreenTint>,
     /// Runtime point lights (max 16).  Applied at face-centre granularity
     /// during `record` for mesh geometry and at face level for BSP.
     point_lights: heapless::Vec<crate::lights::PointLight, 16>,
@@ -176,6 +182,9 @@ impl K3dengine {
             dither: None,
             vertex_snap_bits: 0,
             texture_mapping: crate::retro::TextureMapping::PerspectiveCorrect,
+            light_levels: crate::retro::LightLevels::Linear,
+            stipple_mode: crate::retro::StippleMode::Off,
+            screen_tint: None,
             point_lights: heapless::Vec::new(),
         }
     }
@@ -210,12 +219,35 @@ impl K3dengine {
         self.texture_mapping = mapping;
     }
 
+    /// Select sector light quantization model.
+    pub fn set_light_levels(&mut self, levels: crate::retro::LightLevels) {
+        self.light_levels = levels;
+    }
+
+    /// Set stipple mode used by textured/lightmapped raster paths.
+    pub fn set_stipple_mode(&mut self, mode: crate::retro::StippleMode) {
+        self.stipple_mode = mode;
+    }
+
+    /// Set an optional full-screen tint.
+    pub fn set_screen_tint(&mut self, tint: crate::retro::ScreenTint) {
+        self.screen_tint = Some(tint);
+    }
+
+    /// Disable full-screen tint.
+    pub fn clear_screen_tint(&mut self) {
+        self.screen_tint = None;
+    }
+
     /// Apply a coarse retro visual preset.
     pub fn apply_retro_style(&mut self, style: crate::retro::RetroStyle) {
         self.fog = style.fog;
         self.dither = style.dither;
         self.set_vertex_snap_bits(style.vertex_snap_bits);
         self.texture_mapping = style.texture_mapping;
+        self.light_levels = style.light_levels;
+        self.stipple_mode = style.stipple_mode;
+        self.screen_tint = style.screen_tint;
     }
 
     /// Add a dynamic point light.  Returns `false` when the 16-light limit
@@ -252,6 +284,39 @@ impl K3dengine {
             (base.r() as u16 + tint.r() as u16).min(31) as u8,
             (base.g() as u16 + tint.g() as u16).min(63) as u8,
             (base.b() as u16 + tint.b() as u16).min(31) as u8,
+        )
+    }
+
+    /// Non-linear 32-level light ramp for Doom-style sector attenuation.
+    const DOOM_LIGHT_TABLE: [u8; 32] = [
+        8, 12, 16, 20, 24, 28, 34, 40, 48, 56, 64, 72, 82, 92, 102, 112, 124, 136, 148, 160, 172,
+        184, 196, 206, 216, 224, 232, 238, 244, 248, 252, 255,
+    ];
+
+    #[inline]
+    fn sector_shaded_color(
+        &self,
+        base: Rgb565,
+        brightness: u8,
+        face_center: Point3<f32>,
+    ) -> Rgb565 {
+        let level_u8 = match self.light_levels {
+            crate::retro::LightLevels::Linear => brightness,
+            crate::retro::LightLevels::Doom32 => {
+                let base_level = (brightness as usize * 31) / 255;
+                let distance = (face_center - self.camera.position).norm();
+                // 2.0 buckets per world-unit gives coarse banding similar to classic software renderers.
+                let distance_drop = (distance * 2.0) as usize;
+                let idx = base_level.saturating_sub(distance_drop).min(31);
+                Self::DOOM_LIGHT_TABLE[idx]
+            }
+        };
+
+        let factor = level_u8 as f32 / 255.0;
+        Rgb565::new(
+            (base.r() as f32 * factor) as u8,
+            (base.g() as f32 * factor) as u8,
+            (base.b() as f32 * factor) as u8,
         )
     }
 
@@ -1032,24 +1097,14 @@ impl K3dengine {
                 }
 
                 RenderMode::SectorBright(brightness) => {
-                    let factor = brightness as f32 / 255.0;
-                    let scaled_r = (mesh.color.r() as f32 * factor) as u8;
-                    let scaled_g = (mesh.color.g() as f32 * factor) as u8;
-                    let scaled_b = (mesh.color.b() as f32 * factor) as u8;
-                    let scaled_color = Rgb565::new(scaled_r, scaled_g, scaled_b);
-
                     if geometry.normals.is_empty() {
                         for face in geometry.faces.iter() {
-                            let color = if !self.point_lights.is_empty() {
-                                let wc = Self::face_world_center(
-                                    face,
-                                    geometry.vertices,
-                                    mesh.model_matrix,
-                                );
-                                Self::add_tint(scaled_color, self.light_tint_at(wc))
-                            } else {
-                                scaled_color
-                            };
+                            let wc =
+                                Self::face_world_center(face, geometry.vertices, mesh.model_matrix);
+                            let mut color = self.sector_shaded_color(mesh.color, brightness, wc);
+                            if !self.point_lights.is_empty() {
+                                color = Self::add_tint(color, self.light_tint_at(wc));
+                            }
                             let v = &geometry.vertices;
                             let clip = [
                                 transform_matrix
@@ -1088,16 +1143,12 @@ impl K3dengine {
                             ) {
                                 continue;
                             }
-                            let color = if !self.point_lights.is_empty() {
-                                let wc = Self::face_world_center(
-                                    face,
-                                    geometry.vertices,
-                                    mesh.model_matrix,
-                                );
-                                Self::add_tint(scaled_color, self.light_tint_at(wc))
-                            } else {
-                                scaled_color
-                            };
+                            let wc =
+                                Self::face_world_center(face, geometry.vertices, mesh.model_matrix);
+                            let mut color = self.sector_shaded_color(mesh.color, brightness, wc);
+                            if !self.point_lights.is_empty() {
+                                color = Self::add_tint(color, self.light_tint_at(wc));
+                            }
                             let v = &geometry.vertices;
                             let clip = [
                                 transform_matrix
@@ -1441,6 +1492,8 @@ impl K3dengine {
             commands,
             self.fog.as_ref(),
             self.dither.as_ref(),
+            self.screen_tint,
+            self.stipple_mode,
         )
     }
 
@@ -1463,6 +1516,8 @@ impl K3dengine {
             tile,
             self.fog.as_ref(),
             self.dither.as_ref(),
+            self.screen_tint,
+            self.stipple_mode,
         )
     }
 }

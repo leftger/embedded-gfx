@@ -33,6 +33,9 @@
 use core::f32::consts::PI;
 use nalgebra::{Point3, Vector3};
 
+#[cfg(not(feature = "std"))]
+use micromath::F32Ext;
+
 use crate::input::InputState;
 
 /// Number of AABB resolution passes per tick.

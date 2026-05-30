@@ -180,6 +180,3 @@ mod tests {
         );
     }
 }
-
-// test
-fn _unused() {}

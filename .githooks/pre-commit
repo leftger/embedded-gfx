@@ -1,14 +1,25 @@
 #!/usr/bin/env bash
+# Pre-commit hook: format staged Rust files and run the test suite.
+#
+# Activation (one-time per clone):
+#   git config core.hooksPath .githooks
+#
+# Behaviour:
+#   1. Runs `cargo fmt --all` and re-stages any files that were already staged.
+#   2. Runs `cargo test` to catch compile errors and failing tests before the
+#      commit lands. Only triggered when at least one .rs or Cargo.toml file is
+#      staged — pure doc/asset commits are unaffected.
 set -euo pipefail
 
 if ! command -v cargo >/dev/null 2>&1; then
-  echo "pre-commit: cargo not found, skipping rustfmt." >&2
+  echo "pre-commit: cargo not found, skipping." >&2
   exit 0
 fi
 
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
 
+# Collect staged Rust-related files.
 staged_files="$(git diff --cached --name-only --diff-filter=ACMR)"
 if [[ -z "$staged_files" ]]; then
   exit 0
@@ -31,35 +42,5 @@ cargo fmt --all
 echo "pre-commit: staging rustfmt updates"
 git add -- "${rust_related[@]}"
 
-#!/bin/sh
-# Auto-format staged Rust source with cargo fmt before each commit.
-#
-# Files already in the index that cargo fmt reformats are re-staged
-# automatically so the commit is always formatted without disturbing
-# unstaged work in the working tree.
-#
-# Activation (one-time per clone):
-#   git config core.hooksPath .githooks
-
-set -e
-
-if ! command -v cargo >/dev/null 2>&1; then
-    echo "pre-commit: cargo not found, skipping fmt"
-    exit 0
-fi
-
-# Collect staged .rs paths (added, copied, modified, renamed in the index).
-staged_rs=$(git diff --cached --name-only --diff-filter=ACMR | grep '\.rs$' || true)
-
-if [ -z "$staged_rs" ]; then
-    exit 0
-fi
-
-echo "pre-commit: cargo fmt --all"
-cargo fmt --all
-
-# Re-stage only the files that were already staged so that any unstaged edits
-# in the working tree are not accidentally included in this commit.
-echo "$staged_rs" | while IFS= read -r f; do
-    [ -f "$f" ] && git add "$f"
-done
+echo "pre-commit: running cargo test"
+cargo test

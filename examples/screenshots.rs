@@ -14,7 +14,9 @@ use embedded_3dgfx::draw::{
     DitherConfig, FogConfig, draw_zbuffered, draw_zbuffered_with_effects,
     draw_zbuffered_with_textures,
 };
+use embedded_3dgfx::lights::PointLight;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
+use embedded_3dgfx::particles::{ParticleSpawn, ParticleSystem};
 use embedded_3dgfx::physics::{Collider, PhysicsWorld, RigidBody, sync_body_to_mesh};
 use embedded_3dgfx::renderer::FrameCtx;
 use embedded_3dgfx::softbody::SoftBody;
@@ -93,12 +95,16 @@ fn main() {
     capture_fog_dither();
     capture_newtons_cradle();
     capture_texture();
+    capture_particles_fog();
+    capture_point_lights();
     // GIFs
     gif_rotating_cube();
     gif_suzanne();
     gif_bouncing_balls();
     gif_cloth();
     gif_newtons_cradle();
+    gif_particles();
+    gif_point_lights();
     // Perf
     benchmark();
     println!("All assets saved to assets/");
@@ -1584,6 +1590,433 @@ fn gif_cloth() {
         frames.push(frame_rgb(&display));
     }
     save_gif(&mut frames, W, H, "assets/gif_cloth.gif", 4);
+}
+
+// ── Scene 9: Particle fountain with depth fog ────────────────────────────────
+//
+// Three emitters (centre, left, right) advance 1.5 s of simulation so
+// particles are mid-flight.  Engine fog is set via K3dengine::set_fog so
+// distant sparks fade into the background.
+
+fn capture_particles_fog() {
+    const W: usize = 800;
+    const H: usize = 600;
+    let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(W as u32, H as u32));
+    let mut zbuffer = vec![u32::MAX; W * H];
+    let mut commands = CommandBuffer::<8192>::new();
+    let mut engine = K3dengine::new(W as u16, H as u16);
+    engine.clear_caps();
+    engine.camera.set_position(Point3::new(0.0, 3.5, 11.0));
+    engine.camera.set_target(Point3::new(0.0, 2.0, 0.0));
+
+    let fog_color = Rgb565::new(1, 2, 5);
+    engine.set_fog(FogConfig::new(fog_color, 6.0, 22.0));
+
+    let mut sys: ParticleSystem<256> = ParticleSystem::new();
+
+    // Centre – yellow-white sparks arcing upward
+    for i in 0..90u32 {
+        let a = i as f32 * 0.14;
+        let speed = 3.0 + (i % 5) as f32 * 0.35;
+        sys.spawn(ParticleSpawn {
+            position: Point3::new(0.0, 0.0, 0.0),
+            velocity: Vector3::new(a.cos() * 0.7, speed, a.sin() * 0.7),
+            acceleration: Vector3::zeros(),
+            color_start: Rgb565::new(31, 60, 15),
+            color_end: Rgb565::new(28, 8, 0),
+            size_start: 0.22,
+            size_end: 0.0,
+            lifetime: 1.8,
+        });
+    }
+    // Left – blue-cyan jets
+    for i in 0..50u32 {
+        let a = i as f32 * 0.25;
+        sys.spawn(ParticleSpawn {
+            position: Point3::new(-3.5, 0.3, 0.0),
+            velocity: Vector3::new(a.cos() * 0.4, 2.5 + (i % 4) as f32 * 0.3, a.sin() * 0.4),
+            acceleration: Vector3::zeros(),
+            color_start: Rgb565::new(0, 45, 31),
+            color_end: Rgb565::new(0, 63, 20),
+            size_start: 0.18,
+            size_end: 0.0,
+            lifetime: 1.4,
+        });
+    }
+    // Right – magenta trails
+    for i in 0..50u32 {
+        let a = i as f32 * 0.25;
+        sys.spawn(ParticleSpawn {
+            position: Point3::new(3.5, 0.3, 0.0),
+            velocity: Vector3::new(a.cos() * 0.4, 2.5 + (i % 4) as f32 * 0.3, a.sin() * 0.4),
+            acceleration: Vector3::zeros(),
+            color_start: Rgb565::new(31, 15, 20),
+            color_end: Rgb565::new(18, 0, 8),
+            size_start: 0.18,
+            size_end: 0.0,
+            lifetime: 1.4,
+        });
+    }
+
+    let gravity = Vector3::new(0.0, -3.5, 0.0);
+    for _ in 0..45 {
+        sys.update(1.0 / 30.0, gravity);
+    }
+
+    // Floor platform
+    let fv: &[[f32; 3]] = &[
+        [-9.0, 0.0, 5.0],
+        [9.0, 0.0, 5.0],
+        [9.0, 0.0, -5.0],
+        [-9.0, 0.0, -5.0],
+    ];
+    let ff: &[[usize; 3]] = &[[0, 1, 2], [0, 2, 3]];
+    let fn_: &[[f32; 3]] = &[[0.0, 1.0, 0.0], [0.0, 1.0, 0.0]];
+    let fgeom = Geometry {
+        vertices: fv,
+        faces: ff,
+        colors: &[],
+        lines: &[],
+        normals: fn_,
+        vertex_normals: &[],
+        uvs: &[],
+        texture_id: None,
+    };
+    let mut floor = K3dMesh::new(fgeom);
+    floor.set_render_mode(RenderMode::SolidLightDir(Vector3::new(0.4, 1.0, 0.3)));
+    floor.set_color(Rgb565::new(5, 10, 7));
+
+    display.clear(fog_color).unwrap();
+    zbuffer.fill(u32::MAX);
+
+    engine
+        .record(std::iter::once(&floor), &mut commands, None)
+        .unwrap();
+    let live = sys.record(&engine, &mut commands);
+
+    let mut frame = FrameCtx {
+        zbuffer: &mut zbuffer,
+        width: W,
+        height: H,
+    };
+    engine
+        .execute::<_, 8192>(&mut display, &mut frame, &commands, None)
+        .unwrap();
+
+    draw_hud(
+        &mut display,
+        &format!("particles + fog | {} live", live),
+        "ParticleSystem<256>  K3dengine::set_fog",
+    );
+    save(&display, "assets/screenshot_particles_fog.png");
+}
+
+// ── Scene 10: Dynamic point lights – coloured spheres ────────────────────────
+//
+// 3×3 grid of neutral-coloured spheres lit by four moving point lights
+// (red, cyan, green, warm-white) placed at the corners and above.
+
+fn capture_point_lights() {
+    const W: usize = 800;
+    const H: usize = 600;
+    let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(W as u32, H as u32));
+    let mut zbuffer = vec![u32::MAX; W * H];
+    let mut commands = CommandBuffer::<8192>::new();
+    let mut engine = K3dengine::new(W as u16, H as u16);
+    engine.clear_caps();
+    engine.camera.set_position(Point3::new(0.0, 3.0, 11.0));
+    engine.camera.set_target(Point3::new(0.0, 0.0, 0.0));
+
+    engine.add_point_light(
+        PointLight::new(
+            Point3::new(-5.0, 1.5, 2.5),
+            Rgb565::new(31, 0, 0),
+            9.0,
+        )
+        .with_intensity(1.3),
+    ); // red – left
+    engine.add_point_light(
+        PointLight::new(
+            Point3::new(5.0, 1.5, 2.5),
+            Rgb565::new(0, 25, 31),
+            9.0,
+        )
+        .with_intensity(1.3),
+    ); // cyan – right
+    engine.add_point_light(
+        PointLight::new(
+            Point3::new(0.0, 5.0, 0.0),
+            Rgb565::new(10, 55, 10),
+            8.0,
+        )
+        .with_intensity(1.0),
+    ); // green – overhead
+    engine.add_point_light(
+        PointLight::new(
+            Point3::new(0.0, 0.5, 5.0),
+            Rgb565::new(31, 22, 8),
+            7.0,
+        )
+        .with_intensity(0.9),
+    ); // warm – front
+
+    let (sv, sf, sn) = make_uv_sphere(10, 16);
+    let base_geom = Geometry {
+        vertices: &sv,
+        faces: &sf,
+        colors: &[],
+        lines: &[],
+        normals: &sn,
+        vertex_normals: &[],
+        uvs: &[],
+        texture_id: None,
+    };
+    let light_dir = Vector3::new(0.2, 0.5, -0.4).normalize();
+    let sphere_meshes: Vec<K3dMesh> = (0..9)
+        .map(|i| {
+            let x = (i % 3) as f32 * 3.2 - 3.2;
+            let y = (i / 3) as f32 * 2.8 - 2.8;
+            let mut m = K3dMesh::new(base_geom.clone());
+            m.set_render_mode(RenderMode::SolidLightDir(light_dir));
+            m.set_color(Rgb565::new(7, 14, 9));
+            m.set_position(x, y, 0.0);
+            m
+        })
+        .collect();
+
+    display.clear(Rgb565::new(0, 1, 2)).unwrap();
+    zbuffer.fill(u32::MAX);
+
+    engine
+        .record(sphere_meshes.iter(), &mut commands, None)
+        .unwrap();
+    let mut frame = FrameCtx {
+        zbuffer: &mut zbuffer,
+        width: W,
+        height: H,
+    };
+    engine
+        .execute::<_, 8192>(&mut display, &mut frame, &commands, None)
+        .unwrap();
+
+    draw_hud(
+        &mut display,
+        "point lights | 4 lights  9 spheres",
+        "K3dengine::add_point_light  additive tint",
+    );
+    save(&display, "assets/screenshot_point_lights.png");
+}
+
+// ── GIF 6: Animated particle fountain ────────────────────────────────────────
+
+fn gif_particles() {
+    const W: u16 = 320;
+    const H: u16 = 240;
+    let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(W as u32, H as u32));
+    let mut zbuffer = vec![u32::MAX; W as usize * H as usize];
+    let mut commands = CommandBuffer::<4096>::new();
+    let mut engine = K3dengine::new(W, H);
+    engine.clear_caps();
+    engine.camera.set_position(Point3::new(0.0, 2.5, 8.5));
+    engine.camera.set_target(Point3::new(0.0, 1.5, 0.0));
+
+    let fog_color = Rgb565::new(1, 2, 4);
+    engine.set_fog(FogConfig::new(fog_color, 5.0, 18.0));
+
+    // Floor
+    let fv: &[[f32; 3]] = &[
+        [-6.0, 0.0, 4.0],
+        [6.0, 0.0, 4.0],
+        [6.0, 0.0, -4.0],
+        [-6.0, 0.0, -4.0],
+    ];
+    let ff: &[[usize; 3]] = &[[0, 1, 2], [0, 2, 3]];
+    let fn_: &[[f32; 3]] = &[[0.0, 1.0, 0.0], [0.0, 1.0, 0.0]];
+    let fgeom = Geometry {
+        vertices: fv,
+        faces: ff,
+        colors: &[],
+        lines: &[],
+        normals: fn_,
+        vertex_normals: &[],
+        uvs: &[],
+        texture_id: None,
+    };
+    let mut floor = K3dMesh::new(fgeom);
+    floor.set_render_mode(RenderMode::SolidLightDir(Vector3::new(0.4, 1.0, 0.3)));
+    floor.set_color(Rgb565::new(5, 10, 6));
+
+    let gravity = Vector3::new(0.0, -4.0, 0.0);
+    let mut sys: ParticleSystem<256> = ParticleSystem::new();
+
+    let total = 90u32;
+    let mut frames: Vec<Vec<u8>> = Vec::with_capacity(total as usize);
+    let mut avg_ms = 0.0f64;
+
+    for i in 0..total {
+        let t = Instant::now();
+
+        // Continuous spawn: 6 new particles per frame from three emitters
+        let a_base = i as f32 * 0.7;
+        for j in 0u32..3 {
+            let a = a_base + j as f32 * 2.094; // 2π/3
+            let speed = 2.8 + (j % 2) as f32 * 0.5;
+            sys.spawn(ParticleSpawn {
+                position: Point3::new(0.0, 0.1, 0.0),
+                velocity: Vector3::new(a.cos() * 0.6, speed, a.sin() * 0.6),
+                acceleration: Vector3::zeros(),
+                color_start: Rgb565::new(31, 58, 10),
+                color_end: Rgb565::new(25, 5, 0),
+                size_start: 0.18,
+                size_end: 0.0,
+                lifetime: 1.5,
+            });
+            // side emitters
+            let side_a = a + 1.0;
+            let side_x = if j % 2 == 0 { -2.5 } else { 2.5 };
+            sys.spawn(ParticleSpawn {
+                position: Point3::new(side_x, 0.1, 0.0),
+                velocity: Vector3::new(side_a.cos() * 0.3, 1.8 + j as f32 * 0.2, side_a.sin() * 0.3),
+                acceleration: Vector3::zeros(),
+                color_start: if j % 2 == 0 {
+                    Rgb565::new(0, 40, 31)
+                } else {
+                    Rgb565::new(28, 15, 20)
+                },
+                color_end: Rgb565::new(0, 5, 8),
+                size_start: 0.15,
+                size_end: 0.0,
+                lifetime: 1.2,
+            });
+        }
+
+        sys.update(1.0 / 30.0, gravity);
+
+        display.clear(fog_color).unwrap();
+        zbuffer.fill(u32::MAX);
+        engine
+            .record(std::iter::once(&floor), &mut commands, None)
+            .unwrap();
+        let live = sys.record(&engine, &mut commands);
+        let mut frame = FrameCtx {
+            zbuffer: &mut zbuffer,
+            width: W as usize,
+            height: H as usize,
+        };
+        engine
+            .execute::<_, 4096>(&mut display, &mut frame, &commands, None)
+            .unwrap();
+
+        let ms = t.elapsed().as_secs_f64() * 1000.0;
+        avg_ms = if i == 0 { ms } else { 0.2 * ms + 0.8 * avg_ms };
+        draw_hud(
+            &mut display,
+            &format!("particles | {} live", live),
+            &format!("render {avg_ms:.2}ms"),
+        );
+        frames.push(frame_rgb(&display));
+    }
+    save_gif(&mut frames, W, H, "assets/gif_particles.gif", 4);
+}
+
+// ── GIF 7: Orbiting point lights ──────────────────────────────────────────────
+//
+// Two lights on opposite sides of a sphere grid orbit in opposite directions,
+// continuously repainting each sphere with a different colour mix.
+
+fn gif_point_lights() {
+    const W: u16 = 320;
+    const H: u16 = 240;
+    let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(W as u32, H as u32));
+    let mut zbuffer = vec![u32::MAX; W as usize * H as usize];
+    let mut commands = CommandBuffer::<4096>::new();
+    let mut engine = K3dengine::new(W, H);
+    engine.clear_caps();
+    engine.camera.set_position(Point3::new(0.0, 3.0, 9.0));
+    engine.camera.set_target(Point3::new(0.0, 0.0, 0.0));
+
+    let (sv, sf, sn) = make_uv_sphere(10, 16);
+    let base_geom = Geometry {
+        vertices: &sv,
+        faces: &sf,
+        colors: &[],
+        lines: &[],
+        normals: &sn,
+        vertex_normals: &[],
+        uvs: &[],
+        texture_id: None,
+    };
+    let light_dir = Vector3::new(0.2, 0.6, -0.3).normalize();
+    let sphere_meshes: Vec<K3dMesh> = (0..9)
+        .map(|i| {
+            let x = (i % 3) as f32 * 2.6 - 2.6;
+            let y = (i / 3) as f32 * 2.4 - 2.4;
+            let mut m = K3dMesh::new(base_geom.clone());
+            m.set_render_mode(RenderMode::SolidLightDir(light_dir));
+            m.set_color(Rgb565::new(7, 14, 9));
+            m.set_position(x, y, 0.0);
+            m
+        })
+        .collect();
+
+    let total = 72u32;
+    let mut frames: Vec<Vec<u8>> = Vec::with_capacity(total as usize);
+    let mut avg_ms = 0.0f64;
+
+    for i in 0..total {
+        let angle = i as f32 * (2.0 * PI / total as f32);
+
+        engine.clear_point_lights();
+        engine.add_point_light(
+            PointLight::new(
+                Point3::new(angle.cos() * 5.5, 1.5, angle.sin() * 5.5),
+                Rgb565::new(31, 8, 0),
+                10.0,
+            )
+            .with_intensity(1.4),
+        ); // red-orange orbiting CW
+        engine.add_point_light(
+            PointLight::new(
+                Point3::new((-angle).cos() * 5.5, 1.5, (-angle).sin() * 5.5),
+                Rgb565::new(0, 22, 31),
+                10.0,
+            )
+            .with_intensity(1.4),
+        ); // blue orbiting CCW
+        engine.add_point_light(
+            PointLight::new(
+                Point3::new((angle * 0.5).sin() * 3.5, 4.5, (angle * 0.5).cos() * 3.5),
+                Rgb565::new(12, 50, 8),
+                8.0,
+            )
+            .with_intensity(0.9),
+        ); // slow green sweep above
+
+        display.clear(Rgb565::new(0, 1, 2)).unwrap();
+        zbuffer.fill(u32::MAX);
+
+        let t = Instant::now();
+        engine
+            .record(sphere_meshes.iter(), &mut commands, None)
+            .unwrap();
+        let mut frame = FrameCtx {
+            zbuffer: &mut zbuffer,
+            width: W as usize,
+            height: H as usize,
+        };
+        engine
+            .execute::<_, 4096>(&mut display, &mut frame, &commands, None)
+            .unwrap();
+        let ms = t.elapsed().as_secs_f64() * 1000.0;
+        avg_ms = if i == 0 { ms } else { 0.2 * ms + 0.8 * avg_ms };
+        draw_hud(
+            &mut display,
+            "point lights | 3 orbiting  9 spheres",
+            &format!("render {avg_ms:.2}ms"),
+        );
+        frames.push(frame_rgb(&display));
+    }
+    save_gif(&mut frames, W, H, "assets/gif_point_lights.gif", 5);
 }
 
 // ── Benchmark: measure frame times for key scenarios ─────────────────────────

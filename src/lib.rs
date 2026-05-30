@@ -18,6 +18,7 @@ use nalgebra::ComplexField;
 
 pub mod animation;
 pub mod billboard;
+pub mod bsp;
 pub mod bridge;
 pub mod camera;
 pub mod command_buffer;
@@ -94,6 +95,20 @@ pub enum DrawPrimitive {
         ws: [f32; 3],
         uvs: [[f32; 2]; 3],
         texture_id: u32,
+    },
+    /// Perspective-correct textured triangle with baked lightmap.
+    ///
+    /// The final pixel colour is `surface_texture.sample(su,sv) * lightmap.sample(lu,lv)`,
+    /// where `*` denotes per-channel normalised multiply.
+    /// Set `lightmap_id = u32::MAX` to fall back to full-bright surface colour.
+    LightmappedTriangle {
+        points: [Point2<i32>; 3],
+        depths: [f32; 3],
+        ws: [f32; 3],
+        surface_uvs: [[f32; 2]; 3],
+        lm_uvs: [[f32; 2]; 3],
+        texture_id: u32,
+        lightmap_id: u32,
     },
 }
 

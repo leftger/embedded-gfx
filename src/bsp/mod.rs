@@ -1,0 +1,844 @@
+//! BSP world rendering — `K3dengine::record_bsp` and `render_bsp_direct`.
+//!
+//! # API overview
+//!
+//! ```text
+//! // Record/execute split (fits the existing pipeline):
+//! engine.record_bsp(&world, &mut scratch, &mut commands, Some(&mut tel))?;
+//! engine.execute_bsp_textured(fb, &mut frame, &commands, &tex_mgr, None)?;
+//!
+//! // One-shot direct render (skips command buffer, slightly lower overhead):
+//! engine.render_bsp_direct(&world, &mut scratch, &tex_mgr, fb, &mut frame, Some(&mut tel))?;
+//!
+//! // M5: no z-buffer (requires front-to-back guarantee from BSP):
+//! engine.render_bsp_coverage(&world, &mut scratch, &tex_mgr, fb, &mut cov, Some(&mut tel))?;
+//! ```
+
+pub mod coverage;
+pub mod data;
+pub mod pvs;
+pub mod scratch;
+pub mod traverse;
+
+use core::fmt::Debug;
+
+use embedded_graphics_core::{draw_target::DrawTarget, pixelcolor::Rgb565, prelude::OriginDimensions};
+use heapless::Vec as HVec;
+use nalgebra::{Point2, Vector4};
+
+use crate::{
+    DrawPrimitive,
+    command_buffer::{CommandBuffer, RenderCommand},
+    error::RenderError,
+    renderer::FrameCtx,
+    texture::TextureManager,
+    K3dengine,
+};
+
+use coverage::CoverageBuffer;
+use data::{BspWorld, Face};
+use scratch::BspScratch;
+use traverse::{ClipVert, clip_near, frustum_from_vp, project_to_screen, walk_front_to_back};
+
+// ---------------------------------------------------------------------------
+// Telemetry
+// ---------------------------------------------------------------------------
+
+/// Per-frame BSP rendering statistics.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct BspTelemetry {
+    /// Number of BSP leaves visited during the walk.
+    pub leaves_visited: usize,
+    /// Leaves rejected by PVS.
+    pub leaves_culled_pvs: usize,
+    /// Leaves rejected by frustum culling.
+    pub leaves_culled_frustum: usize,
+    /// Total faces in the visible set after de-duplication.
+    pub faces_visible: usize,
+    /// Faces actually emitted to the command buffer (excludes degenerate/clipped-away).
+    pub faces_emitted: usize,
+    /// Triangles emitted after near-plane clipping.
+    pub triangles_emitted: usize,
+}
+
+// ---------------------------------------------------------------------------
+// Triangle fan → clip → project → emit
+// ---------------------------------------------------------------------------
+
+/// Internal result of projecting one triangle from a BSP face fan.
+struct ProjTri {
+    points: [Point2<i32>; 3],
+    depths: [f32; 3],
+    ws: [f32; 3],
+    uvs: [[f32; 2]; 3],
+    lm_uvs: [[f32; 2]; 3],
+}
+
+/// Clip and project a triangle into 0–2 screen-space triangles.
+///
+/// Vertices are given in clip space with associated UV and lightmap UV
+/// coordinates.  Returns at most 2 output triangles (a clipped triangle
+/// becomes a quad = 2 triangles at most).
+fn clip_and_project(
+    v: [ClipVert; 3],
+    width: u16,
+    height: u16,
+    near: f32,
+    far: f32,
+) -> HVec<ProjTri, 2> {
+    let mut result: HVec<ProjTri, 2> = HVec::new();
+
+    // Build a 3-vertex polygon and clip against the near plane
+    let mut poly: HVec<ClipVert, 4> = HVec::new();
+    for vert in &v {
+        let _ = poly.push(*vert);
+    }
+    let clipped: HVec<ClipVert, 4> = clip_near(&poly);
+
+    if clipped.len() < 3 {
+        return result; // Entirely behind near plane
+    }
+
+    // Project all clipped vertices to screen space
+    // A clipped triangle has 3 or 4 vertices; fan-triangulate
+    let n = clipped.len();
+
+    // We have at most 4 vertices after clipping a triangle → 2 tris
+    for i in 1..(n - 1) {
+        let pts = [&clipped[0], &clipped[i], &clipped[i + 1]];
+
+        let mut screen = [Point2::new(0i32, 0i32); 3];
+        let mut depths = [0.0f32; 3];
+        let mut ws = [0.0f32; 3];
+        let mut uvs = [[0.0f32; 2]; 3];
+        let mut lm_uvs = [[0.0f32; 2]; 3];
+        let mut ok = true;
+
+        for (k, &pt) in pts.iter().enumerate() {
+            if let Some((sp, depth, w)) = project_to_screen(pt.clip, width, height, near, far) {
+                screen[k] = sp;
+                depths[k] = depth;
+                ws[k] = w;
+                uvs[k] = pt.uv;
+                lm_uvs[k] = pt.lm_uv;
+            } else {
+                ok = false;
+                break;
+            }
+        }
+
+        if ok {
+            let _ = result.push(ProjTri {
+                points: screen,
+                depths,
+                ws,
+                uvs,
+                lm_uvs,
+            });
+        }
+    }
+
+    result
+}
+
+/// Build the 3 clip-space vertices for triangle `k` of a fan starting at
+/// `face.first_vert` in `world`, applying `vp` matrix.
+///
+/// Returns `None` if vertex indices are out of bounds.
+fn face_fan_triangle(
+    world: &BspWorld<'_>,
+    face: &Face,
+    k: usize,
+    vp: &nalgebra::Matrix4<f32>,
+) -> Option<[ClipVert; 3]> {
+    let base = face.first_vert as usize;
+    let i0 = base;
+    let i1 = base + k + 1;
+    let i2 = base + k + 2;
+
+    if i2 >= world.vertices.len() {
+        return None;
+    }
+
+    let to_clip = |idx: usize| -> Vector4<f32> {
+        let v = &world.vertices[idx];
+        vp * Vector4::new(v[0], v[1], v[2], 1.0)
+    };
+
+    let uv = |idx: usize| -> [f32; 2] {
+        world.uvs.get(idx).copied().unwrap_or([0.0, 0.0])
+    };
+
+    let lm_uv = |idx: usize| -> [f32; 2] {
+        world.lm_uvs.get(idx).copied().unwrap_or([0.0, 0.0])
+    };
+
+    Some([
+        ClipVert { clip: to_clip(i0), uv: uv(i0), lm_uv: lm_uv(i0) },
+        ClipVert { clip: to_clip(i1), uv: uv(i1), lm_uv: lm_uv(i1) },
+        ClipVert { clip: to_clip(i2), uv: uv(i2), lm_uv: lm_uv(i2) },
+    ])
+}
+
+// ---------------------------------------------------------------------------
+// K3dengine BSP methods
+// ---------------------------------------------------------------------------
+
+impl K3dengine {
+    /// Record BSP world geometry into a command buffer for later execution.
+    ///
+    /// Produces [`DrawPrimitive::TexturedTriangleWithDepth`] commands for faces
+    /// without lightmaps and [`DrawPrimitive::LightmappedTriangle`] for faces
+    /// with `face.lightmap_id != 0xFFFF`.
+    ///
+    /// Execute the resulting buffer with [`K3dengine::execute_bsp_textured`].
+    pub fn record_bsp<const MAX: usize>(
+        &self,
+        world: &BspWorld<'_>,
+        scratch: &mut BspScratch<'_>,
+        commands: &mut CommandBuffer<MAX>,
+        telemetry: Option<&mut BspTelemetry>,
+    ) -> Result<(), RenderError> {
+        commands.clear();
+        commands.push(RenderCommand::ClearDepth(u32::MAX))?;
+        scratch.mark_new_frame();
+
+        let cam = [
+            self.camera.position.x,
+            self.camera.position.y,
+            self.camera.position.z,
+        ];
+        let cam_leaf = world.leaf_for_point(cam);
+        let cam_cluster = world
+            .leaves
+            .get(cam_leaf)
+            .map(|l| l.cluster)
+            .unwrap_or(-1);
+
+        let frustum = frustum_from_vp(&self.camera.vp_matrix);
+        let vp = &self.camera.vp_matrix;
+
+        let mut tel = BspTelemetry::default();
+        let mut first_err: Option<RenderError> = None;
+
+        walk_front_to_back(
+            world,
+            scratch,
+            cam,
+            cam_cluster,
+            &frustum,
+            |_fi, face| {
+                if first_err.is_some() {
+                    return;
+                }
+                tel.faces_visible += 1;
+
+                let num_tris = face.num_verts.saturating_sub(2) as usize;
+                let mut emitted_any = false;
+
+                for k in 0..num_tris {
+                    let tri = match face_fan_triangle(world, face, k, vp) {
+                        Some(t) => t,
+                        None => continue,
+                    };
+                    let projected = clip_and_project(
+                        tri,
+                        self.width,
+                        self.height,
+                        self.camera.near,
+                        self.camera.far,
+                    );
+
+                    for pt in projected.iter() {
+                        let prim = if face.lightmap_id == 0xFFFF {
+                            DrawPrimitive::TexturedTriangleWithDepth {
+                                points: [pt.points[0], pt.points[1], pt.points[2]],
+                                depths: pt.depths,
+                                ws: pt.ws,
+                                uvs: pt.uvs,
+                                texture_id: face.texture_id,
+                            }
+                        } else {
+                            DrawPrimitive::LightmappedTriangle {
+                                points: [pt.points[0], pt.points[1], pt.points[2]],
+                                depths: pt.depths,
+                                ws: pt.ws,
+                                surface_uvs: pt.uvs,
+                                lm_uvs: pt.lm_uvs,
+                                texture_id: face.texture_id,
+                                lightmap_id: face.lightmap_id as u32,
+                            }
+                        };
+
+                        if let Err(e) = commands.push(RenderCommand::Draw(prim)) {
+                            first_err = Some(e);
+                            return;
+                        }
+                        tel.triangles_emitted += 1;
+                        emitted_any = true;
+                    }
+                }
+
+                if emitted_any {
+                    tel.faces_emitted += 1;
+                }
+            },
+        );
+
+        if let Some(err) = first_err {
+            return Err(err);
+        }
+
+        if let Some(t) = telemetry {
+            *t = tel;
+        }
+        Ok(())
+    }
+
+    /// Execute a BSP command buffer with texture support.
+    ///
+    /// Handles both [`DrawPrimitive::TexturedTriangleWithDepth`] and
+    /// [`DrawPrimitive::LightmappedTriangle`] using `texture_manager`.
+    pub fn execute_bsp_textured<D, const MAX: usize, const N: usize>(
+        &self,
+        fb: &mut D,
+        frame: &mut FrameCtx<'_>,
+        commands: &CommandBuffer<MAX>,
+        texture_manager: &TextureManager<N>,
+        telemetry: Option<&mut crate::telemetry::ExecuteTelemetry>,
+    ) -> Result<Option<crate::renderer::DirtyRegion>, RenderError>
+    where
+        D: DrawTarget<Color = Rgb565> + OriginDimensions,
+        D::Error: Debug,
+    {
+        use crate::draw::{draw_zbuffered_lightmapped, draw_zbuffered_with_textures};
+        use crate::renderer::DirtyRegion;
+
+        frame.validate()?;
+        let mut dirty: Option<(i32, i32, i32, i32)> = None;
+
+        if let Some(t) = telemetry {
+            t.commands_total = commands.len();
+            t.draw_commands = commands
+                .iter()
+                .filter(|c| matches!(c, RenderCommand::Draw(_)))
+                .count();
+        }
+
+        for cmd in commands.iter() {
+            match cmd {
+                RenderCommand::ClearDepth(v) => frame.zbuffer.fill(*v),
+                RenderCommand::ClearColor(color) => {
+                    let w = frame.width as i32;
+                    let h = frame.height as i32;
+                    for y in 0..h {
+                        for x in 0..w {
+                            fb.draw_iter([embedded_graphics_core::Pixel(
+                                embedded_graphics_core::prelude::Point::new(x, y),
+                                *color,
+                            )])
+                            .map_err(|_| RenderError::InvalidInput("clear write failed"))?;
+                        }
+                    }
+                }
+                RenderCommand::Draw(prim) => {
+                    let (x0, y0, x1, y1) = prim_bounds(prim);
+                    match prim.clone() {
+                        DrawPrimitive::LightmappedTriangle {
+                            points,
+                            depths,
+                            ws,
+                            surface_uvs,
+                            lm_uvs,
+                            texture_id,
+                            lightmap_id,
+                        } => {
+                            draw_zbuffered_lightmapped(
+                                points,
+                                depths,
+                                ws,
+                                surface_uvs,
+                                lm_uvs,
+                                texture_id,
+                                lightmap_id,
+                                texture_manager,
+                                fb,
+                                frame.zbuffer,
+                                frame.width,
+                            );
+                        }
+                        other => {
+                            draw_zbuffered_with_textures(
+                                other,
+                                fb,
+                                frame.zbuffer,
+                                frame.width,
+                                texture_manager,
+                                None,
+                                None,
+                            );
+                        }
+                    }
+                    if let Some((cx0, cy0, cx1, cy1)) = dirty {
+                        dirty = Some((cx0.min(x0), cy0.min(y0), cx1.max(x1), cy1.max(y1)));
+                    } else {
+                        dirty = Some((x0, y0, x1, y1));
+                    }
+                }
+            }
+        }
+
+        let region = dirty.and_then(|(x0, y0, x1, y1)| {
+            if x1 < x0 || y1 < y0 { return None; }
+            Some(DirtyRegion {
+                x: x0 as usize,
+                y: y0 as usize,
+                width: (x1 - x0 + 1) as usize,
+                height: (y1 - y0 + 1) as usize,
+            })
+        });
+        Ok(region)
+    }
+
+    /// One-shot BSP render: traverse + rasterize without an intermediate command buffer.
+    ///
+    /// Lower overhead than record+execute for world geometry that must be
+    /// re-traversed every frame (camera always moves).
+    pub fn render_bsp_direct<D, const N: usize>(
+        &self,
+        world: &BspWorld<'_>,
+        scratch: &mut BspScratch<'_>,
+        texture_manager: &TextureManager<N>,
+        fb: &mut D,
+        frame: &mut FrameCtx<'_>,
+        telemetry: Option<&mut BspTelemetry>,
+    ) -> Result<(), RenderError>
+    where
+        D: DrawTarget<Color = Rgb565> + OriginDimensions,
+        D::Error: Debug,
+    {
+        use crate::draw::{draw_zbuffered_lightmapped, draw_zbuffered_with_textures};
+
+        frame.validate()?;
+        frame.zbuffer.fill(u32::MAX);
+        scratch.mark_new_frame();
+
+        let cam = [
+            self.camera.position.x,
+            self.camera.position.y,
+            self.camera.position.z,
+        ];
+        let cam_leaf = world.leaf_for_point(cam);
+        let cam_cluster = world.leaves.get(cam_leaf).map(|l| l.cluster).unwrap_or(-1);
+        let frustum = frustum_from_vp(&self.camera.vp_matrix);
+        let vp = &self.camera.vp_matrix;
+
+        let mut tel = BspTelemetry::default();
+
+        walk_front_to_back(
+            world,
+            scratch,
+            cam,
+            cam_cluster,
+            &frustum,
+            |_fi, face| {
+                tel.faces_visible += 1;
+                let num_tris = face.num_verts.saturating_sub(2) as usize;
+                let mut emitted_any = false;
+
+                for k in 0..num_tris {
+                    let tri = match face_fan_triangle(world, face, k, vp) {
+                        Some(t) => t,
+                        None => continue,
+                    };
+                    let projected = clip_and_project(
+                        tri,
+                        self.width,
+                        self.height,
+                        self.camera.near,
+                        self.camera.far,
+                    );
+
+                    for pt in projected.iter() {
+                        if face.lightmap_id == 0xFFFF {
+                            let prim = DrawPrimitive::TexturedTriangleWithDepth {
+                                points: [pt.points[0], pt.points[1], pt.points[2]],
+                                depths: pt.depths,
+                                ws: pt.ws,
+                                uvs: pt.uvs,
+                                texture_id: face.texture_id,
+                            };
+                            draw_zbuffered_with_textures(
+                                prim,
+                                fb,
+                                frame.zbuffer,
+                                frame.width,
+                                texture_manager,
+                                None,
+                                None,
+                            );
+                        } else {
+                            draw_zbuffered_lightmapped(
+                                [pt.points[0], pt.points[1], pt.points[2]],
+                                pt.depths,
+                                pt.ws,
+                                pt.uvs,
+                                pt.lm_uvs,
+                                face.texture_id,
+                                face.lightmap_id as u32,
+                                texture_manager,
+                                fb,
+                                frame.zbuffer,
+                                frame.width,
+                            );
+                        }
+                        tel.triangles_emitted += 1;
+                        emitted_any = true;
+                    }
+                }
+
+                if emitted_any {
+                    tel.faces_emitted += 1;
+                }
+            },
+        );
+
+        if let Some(t) = telemetry {
+            *t = tel;
+        }
+        Ok(())
+    }
+
+    /// M5: One-shot BSP render using a coverage bitmap instead of a z-buffer.
+    ///
+    /// Requires `frame` was created with a valid zbuffer (the zbuffer is *not*
+    /// used for depth testing — the coverage buffer takes its role).  The
+    /// zbuffer slice is only needed to satisfy the `FrameCtx` API; pass a
+    /// zero-length slice and skip `frame.validate()` if RAM is tight, or
+    /// supply a 1-element dummy.
+    ///
+    /// Front-to-back traversal guarantees correctness without depth testing.
+    pub fn render_bsp_coverage<D, const N: usize>(
+        &self,
+        world: &BspWorld<'_>,
+        scratch: &mut BspScratch<'_>,
+        texture_manager: &TextureManager<N>,
+        fb: &mut D,
+        coverage: &mut CoverageBuffer<'_>,
+        telemetry: Option<&mut BspTelemetry>,
+    ) -> Result<(), RenderError>
+    where
+        D: DrawTarget<Color = Rgb565> + OriginDimensions,
+        D::Error: Debug,
+    {
+        use crate::draw::draw_bsp_coverage;
+
+        coverage.clear();
+        scratch.mark_new_frame();
+
+        let cam = [
+            self.camera.position.x,
+            self.camera.position.y,
+            self.camera.position.z,
+        ];
+        let cam_leaf = world.leaf_for_point(cam);
+        let cam_cluster = world.leaves.get(cam_leaf).map(|l| l.cluster).unwrap_or(-1);
+        let frustum = frustum_from_vp(&self.camera.vp_matrix);
+        let vp = &self.camera.vp_matrix;
+
+        let mut tel = BspTelemetry::default();
+
+        walk_front_to_back(
+            world,
+            scratch,
+            cam,
+            cam_cluster,
+            &frustum,
+            |_fi, face| {
+                // Early-out when every pixel is already covered
+                if coverage.is_full() {
+                    return;
+                }
+
+                tel.faces_visible += 1;
+                let num_tris = face.num_verts.saturating_sub(2) as usize;
+                let mut emitted_any = false;
+
+                for k in 0..num_tris {
+                    let tri = match face_fan_triangle(world, face, k, vp) {
+                        Some(t) => t,
+                        None => continue,
+                    };
+                    let projected = clip_and_project(
+                        tri,
+                        self.width,
+                        self.height,
+                        self.camera.near,
+                        self.camera.far,
+                    );
+
+                    for pt in projected.iter() {
+                        draw_bsp_coverage(
+                            [pt.points[0], pt.points[1], pt.points[2]],
+                            pt.ws,
+                            pt.uvs,
+                            face.texture_id,
+                            texture_manager,
+                            fb,
+                            coverage,
+                        );
+                        tel.triangles_emitted += 1;
+                        emitted_any = true;
+                    }
+                }
+
+                if emitted_any {
+                    tel.faces_emitted += 1;
+                }
+            },
+        );
+
+        if let Some(t) = telemetry {
+            *t = tel;
+        }
+        Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Primitive bounding box helper (mirrors renderer.rs::primitive_bounds)
+// ---------------------------------------------------------------------------
+
+fn prim_bounds(p: &DrawPrimitive) -> (i32, i32, i32, i32) {
+    match p {
+        DrawPrimitive::ColoredPoint(pt, _) => (pt.x, pt.y, pt.x, pt.y),
+        DrawPrimitive::Line([a, b], _) => {
+            (a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y))
+        }
+        DrawPrimitive::ColoredTriangle(pts, _)
+        | DrawPrimitive::ColoredTriangleWithDepth { points: pts, .. }
+        | DrawPrimitive::GouraudTriangle { points: pts, .. }
+        | DrawPrimitive::GouraudTriangleWithDepth { points: pts, .. }
+        | DrawPrimitive::TexturedTriangle { points: pts, .. }
+        | DrawPrimitive::TexturedTriangleWithDepth { points: pts, .. }
+        | DrawPrimitive::LightmappedTriangle { points: pts, .. } => {
+            let min_x = pts.iter().map(|p| p.x).min().unwrap_or(0);
+            let min_y = pts.iter().map(|p| p.y).min().unwrap_or(0);
+            let max_x = pts.iter().map(|p| p.x).max().unwrap_or(0);
+            let max_y = pts.iter().map(|p| p.y).max().unwrap_or(0);
+            (min_x, min_y, max_x, max_y)
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Test-only two-room level fixture
+// ---------------------------------------------------------------------------
+
+/// A minimal hand-built level for use in tests and integration examples.
+///
+/// Layout:
+/// ```text
+///     Room A              Room B
+///  (-5,-2,-3)           (0,-2,-3)
+///  ┌──────────┐   X=0   ┌──────────┐
+///  │          │         │          │
+///  │ cluster 0│         │ cluster 1│
+///  └──────────┘         └──────────┘
+///  (0, 2, 3)            (5, 2, 3)
+/// ```
+/// Both rooms are fully mutually visible (no zero-run PVS entries).
+#[allow(dead_code)]
+pub mod test_level {
+    use super::data::*;
+
+    pub static PLANES: [Plane; 1] = [Plane {
+        normal: [1.0, 0.0, 0.0],
+        dist: 0.0,
+    }];
+
+    // Node: X=0 split. children[0]=front(d>=0)=leaf1, children[1]=back(d<0)=leaf0
+    pub static NODES: [Node; 1] = [Node {
+        plane: 0,
+        children: [!1i32, !0i32],
+        mins: [-5, -2, -3],
+        maxs: [5, 2, 3],
+        first_face: 0,
+        num_faces: 0,
+    }];
+
+    pub static LEAVES: [Leaf; 2] = [
+        Leaf {
+            cluster: 0,
+            mins: [-5, -2, -3],
+            maxs: [0, 2, 3],
+            first_marksurface: 0,
+            num_marksurfaces: 2,
+        },
+        Leaf {
+            cluster: 1,
+            mins: [0, -2, -3],
+            maxs: [5, 2, 3],
+            first_marksurface: 2,
+            num_marksurfaces: 2,
+        },
+    ];
+
+    // Room A floor (fan = 2 triangles) + Room B floor (fan = 2 triangles)
+    pub static FACES: [Face; 4] = [
+        // Room A floor
+        Face { first_vert: 0,  num_verts: 4, texture_id: 0, lightmap_id: 0xFFFF, plane: 0, side: 0 },
+        // Room A ceiling
+        Face { first_vert: 4,  num_verts: 4, texture_id: 0, lightmap_id: 0xFFFF, plane: 0, side: 0 },
+        // Room B floor
+        Face { first_vert: 8,  num_verts: 4, texture_id: 0, lightmap_id: 0xFFFF, plane: 0, side: 0 },
+        // Room B ceiling
+        Face { first_vert: 12, num_verts: 4, texture_id: 0, lightmap_id: 0xFFFF, plane: 0, side: 0 },
+    ];
+
+    pub static MARKSURFACES: [u16; 4] = [0, 1, 2, 3];
+
+    // Room A floor quad (y=-2 plane, fan: v0,v1,v2 + v0,v2,v3)
+    pub static VERTICES: [[f32; 3]; 16] = [
+        // Room A floor (y=-2)
+        [-5.0, -2.0, -3.0],
+        [ 0.0, -2.0, -3.0],
+        [ 0.0, -2.0,  3.0],
+        [-5.0, -2.0,  3.0],
+        // Room A ceiling (y=2)
+        [-5.0,  2.0, -3.0],
+        [ 0.0,  2.0, -3.0],
+        [ 0.0,  2.0,  3.0],
+        [-5.0,  2.0,  3.0],
+        // Room B floor (y=-2)
+        [ 0.0, -2.0, -3.0],
+        [ 5.0, -2.0, -3.0],
+        [ 5.0, -2.0,  3.0],
+        [ 0.0, -2.0,  3.0],
+        // Room B ceiling (y=2)
+        [ 0.0,  2.0, -3.0],
+        [ 5.0,  2.0, -3.0],
+        [ 5.0,  2.0,  3.0],
+        [ 0.0,  2.0,  3.0],
+    ];
+
+    pub static UVS: [[f32; 2]; 16] = [
+        [0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0],
+        [0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0],
+        [0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0],
+        [0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0],
+    ];
+
+    // Full-vis PVS: 2 clusters, each byte = 0b00000011 = both visible
+    pub static VIS: [u8; 2] = [0b00000011, 0b00000011];
+    pub static VIS_OFFSETS: [u32; 2] = [0, 1];
+
+    pub fn world() -> BspWorld<'static> {
+        BspWorld::new(
+            &PLANES,
+            &NODES,
+            &LEAVES,
+            &FACES,
+            &MARKSURFACES,
+            &VERTICES,
+            &UVS,
+            &[], // no lightmaps in test level
+            &VIS,
+            &VIS_OFFSETS,
+            2,
+        )
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    extern crate std;
+    use super::*;
+    use crate::bsp::scratch::BspScratch;
+    use crate::bsp::test_level;
+    use nalgebra::Point3;
+
+    #[test]
+    fn test_level_leaf_location() {
+        let world = test_level::world();
+        let leaf_a = world.leaf_for_point([-2.0, 0.0, 0.0]);
+        let leaf_b = world.leaf_for_point([2.0, 0.0, 0.0]);
+        assert_eq!(leaf_a, 0);
+        assert_eq!(leaf_b, 1);
+    }
+
+    #[test]
+    fn test_level_cluster_visibility() {
+        let world = test_level::world();
+        assert!(world.cluster_visible(0, 0));
+        assert!(world.cluster_visible(0, 1));
+        assert!(world.cluster_visible(1, 0));
+        assert!(world.cluster_visible(1, 1));
+    }
+
+    #[test]
+    fn record_bsp_emits_draw_commands() {
+        let world = test_level::world();
+        let mut visframe = [0u32; 4];
+        let mut scratch = BspScratch::new(&mut visframe);
+
+        let mut engine = K3dengine::new(320, 240);
+        engine.camera.set_position(Point3::new(-2.0, 0.0, 0.0));
+        engine.camera.set_target(Point3::new(0.0, 0.0, 0.0));
+
+        let mut commands: CommandBuffer<512> = CommandBuffer::new();
+        let mut tel = BspTelemetry::default();
+
+        engine
+            .record_bsp(&world, &mut scratch, &mut commands, Some(&mut tel))
+            .unwrap();
+
+        // Should have at least one draw command (floor/ceiling quads)
+        let draw_count = commands
+            .iter()
+            .filter(|c| matches!(c, RenderCommand::Draw(_)))
+            .count();
+        assert!(draw_count > 0, "expected draw commands, got 0");
+        assert!(tel.faces_visible > 0);
+        assert!(tel.triangles_emitted > 0);
+    }
+
+    #[test]
+    fn record_bsp_deduplicates_faces() {
+        let world = test_level::world();
+        let mut vf1 = [0u32; 4];
+        let mut vf2 = [0u32; 4];
+        let mut s1 = BspScratch::new(&mut vf1);
+        let mut s2 = BspScratch::new(&mut vf2);
+
+        let mut engine = K3dengine::new(320, 240);
+        engine.camera.set_position(Point3::new(-2.0, 0.0, 0.0));
+        engine.camera.set_target(Point3::new(0.0, 0.0, 0.0));
+
+        let mut c1: CommandBuffer<512> = CommandBuffer::new();
+        engine.record_bsp(&world, &mut s1, &mut c1, None).unwrap();
+        let count1 = c1.iter().filter(|c| matches!(c, RenderCommand::Draw(_))).count();
+
+        // Second record (same frame config) should produce identical count
+        let mut c2: CommandBuffer<512> = CommandBuffer::new();
+        engine.record_bsp(&world, &mut s2, &mut c2, None).unwrap();
+        let count2 = c2.iter().filter(|c| matches!(c, RenderCommand::Draw(_))).count();
+
+        assert_eq!(count1, count2);
+    }
+
+    #[test]
+    fn coverage_buffer_basic() {
+        let mut data = [0u8; CoverageBuffer::bytes_for(32, 32)];
+        let mut cov = CoverageBuffer::new(&mut data, 32, 32).unwrap();
+        cov.clear();
+        assert!(!cov.is_full());
+        assert!(!cov.is_covered(5, 5));
+        cov.mark_covered(5, 5);
+        assert!(cov.is_covered(5, 5));
+    }
+}

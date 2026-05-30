@@ -1,3 +1,6 @@
+/// Re-export BSP telemetry from the bsp module for ergonomic imports.
+pub use crate::bsp::BspTelemetry;
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct RecordTelemetry {
     pub meshes_total: usize,

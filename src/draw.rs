@@ -85,7 +85,7 @@ fn aa_pixel<D>(
     D: DrawTarget<Color = Rgb565> + ReadPixel,
     <D as DrawTarget>::Error: Debug,
 {
-    if x < 0 || y < 0 || coverage_q8 == 0 {
+    if x < 0 || y < 0 || x >= width as i32 || coverage_q8 == 0 {
         return;
     }
     let idx = y as usize * width + x as usize;
@@ -1200,7 +1200,7 @@ fn plot_aa_cov<D>(
     D: DrawTarget<Color = Rgb565> + ReadPixel,
     <D as DrawTarget>::Error: Debug,
 {
-    if x < 0 || y < 0 || coverage_q8 == 0 {
+    if x < 0 || y < 0 || x >= width as i32 || coverage_q8 == 0 {
         return;
     }
     let idx = y as usize * width + x as usize;
@@ -1317,7 +1317,7 @@ fn aa_pixel_cov<D>(
     D: DrawTarget<Color = Rgb565> + ReadPixel,
     <D as DrawTarget>::Error: Debug,
 {
-    if x < 0 || y < 0 || coverage_q8 == 0 {
+    if x < 0 || y < 0 || x >= width as i32 || coverage_q8 == 0 {
         return;
     }
     let idx = y as usize * width + x as usize;
@@ -2310,7 +2310,7 @@ fn draw_scanline_lm<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rg
     let end = x1.max(x2);
     let span = end - start;
     for x in start..=end {
-        if x < 0 || y < 0 {
+        if x < 0 || y < 0 || x >= width as i32 {
             continue;
         }
         let zbuf_idx = y as usize * width + x as usize;
@@ -2816,7 +2816,16 @@ fn fill_bottom_flat_triangle_zbuffered<
     let mut curx1 = p1.x << 16; // Fixed-point
     let mut curx2 = p1.x << 16; // Fixed-point
 
-    for scanline_y in p1.y..=p2.y {
+    // Clamp scanline range to the framebuffer so the loop is always O(height).
+    // Off-screen rows at the top are skipped by advancing the edge walkers.
+    let scr_h = (zbuffer.len() / width) as i32;
+    let y_skip = (0_i32 - p1.y).max(0);
+    curx1 = curx1.wrapping_add(invslope1.wrapping_mul(y_skip));
+    curx2 = curx2.wrapping_add(invslope2.wrapping_mul(y_skip));
+    let y_start = p1.y.max(0);
+    let y_end = p2.y.min(scr_h - 1);
+
+    for scanline_y in y_start..=y_end {
         let dy = scanline_y - p1.y;
         // Integer interpolation for Z using only integer math
         let z_left = if height > 0 {
@@ -2844,8 +2853,8 @@ fn fill_bottom_flat_triangle_zbuffered<
             dither_config,
         );
 
-        curx1 += invslope1;
-        curx2 += invslope2;
+        curx1 = curx1.wrapping_add(invslope1);
+        curx2 = curx2.wrapping_add(invslope2);
     }
 }
 
@@ -2880,7 +2889,19 @@ fn fill_top_flat_triangle_zbuffered<
     let mut curx1 = p3.x << 16; // Fixed-point
     let mut curx2 = p3.x << 16; // Fixed-point
 
-    for scanline_y in (p1.y..=p3.y).rev() {
+    // Clamp scanline range to the framebuffer so the loop is always O(height).
+    // Top-flat iterates from p3.y (bottom) upward to p1.y (top), advancing edge
+    // walkers by subtracting invslope each step.  Skipping off-screen rows at
+    // the bottom means we've already taken y_skip_bot subtract-steps from p3,
+    // so we must SUBTRACT y_skip_bot * invslope from the starting position.
+    let scr_h = (zbuffer.len() / width) as i32;
+    let y_skip_bot = (p3.y - (scr_h - 1)).max(0);
+    curx1 = curx1.wrapping_sub(invslope1.wrapping_mul(y_skip_bot));
+    curx2 = curx2.wrapping_sub(invslope2.wrapping_mul(y_skip_bot));
+    let y_start = p1.y.max(0);
+    let y_end = p3.y.min(scr_h - 1);
+
+    for scanline_y in (y_start..=y_end).rev() {
         let dy = scanline_y - p1.y;
         // Integer interpolation for Z using only integer math
         let z_left = if height > 0 {
@@ -2908,8 +2929,8 @@ fn fill_top_flat_triangle_zbuffered<
             dither_config,
         );
 
-        curx1 -= invslope1;
-        curx2 -= invslope2;
+        curx1 = curx1.wrapping_sub(invslope1);
+        curx2 = curx2.wrapping_sub(invslope2);
     }
 }
 
@@ -3084,7 +3105,7 @@ fn draw_scanline_zbuffered_gouraud<
     let span_width = end - start;
 
     for x in start..=end {
-        if x < 0 || y < 0 {
+        if x < 0 || y < 0 || x >= width as i32 {
             continue;
         }
 
@@ -3148,7 +3169,7 @@ fn draw_scanline_zbuffered<D: DrawTarget<Color = embedded_graphics_core::pixelco
     let end = x1.max(x2);
 
     for x in start..=end {
-        if x < 0 || y < 0 {
+        if x < 0 || y < 0 || x >= width as i32 {
             continue;
         }
 
@@ -3538,7 +3559,7 @@ fn draw_scanline_zbuffered_textured<
     let span_width = end - start;
 
     for x in start..=end {
-        if x < 0 || y < 0 {
+        if x < 0 || y < 0 || x >= width as i32 {
             continue;
         }
 

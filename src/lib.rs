@@ -10,6 +10,7 @@ use nalgebra::Matrix4;
 use nalgebra::Point2;
 use nalgebra::Point3;
 use nalgebra::Vector3;
+use nalgebra::Vector4;
 
 // ComplexField provides sqrt() for f32 in no_std via libm
 // It appears "unused" in tests because tests use std, but it's required for no_std builds
@@ -21,6 +22,7 @@ pub mod billboard;
 pub mod bridge;
 pub mod bsp;
 pub mod camera;
+pub mod character;
 pub mod command_buffer;
 pub mod config;
 pub mod display_backend;
@@ -29,6 +31,7 @@ pub mod error;
 pub mod fixed_math;
 pub mod hardware_profile;
 pub mod hud;
+pub mod input;
 pub mod lights;
 pub mod lut;
 pub mod mesh;
@@ -62,7 +65,9 @@ pub use draw::ReadPixel;
 pub use bridge::{
     AsEgPoint, AsNalgebraPoint, draw_to, eg_to_nalgebra, nalgebra_to_eg, render_drawable_to_buffer,
 };
+pub use character::CharacterController;
 pub use draw::FogConfig;
+pub use input::InputState;
 pub use lights::{PointLight, PointLightSet};
 pub use particles::{ParticleSpawn, ParticleSystem};
 pub use renderer::{DirtyRegion, FrameCtx};
@@ -406,15 +411,16 @@ impl K3dengine {
     ) -> Option<(Point3<i32>, f32)> {
         let v = nalgebra::Vector4::new(point[0], point[1], point[2], 1.0);
         let clip = model_matrix * v;
-        if clip.w <= 0.0 {
+        // clip.w is the view-space depth (distance along the view direction).
+        // Previously this compared ndc_z (range -1..+1) against camera.near/far
+        // (world-space values like 0.4 and 20.0), which is a unit mismatch that
+        // caused close particles to bleed through unrendered geometry.
+        if clip.w < self.camera.near || clip.w > self.camera.far {
             return None;
         }
         let ndc_x = clip.x / clip.w;
         let ndc_y = clip.y / clip.w;
         let ndc_z = clip.z / clip.w;
-        if ndc_z < self.camera.near || ndc_z > self.camera.far {
-            return None;
-        }
         let x = ((1.0 + ndc_x) * 0.5 * self.width as f32) as i32;
         let y = ((1.0 - ndc_y) * 0.5 * self.height as f32) as i32;
         if x < 0 || x >= self.width as i32 || y < 0 || y >= self.height as i32 {
@@ -440,6 +446,156 @@ impl K3dengine {
             ws[i] = w;
         }
         Some((pts, ws))
+    }
+
+    // ── Near-plane triangle clipping ──────────────────────────────────────────
+    //
+    // The engine's vertex-by-vertex `transform_point` returns `None` for any
+    // vertex that projects outside the screen, causing the whole triangle to
+    // be dropped.  For interior scenes (floor, ceiling, walls close to the
+    // camera) this makes large surfaces invisible.
+    //
+    // The fix is a one-plane Sutherland-Hodgman clip against w = CLIP_NEAR_W
+    // before perspective divide.  Clipped triangles are emitted directly after
+    // projection; the rasterizer's existing scanline bounds-checks handle any
+    // remaining X/Y screen overshoot safely.
+
+    /// Project a single homogeneous clip-space vertex to integer screen coords.
+    /// Unlike `transform_point`, this does NOT reject off-screen X/Y — the
+    /// rasterizer clips scanlines to screen bounds already.
+    /// Screen coordinates are guard-banded to ±8× the framebuffer dimension so
+    /// the rasterizer scanline loop is always bounded even for near-plane clips.
+    #[inline]
+    fn clip_to_screen(&self, c: Vector4<f32>) -> Option<Point3<i32>> {
+        if c.w <= 0.0 {
+            return None;
+        }
+        let ndc = Point3::from_homogeneous(c)?;
+        let w = self.width as f32;
+        let h = self.height as f32;
+        let x = ((1.0 + ndc.x) * 0.5 * w).clamp(-w * 8.0, w * 9.0) as i32;
+        let y = ((1.0 - ndc.y) * 0.5 * h).clamp(-h * 8.0, h * 9.0) as i32;
+        let depth = (ndc.z * (self.camera.far - self.camera.near) + self.camera.near) as i32;
+        Some(Point3::new(x, y, depth))
+    }
+
+    /// Project three clip-space vertices and emit one `ColoredTriangleWithDepth`
+    /// command if all three project successfully.
+    #[inline]
+    fn project_and_emit<F>(
+        &self,
+        c0: Vector4<f32>,
+        c1: Vector4<f32>,
+        c2: Vector4<f32>,
+        color: Rgb565,
+        callback: &mut F,
+    ) where
+        F: FnMut(DrawPrimitive),
+    {
+        if let (Some(p0), Some(p1), Some(p2)) = (
+            self.clip_to_screen(c0),
+            self.clip_to_screen(c1),
+            self.clip_to_screen(c2),
+        ) {
+            callback(DrawPrimitive::ColoredTriangleWithDepth {
+                points: [p0.xy(), p1.xy(), p2.xy()],
+                depths: [p0.z as f32, p1.z as f32, p2.z as f32],
+                color,
+            });
+        }
+    }
+
+    /// One Sutherland-Hodgman pass against a single clip-space plane.
+    ///
+    /// `dist(v) >= 0.0` means the vertex is on the inside of the plane.
+    /// Returns the number of vertices written into `output`.
+    fn clip_polygon_plane(
+        input: &[Vector4<f32>],
+        output: &mut [Vector4<f32>; 8],
+        dist: impl Fn(Vector4<f32>) -> f32,
+    ) -> usize {
+        let n = input.len();
+        let mut m = 0usize;
+        for i in 0..n {
+            let prev = input[(n + i - 1) % n];
+            let curr = input[i];
+            let d_prev = dist(prev);
+            let d_curr = dist(curr);
+            if d_curr >= 0.0 {
+                if d_prev < 0.0 {
+                    // Crossing from outside → inside: emit the boundary vertex.
+                    let t = d_prev / (d_prev - d_curr);
+                    if m < 8 {
+                        output[m] = prev + (curr - prev) * t;
+                        m += 1;
+                    }
+                }
+                if m < 8 {
+                    output[m] = curr;
+                    m += 1;
+                }
+            } else if d_prev >= 0.0 {
+                // Crossing from inside → outside: emit the boundary vertex.
+                let t = d_prev / (d_prev - d_curr);
+                if m < 8 {
+                    output[m] = prev + (curr - prev) * t;
+                    m += 1;
+                }
+            }
+        }
+        m
+    }
+
+    /// Clip a triangle against all 5 frustum planes and emit the resulting
+    /// fan of screen-space triangles.
+    ///
+    /// Uses a full Sutherland-Hodgman pass in clip space (near, left, right,
+    /// bottom, top).  Clipping against only the near plane left NDC x/y values
+    /// like ±13 for near-clipped vertices touching a wall at a grazing angle,
+    /// causing the projected triangle to cover only a sliver instead of the
+    /// full wall — producing the black triangular holes.
+    fn emit_clipped<F>(&self, clip: [Vector4<f32>; 3], color: Rgb565, callback: &mut F)
+    where
+        F: FnMut(DrawPrimitive),
+    {
+        let nw = self.camera.near;
+
+        let mut a = [Vector4::zeros(); 8];
+        let mut b = [Vector4::zeros(); 8];
+        a[0] = clip[0];
+        a[1] = clip[1];
+        a[2] = clip[2];
+
+        // near:   w >= nw
+        let n = Self::clip_polygon_plane(&a[..3], &mut b, |v| v.w - nw);
+        if n < 3 {
+            return;
+        }
+        // left:   x >= -w  →  x + w >= 0
+        let n = Self::clip_polygon_plane(&b[..n], &mut a, |v| v.x + v.w);
+        if n < 3 {
+            return;
+        }
+        // right:  x <=  w  →  w - x >= 0
+        let n = Self::clip_polygon_plane(&a[..n], &mut b, |v| v.w - v.x);
+        if n < 3 {
+            return;
+        }
+        // bottom: y >= -w  →  y + w >= 0
+        let n = Self::clip_polygon_plane(&b[..n], &mut a, |v| v.y + v.w);
+        if n < 3 {
+            return;
+        }
+        // top:    y <=  w  →  w - y >= 0
+        let n = Self::clip_polygon_plane(&a[..n], &mut b, |v| v.w - v.y);
+        if n < 3 {
+            return;
+        }
+
+        // Triangulate the clipped polygon as a fan from vertex 0.
+        for i in 1..n - 1 {
+            self.project_and_emit(b[0], b[i], b[i + 1], color, callback);
+        }
     }
 
     fn render<'a, MS, F>(&self, meshes: MS, mut callback: F)
@@ -706,25 +862,41 @@ impl K3dengine {
                 RenderMode::Solid => {
                     if geometry.normals.is_empty() {
                         for face in geometry.faces.iter() {
-                            if let Some([p1, p2, p3]) =
-                                self.transform_points(face, geometry.vertices, transform_matrix)
-                            {
-                                let color = if !self.point_lights.is_empty() {
-                                    let wc = Self::face_world_center(
-                                        face,
-                                        geometry.vertices,
-                                        mesh.model_matrix,
-                                    );
-                                    Self::add_tint(mesh.color, self.light_tint_at(wc))
-                                } else {
-                                    mesh.color
-                                };
-                                callback(DrawPrimitive::ColoredTriangleWithDepth {
-                                    points: [p1.xy(), p2.xy(), p3.xy()],
-                                    depths: [p1.z as f32, p2.z as f32, p3.z as f32],
-                                    color,
-                                });
-                            }
+                            let color = if !self.point_lights.is_empty() {
+                                let wc = Self::face_world_center(
+                                    face,
+                                    geometry.vertices,
+                                    mesh.model_matrix,
+                                );
+                                Self::add_tint(mesh.color, self.light_tint_at(wc))
+                            } else {
+                                mesh.color
+                            };
+                            let v = &geometry.vertices;
+                            let clip = [
+                                transform_matrix
+                                    * Vector4::new(
+                                        v[face[0]][0],
+                                        v[face[0]][1],
+                                        v[face[0]][2],
+                                        1.0,
+                                    ),
+                                transform_matrix
+                                    * Vector4::new(
+                                        v[face[1]][0],
+                                        v[face[1]][1],
+                                        v[face[1]][2],
+                                        1.0,
+                                    ),
+                                transform_matrix
+                                    * Vector4::new(
+                                        v[face[2]][0],
+                                        v[face[2]][1],
+                                        v[face[2]][2],
+                                        1.0,
+                                    ),
+                            ];
+                            self.emit_clipped(clip, color, &mut callback);
                         }
                     } else {
                         for (face, normal) in geometry.faces.iter().zip(geometry.normals) {
@@ -733,25 +905,41 @@ impl K3dengine {
                             if self.camera.get_direction().dot(&transformed_normal) < 0.0 {
                                 continue;
                             }
-                            if let Some([p1, p2, p3]) =
-                                self.transform_points(face, geometry.vertices, transform_matrix)
-                            {
-                                let color = if !self.point_lights.is_empty() {
-                                    let wc = Self::face_world_center(
-                                        face,
-                                        geometry.vertices,
-                                        mesh.model_matrix,
-                                    );
-                                    Self::add_tint(mesh.color, self.light_tint_at(wc))
-                                } else {
-                                    mesh.color
-                                };
-                                callback(DrawPrimitive::ColoredTriangleWithDepth {
-                                    points: [p1.xy(), p2.xy(), p3.xy()],
-                                    depths: [p1.z as f32, p2.z as f32, p3.z as f32],
-                                    color,
-                                });
-                            }
+                            let color = if !self.point_lights.is_empty() {
+                                let wc = Self::face_world_center(
+                                    face,
+                                    geometry.vertices,
+                                    mesh.model_matrix,
+                                );
+                                Self::add_tint(mesh.color, self.light_tint_at(wc))
+                            } else {
+                                mesh.color
+                            };
+                            let v = &geometry.vertices;
+                            let clip = [
+                                transform_matrix
+                                    * Vector4::new(
+                                        v[face[0]][0],
+                                        v[face[0]][1],
+                                        v[face[0]][2],
+                                        1.0,
+                                    ),
+                                transform_matrix
+                                    * Vector4::new(
+                                        v[face[1]][0],
+                                        v[face[1]][1],
+                                        v[face[1]][2],
+                                        1.0,
+                                    ),
+                                transform_matrix
+                                    * Vector4::new(
+                                        v[face[2]][0],
+                                        v[face[2]][1],
+                                        v[face[2]][2],
+                                        1.0,
+                                    ),
+                            ];
+                            self.emit_clipped(clip, color, &mut callback);
                         }
                     }
                 }
@@ -765,25 +953,41 @@ impl K3dengine {
 
                     if geometry.normals.is_empty() {
                         for face in geometry.faces.iter() {
-                            if let Some([p1, p2, p3]) =
-                                self.transform_points(face, geometry.vertices, transform_matrix)
-                            {
-                                let color = if !self.point_lights.is_empty() {
-                                    let wc = Self::face_world_center(
-                                        face,
-                                        geometry.vertices,
-                                        mesh.model_matrix,
-                                    );
-                                    Self::add_tint(scaled_color, self.light_tint_at(wc))
-                                } else {
-                                    scaled_color
-                                };
-                                callback(DrawPrimitive::ColoredTriangleWithDepth {
-                                    points: [p1.xy(), p2.xy(), p3.xy()],
-                                    depths: [p1.z as f32, p2.z as f32, p3.z as f32],
-                                    color,
-                                });
-                            }
+                            let color = if !self.point_lights.is_empty() {
+                                let wc = Self::face_world_center(
+                                    face,
+                                    geometry.vertices,
+                                    mesh.model_matrix,
+                                );
+                                Self::add_tint(scaled_color, self.light_tint_at(wc))
+                            } else {
+                                scaled_color
+                            };
+                            let v = &geometry.vertices;
+                            let clip = [
+                                transform_matrix
+                                    * Vector4::new(
+                                        v[face[0]][0],
+                                        v[face[0]][1],
+                                        v[face[0]][2],
+                                        1.0,
+                                    ),
+                                transform_matrix
+                                    * Vector4::new(
+                                        v[face[1]][0],
+                                        v[face[1]][1],
+                                        v[face[1]][2],
+                                        1.0,
+                                    ),
+                                transform_matrix
+                                    * Vector4::new(
+                                        v[face[2]][0],
+                                        v[face[2]][1],
+                                        v[face[2]][2],
+                                        1.0,
+                                    ),
+                            ];
+                            self.emit_clipped(clip, color, &mut callback);
                         }
                     } else {
                         for (face, normal) in geometry.faces.iter().zip(geometry.normals) {
@@ -792,25 +996,41 @@ impl K3dengine {
                             if self.camera.get_direction().dot(&transformed_normal) < 0.0 {
                                 continue;
                             }
-                            if let Some([p1, p2, p3]) =
-                                self.transform_points(face, geometry.vertices, transform_matrix)
-                            {
-                                let color = if !self.point_lights.is_empty() {
-                                    let wc = Self::face_world_center(
-                                        face,
-                                        geometry.vertices,
-                                        mesh.model_matrix,
-                                    );
-                                    Self::add_tint(scaled_color, self.light_tint_at(wc))
-                                } else {
-                                    scaled_color
-                                };
-                                callback(DrawPrimitive::ColoredTriangleWithDepth {
-                                    points: [p1.xy(), p2.xy(), p3.xy()],
-                                    depths: [p1.z as f32, p2.z as f32, p3.z as f32],
-                                    color,
-                                });
-                            }
+                            let color = if !self.point_lights.is_empty() {
+                                let wc = Self::face_world_center(
+                                    face,
+                                    geometry.vertices,
+                                    mesh.model_matrix,
+                                );
+                                Self::add_tint(scaled_color, self.light_tint_at(wc))
+                            } else {
+                                scaled_color
+                            };
+                            let v = &geometry.vertices;
+                            let clip = [
+                                transform_matrix
+                                    * Vector4::new(
+                                        v[face[0]][0],
+                                        v[face[0]][1],
+                                        v[face[0]][2],
+                                        1.0,
+                                    ),
+                                transform_matrix
+                                    * Vector4::new(
+                                        v[face[1]][0],
+                                        v[face[1]][1],
+                                        v[face[1]][2],
+                                        1.0,
+                                    ),
+                                transform_matrix
+                                    * Vector4::new(
+                                        v[face[2]][0],
+                                        v[face[2]][1],
+                                        v[face[2]][2],
+                                        1.0,
+                                    ),
+                            ];
+                            self.emit_clipped(clip, color, &mut callback);
                         }
                     }
                 }
@@ -1485,5 +1705,56 @@ mod tests {
                 DrawPrimitive::GouraudTriangleWithDepth { .. }
             ));
         }
+    }
+
+    /// Verify that Solid-with-normals renders an interior box correctly.
+    ///
+    /// Places a camera at the centre of a simple box whose face normals point
+    /// inward (toward the camera).  The Solid render path must emit at least
+    /// one primitive — if backface culling incorrectly fires for all faces
+    /// this test will catch it.
+    #[test]
+    fn test_solid_inward_normals_interior_camera() {
+        let mut engine = K3dengine::new(320, 240);
+        // Camera inside the box, looking north (–Z).
+        engine
+            .camera
+            .set_position(nalgebra::Point3::new(0.0, 0.0, 0.0));
+        engine
+            .camera
+            .set_target(nalgebra::Point3::new(0.0, 0.0, -1.0));
+
+        // Single north wall: z = –2, vertices form a quad centred on the axis.
+        // Inward normal points toward the camera = +Z.
+        #[rustfmt::skip]
+        let vertices: &[[f32; 3]] = &[
+            [-1.0, -1.0, -2.0],
+            [ 1.0, -1.0, -2.0],
+            [ 1.0,  1.0, -2.0],
+            [-1.0,  1.0, -2.0],
+        ];
+        let faces: &[[usize; 3]] = &[[0, 1, 2], [0, 2, 3]];
+        let normals: &[[f32; 3]] = &[[0.0, 0.0, 1.0], [0.0, 0.0, 1.0]]; // inward (+Z)
+
+        let geometry = mesh::Geometry {
+            vertices,
+            faces,
+            normals,
+            colors: &[],
+            lines: &[],
+            vertex_normals: &[],
+            uvs: &[],
+            texture_id: None,
+        };
+        let mut m = mesh::K3dMesh::new(geometry);
+        m.set_render_mode(mesh::RenderMode::Solid);
+
+        let mut count = 0usize;
+        engine.render(std::iter::once(&m), |_| count += 1);
+
+        assert!(
+            count > 0,
+            "interior Solid-with-inward-normals emitted 0 primitives — culling is wrong"
+        );
     }
 }

@@ -26,6 +26,7 @@ categories = [
 [features]
 default = ["row_width_240", "std", "aa-heuristic", "aa-coverage"]
 std = ["perfcounter"]
+physics = []
 perfcounter = []
 row_width_96 = []
 row_width_160 = []
@@ -74,3 +75,51 @@ embedded-graphics-simulator = "0.8"
 embedded-graphics = "0.8"
 load_stl = { path = "load_stl" }
 gif = "0.13"
+
+[[example]]
+name = "physics_bouncing_balls"
+required-features = ["physics"]
+
+[[example]]
+name = "physics_demo"
+required-features = ["physics"]
+
+[[example]]
+name = "physics_domino_chain"
+required-features = ["physics"]
+
+[[example]]
+name = "physics_newtons_cradle"
+required-features = ["physics"]
+
+[[example]]
+name = "physics_pendulum"
+required-features = ["physics"]
+
+[[example]]
+name = "physics_rolling_ball"
+required-features = ["physics"]
+
+[[example]]
+name = "physics_stack_tower"
+required-features = ["physics"]
+
+[[example]]
+name = "physics_wrecking_ball"
+required-features = ["physics"]
+
+[[example]]
+name = "capsule_physics_demo"
+required-features = ["physics"]
+
+[[example]]
+name = "cloth_simulation"
+required-features = ["physics"]
+
+[[example]]
+name = "jelly_cube_demo"
+required-features = ["physics"]
+
+[[example]]
+name = "raycast_demo"
+required-features = ["physics"]

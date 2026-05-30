@@ -448,6 +448,29 @@ impl K3dengine {
         Some((pts, ws))
     }
 
+    /// Position-based backface cull.
+    ///
+    /// Returns `true` when the face should be skipped (camera is on the
+    /// back/outer side of the surface).
+    ///
+    /// Using the camera *position* rather than *direction* means the result is
+    /// independent of where the camera looks — a horizontal floor stays visible
+    /// even when the camera pitches up or down.  The direction-based test
+    /// (`camera.get_direction() · normal`) incorrectly flips sign as soon as
+    /// pitch ≠ 0, culling the floor on upward tilt and the ceiling on downward.
+    #[inline]
+    fn is_backface(
+        &self,
+        face: &[usize; 3],
+        vertices: &[[f32; 3]],
+        model_matrix: Matrix4<f32>,
+        world_normal: &Vector3<f32>,
+    ) -> bool {
+        let v0 = vertices[face[0]];
+        let v0_world = model_matrix.transform_point(&Point3::new(v0[0], v0[1], v0[2]));
+        (self.camera.position - v0_world).dot(world_normal) < 0.0
+    }
+
     // ── Near-plane triangle clipping ──────────────────────────────────────────
     //
     // The engine's vertex-by-vertex `transform_point` returns `None` for any
@@ -677,7 +700,12 @@ impl K3dengine {
                     for (face, normal) in geometry.faces.iter().zip(geometry.normals.iter()) {
                         let normal = Vector3::new(normal[0], normal[1], normal[2]);
                         let transformed_normal = mesh.model_matrix.transform_vector(&normal);
-                        if self.camera.get_direction().dot(&transformed_normal) < 0.0 {
+                        if self.is_backface(
+                            face,
+                            geometry.vertices,
+                            mesh.model_matrix,
+                            &transformed_normal,
+                        ) {
                             continue;
                         }
 
@@ -726,7 +754,12 @@ impl K3dengine {
                         let fn_vec = Vector3::new(face_normal[0], face_normal[1], face_normal[2]);
                         let transformed_fn = mesh.model_matrix.transform_vector(&fn_vec);
 
-                        if self.camera.get_direction().dot(&transformed_fn) < 0.0 {
+                        if self.is_backface(
+                            face,
+                            geometry.vertices,
+                            mesh.model_matrix,
+                            &transformed_fn,
+                        ) {
                             continue;
                         }
 
@@ -797,7 +830,12 @@ impl K3dengine {
                         let normalized_normal = transformed_normal.normalize();
 
                         // Backface culling: cull faces pointing away from camera
-                        if self.camera.get_direction().dot(&normalized_normal) < 0.0 {
+                        if self.is_backface(
+                            face,
+                            geometry.vertices,
+                            mesh.model_matrix,
+                            &normalized_normal,
+                        ) {
                             continue;
                         }
 
@@ -902,7 +940,12 @@ impl K3dengine {
                         for (face, normal) in geometry.faces.iter().zip(geometry.normals) {
                             let normal = Vector3::new(normal[0], normal[1], normal[2]);
                             let transformed_normal = mesh.model_matrix.transform_vector(&normal);
-                            if self.camera.get_direction().dot(&transformed_normal) < 0.0 {
+                            if self.is_backface(
+                                face,
+                                geometry.vertices,
+                                mesh.model_matrix,
+                                &transformed_normal,
+                            ) {
                                 continue;
                             }
                             let color = if !self.point_lights.is_empty() {
@@ -993,7 +1036,12 @@ impl K3dengine {
                         for (face, normal) in geometry.faces.iter().zip(geometry.normals) {
                             let normal = Vector3::new(normal[0], normal[1], normal[2]);
                             let transformed_normal = mesh.model_matrix.transform_vector(&normal);
-                            if self.camera.get_direction().dot(&transformed_normal) < 0.0 {
+                            if self.is_backface(
+                                face,
+                                geometry.vertices,
+                                mesh.model_matrix,
+                                &transformed_normal,
+                            ) {
                                 continue;
                             }
                             let color = if !self.point_lights.is_empty() {

@@ -23,7 +23,7 @@ use embedded_3dgfx::physics::{Collider, PhysicsWorld, RigidBody, sync_body_to_me
 use embedded_3dgfx::renderer::FrameCtx;
 use embedded_3dgfx::softbody::SoftBody;
 use embedded_3dgfx::texture::{Texture, TextureManager};
-use embedded_3dgfx::{K3dengine, RetroStyle};
+use embedded_3dgfx::{K3dengine, RetroStyle, SkyConfig};
 use embedded_graphics::mono_font::{MonoTextStyle, ascii::FONT_6X10};
 use embedded_graphics::prelude::Primitive;
 use embedded_graphics::primitives::{PrimitiveStyleBuilder, Rectangle};
@@ -1049,6 +1049,12 @@ fn capture_retro_doom_preset() {
     let mut engine = K3dengine::new(W as u16, H as u16);
     engine.clear_caps();
     engine.apply_retro_style(RetroStyle::doom_walkable());
+    // Keep the retro palette/dither look, but avoid high-contrast sky striping
+    // that reads as floorboard artifacts in static screenshots.
+    engine.set_sky(SkyConfig {
+        stripe_strength: 0,
+        ..SkyConfig::retro_blue()
+    });
     engine.camera.set_position(Point3::new(0.0, 1.8, 9.5));
     engine.camera.set_target(Point3::new(0.0, 0.2, 0.0));
 
@@ -1095,14 +1101,15 @@ fn capture_retro_doom_preset() {
     left.set_color(Rgb565::CSS_RED);
 
     let mut center = K3dMesh::new(geom);
-    center.set_position(0.0, 0.0, 0.0);
+    center.set_position(0.4, 0.0, 0.0);
     center.set_scale(1.6);
     center.set_attitude(0.2, 1.5, 0.1);
     center.set_render_mode(RenderMode::Solid);
     center.set_color(Rgb565::new(30, 42, 8));
 
     let mut right = K3dMesh::new(geom);
-    right.set_position(3.2, 0.0, 0.0);
+    // Keep cyan visibly behind the center cube in this composition.
+    right.set_position(4.6, 0.0, -4.0);
     right.set_scale(1.5);
     right.set_attitude(0.9, 0.4, 0.3);
     right.set_render_mode(RenderMode::Solid);

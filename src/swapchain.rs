@@ -1,81 +1,117 @@
-//! Swap chain implementation for double-buffered rendering
+//! Swap chain implementation for double-buffered rendering.
 //!
 //! A swap chain manages two framebuffers (front and back) and coordinates
 //! DMA transfers to eliminate visual tearing and improve performance.
 //!
 //! # Architecture
-//! - **Back buffer**: CPU renders to this buffer
-//! - **Front buffer**: Display hardware reads from this buffer (via DMA)
-//! - **Swap**: When rendering completes, buffers are swapped atomically
+//! - **Back buffer**: The CPU renders into this buffer at all times.
+//! - **Front buffer**: Owned by either an in-flight DMA transfer or the
+//!   swap chain itself while idle.
+//! - **Swap**: When rendering completes, `present()` recovers the front
+//!   buffer (waiting for any in-flight DMA), swaps it with the back
+//!   buffer, and hands the new front to the backend to start the next
+//!   transfer.
 //!
-//! # Benefits
-//! - No visual tearing (never display a partially-rendered frame)
-//! - Better performance (CPU and display work in parallel)
-//! - Predictable frame timing
+//! # Safety
+//! The front framebuffer is moved into the [`DmaTransfer`] token returned
+//! by the backend. The compiler enforces that nobody can write to it until
+//! [`DmaTransfer::wait`] returns it, eliminating the data race that a
+//! borrow-based API cannot prevent.
 
-use crate::display_backend::{DisplayBackend, DisplayError, DisplayRegion};
+use crate::display_backend::{DisplayBackend, DisplayError, DisplayRegion, DmaTransfer};
 use embedded_graphics_core::pixelcolor::Rgb565;
 use embedded_graphics_framebuf::{
     FrameBuf,
     backends::{DMACapableFrameBufferBackend, EndianCorrectedBuffer, EndianCorrection},
 };
 
-/// Double-buffered swap chain for tear-free rendering
+// ── FrontState ────────────────────────────────────────────────────────────────
+
+/// Tracks whether the front framebuffer is idle (owned by the swap chain)
+/// or in-flight (owned by a DMA transfer token).
+enum FrontState<FB, Xfer> {
+    Idle(FB),
+    InFlight(Xfer),
+}
+
+impl<FB, Xfer: DmaTransfer<Buffer = FB>> FrontState<FB, Xfer> {
+    /// Recover the framebuffer, blocking if a transfer is still running.
+    fn recover(self) -> FB {
+        match self {
+            FrontState::Idle(fb) => fb,
+            FrontState::InFlight(xfer) => xfer.wait(),
+        }
+    }
+
+    /// Returns `true` if there is no in-flight transfer or it has finished.
+    fn is_ready(&self) -> bool {
+        match self {
+            FrontState::Idle(_) => true,
+            FrontState::InFlight(xfer) => xfer.is_done(),
+        }
+    }
+}
+
+// ── SwapChain ─────────────────────────────────────────────────────────────────
+
+/// Double-buffered swap chain for tear-free rendering.
 ///
-/// Manages two framebuffers and coordinates swapping between them.
-/// Uses a display backend for platform-specific DMA transfers.
+/// The back buffer is always available to the CPU via [`get_back_buffer`].
+/// The front buffer moves into the backend's DMA transfer token on each
+/// [`present`] call and is recovered (blocking) on the next one.
 ///
 /// # Type Parameters
-/// - `W`: Framebuffer width in pixels
-/// - `H`: Framebuffer height in pixels
-/// - `FB`: Framebuffer backend implementing `DMACapableFrameBufferBackend`
-/// - `B`: Display backend implementing `DisplayBackend<W, H, FB>`
+/// - `W`, `H`: Framebuffer dimensions in pixels (const generics).
+/// - `FB`: Framebuffer backend implementing [`DMACapableFrameBufferBackend`].
+/// - `B`: Display backend implementing [`DisplayBackend<W, H, FB>`].
+///
+/// [`get_back_buffer`]: SwapChain::get_back_buffer
+/// [`present`]: SwapChain::present
 pub struct SwapChain<const W: usize, const H: usize, FB, B>
 where
     FB: DMACapableFrameBufferBackend<Color = Rgb565>,
     B: DisplayBackend<W, H, FB>,
 {
-    /// Front buffer (currently being displayed)
-    front: FrameBuf<Rgb565, FB>,
-    /// Back buffer (currently being rendered to)
+    /// Back buffer — always owned by the swap chain.
     back: FrameBuf<Rgb565, FB>,
-    /// Display backend for DMA transfers
+    /// Front buffer — either idle here or inside a DMA transfer token.
+    front: Option<FrontState<FrameBuf<Rgb565, FB>, B::Transfer>>,
     backend: B,
-    /// Frame counter for statistics
     frame_count: u64,
 }
 
-/// Type alias for SwapChain using EndianCorrectedBuffer backend
+/// Type alias for `SwapChain` backed by [`EndianCorrectedBuffer`].
 ///
-/// This is the most common configuration, using statically allocated
-/// framebuffer memory with endianness correction.
+/// This is the most common configuration for statically allocated
+/// framebuffer memory.
 pub type StandardSwapChain<const W: usize, const H: usize, B> =
     SwapChain<W, H, EndianCorrectedBuffer<'static, Rgb565>, B>;
 
-/// Constructor for standard swap chain configuration
+// ── StandardSwapChain constructor ─────────────────────────────────────────────
+
 impl<const W: usize, const H: usize, B> StandardSwapChain<W, H, B>
 where
     B: DisplayBackend<W, H, EndianCorrectedBuffer<'static, Rgb565>>,
 {
-    /// Create a new swap chain from static slices
+    /// Create a new swap chain from static slices.
     ///
     /// # Arguments
-    /// * `front_data` - Static mutable slice for front framebuffer
-    /// * `back_data` - Static mutable slice for back framebuffer
-    /// * `big_endian` - Whether to use big-endian byte order for colors
-    /// * `backend` - Display backend for DMA operations
+    /// * `front_data` — Static mutable slice for the front framebuffer.
+    /// * `back_data`  — Static mutable slice for the back framebuffer.
+    /// * `big_endian` — Byte order of pixel data sent to the display.
+    /// * `backend`    — Display backend used for DMA operations.
     ///
     /// # Example
     /// ```ignore
-    /// static mut FB0_DATA: [Rgb565; 800 * 600] = [Rgb565::BLACK; 800 * 600];
-    /// static mut FB1_DATA: [Rgb565; 800 * 600] = [Rgb565::BLACK; 800 * 600];
+    /// static mut FB0: [Rgb565; 240 * 135] = [Rgb565::BLACK; 240 * 135];
+    /// static mut FB1: [Rgb565; 240 * 135] = [Rgb565::BLACK; 240 * 135];
     ///
     /// let swap_chain = unsafe {
-    ///     StandardSwapChain::<800, 600, _>::from_static_slices(
-    ///         &mut FB0_DATA,
-    ///         &mut FB1_DATA,
+    ///     StandardSwapChain::<240, 135, _>::from_static_slices(
+    ///         &mut FB0,
+    ///         &mut FB1,
     ///         false,
-    ///         SimulatorBackend::new(),
+    ///         MyHardwareBackend::new(),
     ///     )
     /// };
     /// ```
@@ -85,162 +121,186 @@ where
         big_endian: bool,
         backend: B,
     ) -> Self {
-        let front_backend = if big_endian {
-            EndianCorrectedBuffer::new(front_data, EndianCorrection::ToBigEndian)
-        } else {
-            EndianCorrectedBuffer::new(front_data, EndianCorrection::ToLittleEndian)
+        let mk_buf = |data: &'static mut [Rgb565]| {
+            let correction = if big_endian {
+                EndianCorrection::ToBigEndian
+            } else {
+                EndianCorrection::ToLittleEndian
+            };
+            EndianCorrectedBuffer::new(data, correction)
         };
 
-        let back_backend = if big_endian {
-            EndianCorrectedBuffer::new(back_data, EndianCorrection::ToBigEndian)
-        } else {
-            EndianCorrectedBuffer::new(back_data, EndianCorrection::ToLittleEndian)
-        };
+        let front_fb = FrameBuf::new(mk_buf(front_data), W, H);
+        let back_fb = FrameBuf::new(mk_buf(back_data), W, H);
 
         Self {
-            front: FrameBuf::new(front_backend, W, H),
-            back: FrameBuf::new(back_backend, W, H),
+            back: back_fb,
+            front: Some(FrontState::Idle(front_fb)),
             backend,
             frame_count: 0,
         }
     }
 }
 
+// ── SwapChain methods ─────────────────────────────────────────────────────────
+
 impl<const W: usize, const H: usize, FB, B> SwapChain<W, H, FB, B>
 where
     FB: DMACapableFrameBufferBackend<Color = Rgb565>,
     B: DisplayBackend<W, H, FB>,
 {
-    /// Get mutable reference to the back buffer for rendering
+    /// Get a mutable reference to the back buffer for rendering.
     ///
-    /// Render all graphics operations to this buffer. When ready to display,
-    /// call `present()` to swap buffers.
+    /// The back buffer is always available — DMA only ever touches the
+    /// front buffer, which is kept separately.
     pub fn get_back_buffer(&mut self) -> &mut FrameBuf<Rgb565, FB> {
         &mut self.back
     }
 
-    /// Get reference to the front buffer (currently being displayed)
+    /// Get a reference to the front buffer if it is currently idle.
     ///
-    /// This is rarely needed, as you should render to the back buffer.
-    pub fn get_front_buffer(&self) -> &FrameBuf<Rgb565, FB> {
-        &self.front
+    /// Returns `None` while a DMA transfer is in progress.
+    pub fn get_front_buffer(&self) -> Option<&FrameBuf<Rgb565, FB>> {
+        match &self.front {
+            Some(FrontState::Idle(fb)) => Some(fb),
+            _ => None,
+        }
     }
 
-    /// Present the back buffer to the display (blocking)
+    /// Present the back buffer (blocking).
     ///
-    /// This function:
-    /// 1. Waits for any in-progress DMA transfer to complete
-    /// 2. Swaps the front and back buffers
-    /// 3. Starts a new DMA transfer of the (new) front buffer
+    /// 1. Waits for any in-progress DMA transfer to complete.
+    /// 2. Swaps the front and back buffers.
+    /// 3. Starts a new DMA transfer of the new front buffer.
     ///
-    /// After this call returns, you can immediately start rendering to the
-    /// (new) back buffer while the display hardware reads the front buffer.
-    ///
-    /// # Returns
-    /// `Ok(())` if successful, `Err(DisplayError)` if DMA fails
+    /// After this call returns, the CPU may immediately start rendering to
+    /// the new back buffer while DMA reads from the new front buffer.
     pub fn present(&mut self) -> Result<(), DisplayError> {
-        // Wait for any in-progress DMA to finish
-        self.backend.wait_for_dma();
-
-        // Swap front and back buffers
-        core::mem::swap(&mut self.front, &mut self.back);
-
-        // Start DMA transfer of new front buffer
-        self.backend.start_dma_transfer(&self.front)?;
-
-        self.frame_count += 1;
-        Ok(())
+        self.present_impl(|backend, fb| backend.start_dma_transfer(fb))
     }
 
-    /// Try to present the back buffer (non-blocking)
+    /// Present the back buffer without blocking.
     ///
-    /// Like `present()`, but returns immediately with an error if DMA is busy.
-    /// Useful for variable-rate rendering where you want to skip frames
-    /// if rendering is too slow.
-    ///
-    /// # Returns
-    /// - `Ok(())` if swap succeeded
-    /// - `Err(DisplayError::Busy)` if DMA is still transferring
-    /// - `Err(DisplayError::HardwareError)` on other errors
+    /// Returns [`DisplayError::Busy`] immediately if a DMA transfer is
+    /// still in progress, leaving both buffers unchanged.
     pub fn try_present(&mut self) -> Result<(), DisplayError> {
-        // Check if DMA is ready
-        if !self.backend.is_dma_ready() {
+        if !self.is_ready() {
             return Err(DisplayError::Busy);
         }
-
-        // Swap front and back buffers
-        core::mem::swap(&mut self.front, &mut self.back);
-
-        // Start DMA transfer of new front buffer
-        self.backend.start_dma_transfer(&self.front)?;
-
-        self.frame_count += 1;
-        Ok(())
+        self.present_impl(|backend, fb| backend.start_dma_transfer(fb))
     }
 
-    /// Present only a region of the back buffer.
+    /// Present only a sub-region of the back buffer (blocking).
     ///
-    /// Backends that don't support region DMA automatically fall back to full-frame transfer.
+    /// Backends that do not support partial DMA automatically fall back to
+    /// a full-frame transfer.
     pub fn present_region(&mut self, region: DisplayRegion) -> Result<(), DisplayError> {
-        self.backend.wait_for_dma();
-        core::mem::swap(&mut self.front, &mut self.back);
-        self.backend
-            .start_dma_transfer_region(&self.front, region)?;
-        self.frame_count += 1;
-        Ok(())
+        self.present_impl(|backend, fb| backend.start_dma_transfer_region(fb, region))
     }
 
     /// Non-blocking partial present.
+    ///
+    /// Returns [`DisplayError::Busy`] if a transfer is still running.
     pub fn try_present_region(&mut self, region: DisplayRegion) -> Result<(), DisplayError> {
-        if !self.backend.is_dma_ready() {
+        if !self.is_ready() {
             return Err(DisplayError::Busy);
         }
-        core::mem::swap(&mut self.front, &mut self.back);
-        self.backend
-            .start_dma_transfer_region(&self.front, region)?;
-        self.frame_count += 1;
-        Ok(())
+        self.present_impl(|backend, fb| backend.start_dma_transfer_region(fb, region))
     }
 
-    /// Wait for the current DMA transfer to complete
+    /// Block until the current DMA transfer completes.
     ///
-    /// Useful if you need to ensure a frame has been fully displayed
-    /// before proceeding (e.g., before taking a screenshot or exiting).
+    /// After this call the front buffer is in the idle state and the next
+    /// `present` will not need to wait.
     pub fn wait_for_vsync(&mut self) {
-        self.backend.wait_for_dma();
+        if let Some(state) = self.front.take() {
+            let fb = state.recover();
+            self.front = Some(FrontState::Idle(fb));
+        }
     }
 
-    /// Check if DMA is ready for a new transfer
-    ///
-    /// Returns `true` if `try_present()` would succeed, `false` otherwise.
+    /// Returns `true` if no DMA transfer is running (or the hardware has
+    /// signalled completion), so `try_present` would succeed.
     pub fn is_ready(&self) -> bool {
-        self.backend.is_dma_ready()
+        self.front.as_ref().map_or(true, |s| s.is_ready())
     }
 
-    /// Get the number of frames presented
+    /// Total number of frames presented since construction (or the last
+    /// [`reset_frame_count`](SwapChain::reset_frame_count) call).
     pub fn frame_count(&self) -> u64 {
         self.frame_count
     }
 
-    /// Reset the frame counter
+    /// Reset the frame counter to zero.
     pub fn reset_frame_count(&mut self) {
         self.frame_count = 0;
     }
 
-    /// Get framebuffer dimensions
+    /// Framebuffer dimensions `(W, H)`.
     pub fn dimensions(&self) -> (usize, usize) {
         (W, H)
     }
+
+    // ── Private helpers ───────────────────────────────────────────────────────
+
+    /// Shared logic for all present variants.
+    ///
+    /// `start_fn` is called with `(&mut backend, front_framebuffer)` and
+    /// must return a transfer token or a `TransferError`.
+    fn present_impl<F>(&mut self, start_fn: F) -> Result<(), DisplayError>
+    where
+        F: FnOnce(
+            &mut B,
+            FrameBuf<Rgb565, FB>,
+        ) -> Result<B::Transfer, crate::display_backend::TransferError<FB>>,
+    {
+        // 1. Recover the front framebuffer (block if DMA was running).
+        let old_front = self
+            .front
+            .take()
+            .expect("SwapChain front buffer missing — double present?")
+            .recover();
+
+        // 2. Swap: old_front becomes the new back, current back becomes the
+        //    new front.
+        let new_front = core::mem::replace(&mut self.back, old_front);
+
+        // 3. Hand the new front to the backend.
+        match start_fn(&mut self.backend, new_front) {
+            Ok(transfer) => {
+                self.front = Some(FrontState::InFlight(transfer));
+                self.frame_count += 1;
+                Ok(())
+            }
+            Err(e) => {
+                // Transfer failed — put the buffer back so it is not lost.
+                // self.back currently holds old_front; swap back.
+                let recovered_front = core::mem::replace(&mut self.back, e.framebuffer);
+                self.front = Some(FrontState::Idle(recovered_front));
+                Err(e.error)
+            }
+        }
+    }
 }
 
+// ── TripleSwapChain ───────────────────────────────────────────────────────────
+
 /// Triple-buffered swap chain for smoother pacing under bursty frame times.
+///
+/// - `render`: the buffer the CPU is currently writing to.
+/// - `ready`:  the last fully-rendered buffer waiting to be shown.
+/// - `display`: the buffer currently owned by DMA (or idle between frames).
+///
+/// On each `present` call the render and display buffers are rotated so
+/// the CPU can immediately start the next frame without waiting for the
+/// display scan-out to finish.
 #[cfg(feature = "triple-buffering")]
 pub struct TripleSwapChain<const W: usize, const H: usize, FB, B>
 where
     FB: DMACapableFrameBufferBackend<Color = Rgb565>,
     B: DisplayBackend<W, H, FB>,
 {
-    display: FrameBuf<Rgb565, FB>,
+    display: Option<FrontState<FrameBuf<Rgb565, FB>, B::Transfer>>,
     ready: FrameBuf<Rgb565, FB>,
     render: FrameBuf<Rgb565, FB>,
     backend: B,
@@ -264,16 +324,17 @@ where
         backend: B,
     ) -> Self {
         let mk = |data: &'static mut [Rgb565]| {
-            if big_endian {
-                EndianCorrectedBuffer::new(data, EndianCorrection::ToBigEndian)
+            let correction = if big_endian {
+                EndianCorrection::ToBigEndian
             } else {
-                EndianCorrectedBuffer::new(data, EndianCorrection::ToLittleEndian)
-            }
+                EndianCorrection::ToLittleEndian
+            };
+            FrameBuf::new(EndianCorrectedBuffer::new(data, correction), W, H)
         };
         Self {
-            display: FrameBuf::new(mk(display_data), W, H),
-            ready: FrameBuf::new(mk(ready_data), W, H),
-            render: FrameBuf::new(mk(render_data), W, H),
+            display: Some(FrontState::Idle(mk(display_data))),
+            ready: mk(ready_data),
+            render: mk(render_data),
             backend,
             frame_count: 0,
         }
@@ -286,143 +347,104 @@ where
     FB: DMACapableFrameBufferBackend<Color = Rgb565>,
     B: DisplayBackend<W, H, FB>,
 {
+    /// Get a mutable reference to the render buffer.
     pub fn get_render_buffer(&mut self) -> &mut FrameBuf<Rgb565, FB> {
         &mut self.render
     }
 
+    /// Present the render buffer (blocking).
+    ///
+    /// Waits for the previous display transfer to complete, then:
+    /// 1. Rotates `render → display` and starts DMA.
+    /// 2. Rotates `display (old) → ready` so the CPU has a fresh buffer.
     pub fn present(&mut self) -> Result<(), DisplayError> {
-        self.backend.wait_for_dma();
-        core::mem::swap(&mut self.display, &mut self.render);
-        self.backend.start_dma_transfer(&self.display)?;
-        core::mem::swap(&mut self.ready, &mut self.render);
-        self.frame_count += 1;
-        Ok(())
+        self.present_impl(|backend, fb| backend.start_dma_transfer(fb))
     }
 
+    /// Non-blocking triple-buffer present.
+    ///
+    /// Returns [`DisplayError::Busy`] if the previous display transfer has
+    /// not finished yet.
     pub fn try_present(&mut self) -> Result<(), DisplayError> {
-        if !self.backend.is_dma_ready() {
+        let ready = self.display.as_ref().map_or(true, |s| s.is_ready());
+        if !ready {
             return Err(DisplayError::Busy);
         }
-        core::mem::swap(&mut self.display, &mut self.render);
-        self.backend.start_dma_transfer(&self.display)?;
-        core::mem::swap(&mut self.ready, &mut self.render);
-        self.frame_count += 1;
-        Ok(())
+        self.present_impl(|backend, fb| backend.start_dma_transfer(fb))
     }
 
     pub fn frame_count(&self) -> u64 {
         self.frame_count
     }
+
+    fn present_impl<F>(&mut self, start_fn: F) -> Result<(), DisplayError>
+    where
+        F: FnOnce(
+            &mut B,
+            FrameBuf<Rgb565, FB>,
+        ) -> Result<B::Transfer, crate::display_backend::TransferError<FB>>,
+    {
+        // 1. Recover the display buffer (block if DMA was running).
+        let old_display = self
+            .display
+            .take()
+            .expect("TripleSwapChain display buffer missing")
+            .recover();
+
+        // 2. render → new display, old_display → render slot temporarily.
+        let rendered = core::mem::replace(&mut self.render, old_display);
+
+        // 3. Start DMA on the freshly rendered frame.
+        match start_fn(&mut self.backend, rendered) {
+            Ok(transfer) => {
+                self.display = Some(FrontState::InFlight(transfer));
+                // 4. ready ↔ render: CPU gets the old ready buffer to render into.
+                core::mem::swap(&mut self.ready, &mut self.render);
+                self.frame_count += 1;
+                Ok(())
+            }
+            Err(e) => {
+                // Undo: put rendered back into render, restore old_display.
+                let old_display = core::mem::replace(&mut self.render, e.framebuffer);
+                self.display = Some(FrontState::Idle(old_display));
+                Err(e.error)
+            }
+        }
+    }
 }
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     extern crate std;
     use super::*;
-    use crate::display_backend::SimulatorBackend;
+    use crate::display_backend::{DmaTransfer, SimulatorBackend, TransferError};
     use core::cell::Cell;
     use embedded_graphics_core::pixelcolor::RgbColor;
     use std::vec;
 
-    // Helper to create a leaked slice for testing
-    fn create_static_buffer<const SIZE: usize>() -> &'static mut [Rgb565] {
-        let vec = vec![Rgb565::BLACK; SIZE];
-        vec.leak()
+    fn make_static_slice(n: usize) -> &'static mut [Rgb565] {
+        vec![Rgb565::BLACK; n].leak()
     }
 
-    #[test]
-    fn test_swapchain_creation() {
-        let fb0 = create_static_buffer::<{ 320 * 240 }>();
-        let fb1 = create_static_buffer::<{ 320 * 240 }>();
+    // ── TrackingBackend ───────────────────────────────────────────────────────
+    //
+    // Counts how many times start_dma_transfer_region was called and
+    // otherwise behaves like SimulatorBackend.
 
-        let swap_chain = StandardSwapChain::<320, 240, _>::from_static_slices(
-            fb0,
-            fb1,
-            false,
-            SimulatorBackend::new(),
-        );
-
-        assert_eq!(swap_chain.dimensions(), (320, 240));
-        assert_eq!(swap_chain.frame_count(), 0);
-        assert!(swap_chain.is_ready());
+    struct TrackingTransfer<FB: DMACapableFrameBufferBackend<Color = Rgb565>> {
+        framebuffer: Option<FrameBuf<Rgb565, FB>>,
     }
 
-    #[test]
-    fn test_swapchain_present() {
-        let fb0 = create_static_buffer::<{ 320 * 240 }>();
-        let fb1 = create_static_buffer::<{ 320 * 240 }>();
-
-        let mut swap_chain = StandardSwapChain::<320, 240, _>::from_static_slices(
-            fb0,
-            fb1,
-            false,
-            SimulatorBackend::new(),
-        );
-
-        // Present should succeed
-        assert!(swap_chain.present().is_ok());
-        assert_eq!(swap_chain.frame_count(), 1);
-    }
-
-    #[test]
-    fn test_swapchain_multiple_presents() {
-        let fb0 = create_static_buffer::<{ 320 * 240 }>();
-        let fb1 = create_static_buffer::<{ 320 * 240 }>();
-
-        let mut swap_chain = StandardSwapChain::<320, 240, _>::from_static_slices(
-            fb0,
-            fb1,
-            false,
-            SimulatorBackend::new(),
-        );
-
-        // Present multiple frames
-        for _ in 0..5 {
-            assert!(swap_chain.present().is_ok());
+    impl<FB: DMACapableFrameBufferBackend<Color = Rgb565>> DmaTransfer for TrackingTransfer<FB> {
+        type Buffer = FrameBuf<Rgb565, FB>;
+        fn is_done(&self) -> bool {
+            true
         }
-
-        assert_eq!(swap_chain.frame_count(), 5);
-    }
-
-    #[test]
-    fn test_swapchain_try_present() {
-        let fb0 = create_static_buffer::<{ 320 * 240 }>();
-        let fb1 = create_static_buffer::<{ 320 * 240 }>();
-
-        let mut swap_chain = StandardSwapChain::<320, 240, _>::from_static_slices(
-            fb0,
-            fb1,
-            false,
-            SimulatorBackend::new(),
-        );
-
-        // try_present should succeed (SimulatorBackend is always ready)
-        assert!(swap_chain.try_present().is_ok());
-        assert_eq!(swap_chain.frame_count(), 1);
-    }
-
-    #[test]
-    fn test_swapchain_frame_counter() {
-        let fb0 = create_static_buffer::<{ 320 * 240 }>();
-        let fb1 = create_static_buffer::<{ 320 * 240 }>();
-
-        let mut swap_chain = StandardSwapChain::<320, 240, _>::from_static_slices(
-            fb0,
-            fb1,
-            false,
-            SimulatorBackend::new(),
-        );
-
-        assert_eq!(swap_chain.frame_count(), 0);
-
-        swap_chain.present().unwrap();
-        assert_eq!(swap_chain.frame_count(), 1);
-
-        swap_chain.present().unwrap();
-        assert_eq!(swap_chain.frame_count(), 2);
-
-        swap_chain.reset_frame_count();
-        assert_eq!(swap_chain.frame_count(), 0);
+        fn wait(mut self) -> FrameBuf<Rgb565, FB> {
+            self.framebuffer.take().unwrap()
+        }
     }
 
     struct TrackingBackend {
@@ -441,49 +463,136 @@ mod tests {
     where
         FB: DMACapableFrameBufferBackend<Color = Rgb565>,
     {
+        type Transfer = TrackingTransfer<FB>;
+
         fn start_dma_transfer(
             &mut self,
-            _framebuffer: &FrameBuf<Rgb565, FB>,
-        ) -> Result<(), DisplayError> {
-            Ok(())
+            framebuffer: FrameBuf<Rgb565, FB>,
+        ) -> Result<TrackingTransfer<FB>, TransferError<FB>> {
+            Ok(TrackingTransfer {
+                framebuffer: Some(framebuffer),
+            })
         }
 
         fn start_dma_transfer_region(
             &mut self,
-            _framebuffer: &FrameBuf<Rgb565, FB>,
+            framebuffer: FrameBuf<Rgb565, FB>,
             _region: DisplayRegion,
-        ) -> Result<(), DisplayError> {
+        ) -> Result<TrackingTransfer<FB>, TransferError<FB>> {
             self.region_present_count
                 .set(self.region_present_count.get() + 1);
-            Ok(())
+            Ok(TrackingTransfer {
+                framebuffer: Some(framebuffer),
+            })
         }
+    }
 
-        fn wait_for_dma(&mut self) {}
+    // ── Helper ────────────────────────────────────────────────────────────────
 
-        fn is_dma_ready(&self) -> bool {
-            true
+    fn make_swap_chain<B>(backend: B) -> StandardSwapChain<320, 240, B>
+    where
+        B: DisplayBackend<320, 240, EndianCorrectedBuffer<'static, Rgb565>>,
+    {
+        StandardSwapChain::<320, 240, _>::from_static_slices(
+            make_static_slice(320 * 240),
+            make_static_slice(320 * 240),
+            false,
+            backend,
+        )
+    }
+
+    // ── SwapChain tests ───────────────────────────────────────────────────────
+
+    #[test]
+    fn test_swapchain_creation() {
+        let sc = make_swap_chain(SimulatorBackend::new());
+        assert_eq!(sc.dimensions(), (320, 240));
+        assert_eq!(sc.frame_count(), 0);
+        assert!(sc.is_ready());
+    }
+
+    #[test]
+    fn test_swapchain_present() {
+        let mut sc = make_swap_chain(SimulatorBackend::new());
+        assert!(sc.present().is_ok());
+        assert_eq!(sc.frame_count(), 1);
+    }
+
+    #[test]
+    fn test_swapchain_multiple_presents() {
+        let mut sc = make_swap_chain(SimulatorBackend::new());
+        for _ in 0..5 {
+            assert!(sc.present().is_ok());
         }
+        assert_eq!(sc.frame_count(), 5);
+    }
+
+    #[test]
+    fn test_swapchain_try_present() {
+        let mut sc = make_swap_chain(SimulatorBackend::new());
+        assert!(sc.try_present().is_ok());
+        assert_eq!(sc.frame_count(), 1);
+    }
+
+    #[test]
+    fn test_swapchain_frame_counter() {
+        let mut sc = make_swap_chain(SimulatorBackend::new());
+        assert_eq!(sc.frame_count(), 0);
+        sc.present().unwrap();
+        assert_eq!(sc.frame_count(), 1);
+        sc.present().unwrap();
+        assert_eq!(sc.frame_count(), 2);
+        sc.reset_frame_count();
+        assert_eq!(sc.frame_count(), 0);
+    }
+
+    #[test]
+    fn test_swapchain_get_back_buffer_always_available() {
+        let mut sc = make_swap_chain(SimulatorBackend::new());
+        sc.present().unwrap();
+        // Even after present, back buffer must be accessible for rendering
+        let _back = sc.get_back_buffer();
+    }
+
+    #[test]
+    fn test_swapchain_wait_for_vsync() {
+        let mut sc = make_swap_chain(SimulatorBackend::new());
+        sc.present().unwrap();
+        sc.wait_for_vsync();
+        // After vsync, front is idle and is_ready returns true
+        assert!(sc.is_ready());
     }
 
     #[test]
     fn test_swapchain_present_region() {
-        let fb0 = create_static_buffer::<{ 64 * 64 }>();
-        let fb1 = create_static_buffer::<{ 64 * 64 }>();
-        let backend = TrackingBackend::new();
-        let mut swap_chain =
-            StandardSwapChain::<64, 64, _>::from_static_slices(fb0, fb1, false, backend);
-        swap_chain
-            .present_region(DisplayRegion::new(0, 0, 8, 8))
-            .unwrap();
-        assert_eq!(swap_chain.backend.region_present_count.get(), 1);
+        let fb0 = make_static_slice(64 * 64);
+        let fb1 = make_static_slice(64 * 64);
+        let mut sc = StandardSwapChain::<64, 64, _>::from_static_slices(
+            fb0,
+            fb1,
+            false,
+            TrackingBackend::new(),
+        );
+        sc.present_region(DisplayRegion::new(0, 0, 8, 8)).unwrap();
+        assert_eq!(sc.backend.region_present_count.get(), 1);
     }
+
+    #[test]
+    fn test_swapchain_is_ready_after_simulator_present() {
+        let mut sc = make_swap_chain(SimulatorBackend::new());
+        // SimulatorBackend transfer is always done immediately
+        sc.present().unwrap();
+        assert!(sc.is_ready());
+    }
+
+    // ── TripleSwapChain tests ─────────────────────────────────────────────────
 
     #[cfg(feature = "triple-buffering")]
     #[test]
     fn test_triple_swapchain_present() {
-        let fb0 = create_static_buffer::<{ 64 * 64 }>();
-        let fb1 = create_static_buffer::<{ 64 * 64 }>();
-        let fb2 = create_static_buffer::<{ 64 * 64 }>();
+        let fb0 = make_static_slice(64 * 64);
+        let fb1 = make_static_slice(64 * 64);
+        let fb2 = make_static_slice(64 * 64);
         let mut sc = StandardTripleSwapChain::<64, 64, _>::from_static_slices(
             fb0,
             fb1,

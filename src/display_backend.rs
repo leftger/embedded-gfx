@@ -4,6 +4,16 @@
 //! framebuffer transfers using DMA (Direct Memory Access). This enables
 //! double-buffered rendering where the CPU can render to one buffer while
 //! the display hardware transfers another buffer.
+//!
+//! # Safety
+//!
+//! The key safety property of this API is that `start_dma_transfer` takes
+//! ownership of the framebuffer and returns a [`DmaTransfer`] token. The
+//! buffer is locked inside the token for the duration of the transfer —
+//! the compiler prevents any access to it until [`DmaTransfer::wait`]
+//! returns it. This eliminates the data race that arises from the
+//! previous borrow-based API, where DMA could be reading from memory that
+//! the CPU was free to overwrite.
 
 use embedded_graphics_core::pixelcolor::Rgb565;
 use embedded_graphics_framebuf::{FrameBuf, backends::DMACapableFrameBufferBackend};
@@ -28,105 +38,147 @@ impl DisplayRegion {
     }
 }
 
-/// Error types for display backend operations
+/// Error types for display backend operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DisplayError {
-    /// DMA transfer is still in progress
+    /// DMA transfer is still in progress.
     Busy,
-    /// Hardware error during transfer
+    /// Hardware error during transfer.
     HardwareError,
-    /// Invalid buffer configuration
+    /// Invalid buffer configuration.
     InvalidBuffer,
 }
 
-/// Platform-agnostic display backend trait
+/// Returned when a DMA transfer fails to start.
 ///
-/// Implementations of this trait handle the hardware-specific details of
-/// transferring framebuffer data to the display using DMA.
+/// Carries both the error code and the framebuffer back to the caller so
+/// the buffer is not lost on failure.
+pub struct TransferError<FB>
+where
+    FB: DMACapableFrameBufferBackend<Color = Rgb565>,
+{
+    /// The framebuffer that could not be transferred.
+    pub framebuffer: FrameBuf<Rgb565, FB>,
+    /// The reason the transfer failed.
+    pub error: DisplayError,
+}
+
+/// An in-progress DMA transfer that holds the framebuffer until completion.
+///
+/// The buffer is inaccessible while this token is live — the only way to
+/// get it back is to call [`wait`](DmaTransfer::wait), which blocks until
+/// the hardware has finished reading.
+///
+/// Implementors for real hardware should cancel the DMA in their [`Drop`]
+/// impl so that dropping a token without waiting is always safe.
+pub trait DmaTransfer {
+    /// The buffer type that is returned when the transfer completes.
+    type Buffer;
+
+    /// Returns `true` if the DMA hardware has finished the transfer.
+    fn is_done(&self) -> bool;
+
+    /// Block until the transfer is complete and return the framebuffer.
+    ///
+    /// Consuming `self` ensures the buffer cannot be accessed while DMA
+    /// is still reading it.
+    fn wait(self) -> Self::Buffer;
+}
+
+/// Platform-agnostic display backend trait.
+///
+/// Implementations handle the hardware-specific details of transferring a
+/// framebuffer to the display. The API is intentionally ownership-based:
+/// `start_dma_transfer` takes the framebuffer **by value** and returns a
+/// [`DmaTransfer`] token. The buffer is held inside the token and cannot
+/// be accessed again until [`DmaTransfer::wait`] returns it. This
+/// prevents write-after-submit data races at compile time.
+///
+/// # Implementing for real hardware
+///
+/// 1. Define a concrete transfer type that holds the buffer and any
+///    hardware state needed to poll or cancel the DMA.
+/// 2. In `start_dma_transfer`: program the DMA controller, then move the
+///    buffer into your transfer type.
+/// 3. In `DmaTransfer::wait`: spin or sleep until the done flag is set by
+///    the DMA interrupt, then return the buffer.
+/// 4. In `DmaTransfer::drop`: if the transfer is still running, cancel
+///    it. This ensures that dropping a forgotten token never leaves the
+///    DMA controller pointing at freed memory.
 pub trait DisplayBackend<const W: usize, const H: usize, FB>
 where
     FB: DMACapableFrameBufferBackend<Color = Rgb565>,
 {
-    /// Start a non-blocking DMA transfer of the framebuffer to the display
+    /// The transfer token type returned by this backend.
+    type Transfer: DmaTransfer<Buffer = FrameBuf<Rgb565, FB>>;
+
+    /// Start a non-blocking DMA transfer of the full framebuffer.
     ///
-    /// # Arguments
-    /// * `framebuffer` - The framebuffer to transfer
+    /// Takes ownership of the framebuffer. The caller cannot access the
+    /// buffer again until [`DmaTransfer::wait`] returns it.
     ///
-    /// # Returns
-    /// `Ok(())` if transfer started successfully, `Err(DisplayError)` otherwise
-    ///
-    /// # Note
-    /// This function should not block. If a transfer is already in progress,
-    /// it should return `Err(DisplayError::Busy)`.
+    /// If starting the transfer fails the buffer is returned inside
+    /// [`TransferError`] so it is not lost.
     fn start_dma_transfer(
         &mut self,
-        framebuffer: &FrameBuf<Rgb565, FB>,
-    ) -> Result<(), DisplayError>;
+        framebuffer: FrameBuf<Rgb565, FB>,
+    ) -> Result<Self::Transfer, TransferError<FB>>;
 
-    /// Start a non-blocking transfer of a framebuffer sub-region.
+    /// Start a non-blocking DMA transfer of a framebuffer sub-region.
     ///
-    /// Default implementation falls back to full-frame transfer.
+    /// Backends that do not support partial transfers may ignore `region`
+    /// and fall back to a full-frame transfer.
     fn start_dma_transfer_region(
         &mut self,
-        framebuffer: &FrameBuf<Rgb565, FB>,
+        framebuffer: FrameBuf<Rgb565, FB>,
         _region: DisplayRegion,
-    ) -> Result<(), DisplayError> {
+    ) -> Result<Self::Transfer, TransferError<FB>> {
         self.start_dma_transfer(framebuffer)
-    }
-
-    /// Wait for the current DMA transfer to complete
-    ///
-    /// This function blocks until the DMA transfer finishes.
-    fn wait_for_dma(&mut self);
-
-    /// Check if DMA is ready for a new transfer
-    ///
-    /// # Returns
-    /// `true` if no transfer is in progress, `false` otherwise
-    fn is_dma_ready(&self) -> bool;
-
-    /// Present a framebuffer to the display (convenience method)
-    ///
-    /// This is equivalent to calling `wait_for_dma()` followed by `start_dma_transfer()`.
-    ///
-    /// # Arguments
-    /// * `framebuffer` - The framebuffer to display
-    ///
-    /// # Returns
-    /// `Ok(())` if successful, `Err(DisplayError)` otherwise
-    fn present(&mut self, framebuffer: &FrameBuf<Rgb565, FB>) -> Result<(), DisplayError> {
-        self.wait_for_dma();
-        self.start_dma_transfer(framebuffer)
-    }
-
-    /// Present a framebuffer sub-region to the display.
-    ///
-    /// Default implementation falls back to full-frame present.
-    fn present_region(
-        &mut self,
-        framebuffer: &FrameBuf<Rgb565, FB>,
-        region: DisplayRegion,
-    ) -> Result<(), DisplayError> {
-        self.wait_for_dma();
-        self.start_dma_transfer_region(framebuffer, region)
     }
 }
 
-/// No-op display backend for simulators and testing
+// ── SimulatorBackend ──────────────────────────────────────────────────────────
+
+/// A transfer token that is already complete.
 ///
-/// This backend immediately "completes" all transfers and is always ready.
-/// It's useful for:
-/// - Desktop simulators that don't have real DMA hardware
+/// Used by [`SimulatorBackend`]: since there is no real DMA hardware, the
+/// framebuffer is simply held here until `wait` returns it.
+pub struct CompletedTransfer<FB>
+where
+    FB: DMACapableFrameBufferBackend<Color = Rgb565>,
+{
+    framebuffer: Option<FrameBuf<Rgb565, FB>>,
+}
+
+impl<FB> DmaTransfer for CompletedTransfer<FB>
+where
+    FB: DMACapableFrameBufferBackend<Color = Rgb565>,
+{
+    type Buffer = FrameBuf<Rgb565, FB>;
+
+    fn is_done(&self) -> bool {
+        true
+    }
+
+    fn wait(mut self) -> FrameBuf<Rgb565, FB> {
+        self.framebuffer
+            .take()
+            .expect("CompletedTransfer polled after completion")
+    }
+}
+
+/// No-op display backend for simulators and testing.
+///
+/// All transfers complete immediately — there is no real DMA hardware.
+/// Useful for:
+/// - Desktop simulators
 /// - Unit testing swap chain logic
 /// - Development without target hardware
-pub struct SimulatorBackend {
-    // No state needed for no-op backend
-}
+pub struct SimulatorBackend;
 
 impl SimulatorBackend {
-    /// Create a new simulator backend
     pub fn new() -> Self {
-        Self {}
+        Self
     }
 }
 
@@ -140,23 +192,19 @@ impl<const W: usize, const H: usize, FB> DisplayBackend<W, H, FB> for SimulatorB
 where
     FB: DMACapableFrameBufferBackend<Color = Rgb565>,
 {
+    type Transfer = CompletedTransfer<FB>;
+
     fn start_dma_transfer(
         &mut self,
-        _framebuffer: &FrameBuf<Rgb565, FB>,
-    ) -> Result<(), DisplayError> {
-        // No-op: simulator doesn't actually transfer data
-        Ok(())
-    }
-
-    fn wait_for_dma(&mut self) {
-        // No-op: no real DMA to wait for
-    }
-
-    fn is_dma_ready(&self) -> bool {
-        // Always ready since there's no real DMA
-        true
+        framebuffer: FrameBuf<Rgb565, FB>,
+    ) -> Result<CompletedTransfer<FB>, TransferError<FB>> {
+        Ok(CompletedTransfer {
+            framebuffer: Some(framebuffer),
+        })
     }
 }
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
@@ -167,8 +215,33 @@ mod tests {
     use embedded_graphics_framebuf::backends::EndianCorrectedBuffer;
     use std::vec;
 
-    // Type alias for testing
     type TestBackend = EndianCorrectedBuffer<'static, Rgb565>;
+
+    fn make_fb<const W: usize, const H: usize>() -> FrameBuf<Rgb565, TestBackend> {
+        use embedded_graphics_framebuf::backends::EndianCorrection;
+        let data: &'static mut [Rgb565] = vec![Rgb565::BLACK; W * H].leak();
+        FrameBuf::new(
+            EndianCorrectedBuffer::new(data, EndianCorrection::ToLittleEndian),
+            W,
+            H,
+        )
+    }
+
+    // ── RegionTrackingBackend ─────────────────────────────────────────────────
+
+    struct RegionTransfer<FB: DMACapableFrameBufferBackend<Color = Rgb565>> {
+        framebuffer: Option<FrameBuf<Rgb565, FB>>,
+    }
+
+    impl<FB: DMACapableFrameBufferBackend<Color = Rgb565>> DmaTransfer for RegionTransfer<FB> {
+        type Buffer = FrameBuf<Rgb565, FB>;
+        fn is_done(&self) -> bool {
+            true
+        }
+        fn wait(mut self) -> FrameBuf<Rgb565, FB> {
+            self.framebuffer.take().unwrap()
+        }
+    }
 
     struct RegionTrackingBackend {
         region_calls: Cell<usize>,
@@ -186,80 +259,85 @@ mod tests {
     where
         FB: DMACapableFrameBufferBackend<Color = Rgb565>,
     {
+        type Transfer = RegionTransfer<FB>;
+
         fn start_dma_transfer(
             &mut self,
-            _framebuffer: &FrameBuf<Rgb565, FB>,
-        ) -> Result<(), DisplayError> {
-            Ok(())
+            framebuffer: FrameBuf<Rgb565, FB>,
+        ) -> Result<RegionTransfer<FB>, TransferError<FB>> {
+            Ok(RegionTransfer {
+                framebuffer: Some(framebuffer),
+            })
         }
 
         fn start_dma_transfer_region(
             &mut self,
-            _framebuffer: &FrameBuf<Rgb565, FB>,
+            framebuffer: FrameBuf<Rgb565, FB>,
             _region: DisplayRegion,
-        ) -> Result<(), DisplayError> {
+        ) -> Result<RegionTransfer<FB>, TransferError<FB>> {
             self.region_calls.set(self.region_calls.get() + 1);
-            Ok(())
-        }
-
-        fn wait_for_dma(&mut self) {}
-
-        fn is_dma_ready(&self) -> bool {
-            true
+            Ok(RegionTransfer {
+                framebuffer: Some(framebuffer),
+            })
         }
     }
 
-    #[test]
-    fn test_simulator_backend_creation() {
-        let backend = SimulatorBackend::new();
-        // Backend should exist and be ready
-        // Use explicit trait method call with types
-        assert!(<SimulatorBackend as DisplayBackend<
-            320,
-            240,
-            TestBackend,
-        >>::is_dma_ready(&backend));
-    }
+    // ── Tests ─────────────────────────────────────────────────────────────────
 
     #[test]
-    fn test_simulator_backend_always_ready() {
+    fn test_simulator_backend_transfer_completes_immediately() {
         let mut backend = SimulatorBackend::new();
-
-        // Should always be ready
-        assert!(<SimulatorBackend as DisplayBackend<
-            320,
-            240,
-            TestBackend,
-        >>::is_dma_ready(&backend));
-
-        // Wait should be no-op
-        <SimulatorBackend as DisplayBackend<320, 240, TestBackend>>::wait_for_dma(&mut backend);
-        assert!(<SimulatorBackend as DisplayBackend<
-            320,
-            240,
-            TestBackend,
-        >>::is_dma_ready(&backend));
+        let fb = make_fb::<2, 2>();
+        let xfer = <SimulatorBackend as DisplayBackend<2, 2, TestBackend>>::start_dma_transfer(
+            &mut backend,
+            fb,
+        )
+        .unwrap();
+        assert!(xfer.is_done());
+        let _fb = xfer.wait();
     }
 
     #[test]
-    fn test_present_region_calls_region_transfer() {
-        let mut backend = RegionTrackingBackend::new();
-        let data = vec![Rgb565::BLACK; 4].leak();
-        let fb = FrameBuf::new(
-            EndianCorrectedBuffer::new(
-                data,
-                embedded_graphics_framebuf::backends::EndianCorrection::ToLittleEndian,
-            ),
-            2,
-            2,
-        );
-        let region = DisplayRegion::new(0, 0, 1, 1);
-        <RegionTrackingBackend as DisplayBackend<2, 2, TestBackend>>::present_region(
+    fn test_simulator_backend_returns_buffer_on_wait() {
+        let mut backend = SimulatorBackend::new();
+        let fb = make_fb::<4, 4>();
+        let xfer = <SimulatorBackend as DisplayBackend<4, 4, TestBackend>>::start_dma_transfer(
             &mut backend,
-            &fb,
+            fb,
+        )
+        .unwrap();
+        // wait() should return the framebuffer
+        let fb_back = xfer.wait();
+        assert_eq!(fb_back.width, 4);
+        assert_eq!(fb_back.height, 4);
+    }
+
+    #[test]
+    fn test_region_tracking_backend_counts_region_transfers() {
+        let mut backend = RegionTrackingBackend::new();
+        let fb = make_fb::<2, 2>();
+        let region = DisplayRegion::new(0, 0, 1, 1);
+        let xfer = <RegionTrackingBackend as DisplayBackend<2, 2, TestBackend>>::start_dma_transfer_region(
+            &mut backend,
+            fb,
             region,
         )
         .unwrap();
         assert_eq!(backend.region_calls.get(), 1);
+        let _ = xfer.wait();
+    }
+
+    #[test]
+    fn test_full_transfer_does_not_increment_region_counter() {
+        let mut backend = RegionTrackingBackend::new();
+        let fb = make_fb::<2, 2>();
+        let xfer =
+            <RegionTrackingBackend as DisplayBackend<2, 2, TestBackend>>::start_dma_transfer(
+                &mut backend,
+                fb,
+            )
+            .unwrap();
+        assert_eq!(backend.region_calls.get(), 0);
+        let _ = xfer.wait();
     }
 }

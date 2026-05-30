@@ -523,6 +523,18 @@ cargo test --lib
 cargo test --lib --all-features
 ```
 
+## Git Hooks (Rustfmt Guardrails)
+
+Versioned hooks live in `.githooks/` and can be installed into `.git/hooks`:
+
+```bash
+./scripts/install-git-hooks.sh
+```
+
+Installed behavior:
+- `pre-commit`: runs `cargo fmt --all` and re-stages formatted staged Rust files.
+- `pre-push`: runs `cargo fmt --all --check` and blocks push on formatting drift.
+
 ## Contributing
 
 Contributions welcome. Priority areas:

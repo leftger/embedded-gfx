@@ -30,6 +30,7 @@ use crate::{
     DrawPrimitive,
     command_buffer::{CommandBuffer, RenderCommand},
     error::RenderError,
+    lights::PointLight,
     renderer::FrameCtx,
     texture::TextureManager,
     K3dengine,
@@ -181,6 +182,50 @@ fn face_fan_triangle(
 }
 
 // ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/// Compute the world-space centroid of a BSP face and accumulate the additive
+/// RGB565 tint from a slice of point lights.
+fn face_dynamic_tint(
+    world: &BspWorld<'_>,
+    face: &Face,
+    lights: &[PointLight],
+) -> Rgb565 {
+    use embedded_graphics_core::pixelcolor::RgbColor;
+    if lights.is_empty() {
+        return Rgb565::new(0, 0, 0);
+    }
+    let base = face.first_vert as usize;
+    let n = face.num_verts as usize;
+    let mut cx = 0.0f32;
+    let mut cy = 0.0f32;
+    let mut cz = 0.0f32;
+    for i in 0..n {
+        if let Some(v) = world.vertices.get(base + i) {
+            cx += v[0];
+            cy += v[1];
+            cz += v[2];
+        }
+    }
+    if n == 0 {
+        return Rgb565::new(0, 0, 0);
+    }
+    let inv = 1.0 / n as f32;
+    let world_pos = nalgebra::Point3::new(cx * inv, cy * inv, cz * inv);
+    let mut r = 0u32;
+    let mut g = 0u32;
+    let mut b = 0u32;
+    for light in lights {
+        let c = light.contribution_at(world_pos);
+        r += c.r() as u32;
+        g += c.g() as u32;
+        b += c.b() as u32;
+    }
+    Rgb565::new(r.min(31) as u8, g.min(63) as u8, b.min(31) as u8)
+}
+
+// ---------------------------------------------------------------------------
 // K3dengine BSP methods
 // ---------------------------------------------------------------------------
 
@@ -233,6 +278,8 @@ impl K3dengine {
                 }
                 tel.faces_visible += 1;
 
+                let dynamic_tint = face_dynamic_tint(world, face, &self.point_lights);
+
                 let num_tris = face.num_verts.saturating_sub(2) as usize;
                 let mut emitted_any = false;
 
@@ -267,6 +314,7 @@ impl K3dengine {
                                 lm_uvs: pt.lm_uvs,
                                 texture_id: face.texture_id,
                                 lightmap_id: face.lightmap_id as u32,
+                                dynamic_tint,
                             }
                         };
 
@@ -352,6 +400,7 @@ impl K3dengine {
                             lm_uvs,
                             texture_id,
                             lightmap_id,
+                            dynamic_tint,
                         } => {
                             draw_zbuffered_lightmapped(
                                 points,
@@ -361,6 +410,8 @@ impl K3dengine {
                                 lm_uvs,
                                 texture_id,
                                 lightmap_id,
+                                dynamic_tint,
+                                self.fog.as_ref(),
                                 texture_manager,
                                 fb,
                                 frame.zbuffer,
@@ -374,7 +425,7 @@ impl K3dengine {
                                 frame.zbuffer,
                                 frame.width,
                                 texture_manager,
-                                None,
+                                self.fog.as_ref(),
                                 None,
                             );
                         }
@@ -443,6 +494,9 @@ impl K3dengine {
             &frustum,
             |_fi, face| {
                 tel.faces_visible += 1;
+
+                let dynamic_tint = face_dynamic_tint(world, face, &self.point_lights);
+
                 let num_tris = face.num_verts.saturating_sub(2) as usize;
                 let mut emitted_any = false;
 
@@ -474,7 +528,7 @@ impl K3dengine {
                                 frame.zbuffer,
                                 frame.width,
                                 texture_manager,
-                                None,
+                                self.fog.as_ref(),
                                 None,
                             );
                         } else {
@@ -486,6 +540,8 @@ impl K3dengine {
                                 pt.lm_uvs,
                                 face.texture_id,
                                 face.lightmap_id as u32,
+                                dynamic_tint,
+                                self.fog.as_ref(),
                                 texture_manager,
                                 fb,
                                 frame.zbuffer,

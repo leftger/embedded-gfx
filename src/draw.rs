@@ -1929,6 +1929,8 @@ pub fn draw_zbuffered_lightmapped<
     mut lm_uvs: [[f32; 2]; 3],
     texture_id: u32,
     lightmap_id: u32,
+    dynamic_tint: embedded_graphics_core::pixelcolor::Rgb565,
+    fog_config: Option<&FogConfig>,
     texture_manager: &crate::texture::TextureManager<N>,
     fb: &mut D,
     zbuffer: &mut [u32],
@@ -1981,11 +1983,11 @@ pub fn draw_zbuffered_lightmapped<
     if p2.y == p3.y {
         fill_lm_bottom_flat(p1, p2, p3, z1_int, z2_int, z3_int,
             w1, w2, w3, uv1, uv2, uv3, luv1, luv2, luv3,
-            surf, lm, fb, zbuffer, width);
+            dynamic_tint, fog_config, surf, lm, fb, zbuffer, width);
     } else if p1.y == p2.y {
         fill_lm_top_flat(p1, p2, p3, z1_int, z2_int, z3_int,
             w1, w2, w3, uv1, uv2, uv3, luv1, luv2, luv3,
-            surf, lm, fb, zbuffer, width);
+            dynamic_tint, fog_config, surf, lm, fb, zbuffer, width);
     } else {
         // Split at the middle vertex
         let dy31 = (p3.y - p1.y) as f32;
@@ -2000,10 +2002,10 @@ pub fn draw_zbuffered_lightmapped<
         let p4_2 = nalgebra::Point2::new(p4.x, p4.y);
         fill_lm_bottom_flat(p1, p2, p4_2, z1_int, z2_int, z4_int,
             w1, w2, w4, uv1, uv2, uv4, luv1, luv2, luv4,
-            surf, lm, fb, zbuffer, width);
+            dynamic_tint, fog_config, surf, lm, fb, zbuffer, width);
         fill_lm_top_flat(p2, p4_2, p3, z2_int, z4_int, z3_int,
             w2, w4, w3, uv2, uv4, uv3, luv2, luv4, luv3,
-            surf, lm, fb, zbuffer, width);
+            dynamic_tint, fog_config, surf, lm, fb, zbuffer, width);
     }
 }
 
@@ -2015,6 +2017,8 @@ fn fill_lm_bottom_flat<D: DrawTarget<Color = embedded_graphics_core::pixelcolor:
     w1: f32, w2: f32, w3: f32,
     uv1: [f32; 2], uv2: [f32; 2], uv3: [f32; 2],
     luv1: [f32; 2], luv2: [f32; 2], luv3: [f32; 2],
+    dynamic_tint: embedded_graphics_core::pixelcolor::Rgb565,
+    fog_config: Option<&FogConfig>,
     surf: &crate::texture::Texture,
     lm: Option<&crate::texture::Texture>,
     fb: &mut D,
@@ -2039,7 +2043,7 @@ fn fill_lm_bottom_flat<D: DrawTarget<Color = embedded_graphics_core::pixelcolor:
         let luvl = [luv1[0] + t * (luv2[0] - luv1[0]), luv1[1] + t * (luv2[1] - luv1[1])];
         let luvr = [luv1[0] + t * (luv3[0] - luv1[0]), luv1[1] + t * (luv3[1] - luv1[1])];
         draw_scanline_lm(curx1 >> 16, curx2 >> 16, scanline_y, z_l, z_r,
-            wl, wr, uvl, uvr, luvl, luvr, surf, lm, fb, zbuffer, width);
+            wl, wr, uvl, uvr, luvl, luvr, dynamic_tint, fog_config, surf, lm, fb, zbuffer, width);
         curx1 += invslope1;
         curx2 += invslope2;
     }
@@ -2053,6 +2057,8 @@ fn fill_lm_top_flat<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rg
     w1: f32, w2: f32, w3: f32,
     uv1: [f32; 2], uv2: [f32; 2], uv3: [f32; 2],
     luv1: [f32; 2], luv2: [f32; 2], luv3: [f32; 2],
+    dynamic_tint: embedded_graphics_core::pixelcolor::Rgb565,
+    fog_config: Option<&FogConfig>,
     surf: &crate::texture::Texture,
     lm: Option<&crate::texture::Texture>,
     fb: &mut D,
@@ -2077,7 +2083,7 @@ fn fill_lm_top_flat<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rg
         let luvl = [luv1[0] + t * (luv3[0] - luv1[0]), luv1[1] + t * (luv3[1] - luv1[1])];
         let luvr = [luv2[0] + t * (luv3[0] - luv2[0]), luv2[1] + t * (luv3[1] - luv2[1])];
         draw_scanline_lm(curx1 >> 16, curx2 >> 16, scanline_y, z_l, z_r,
-            wl, wr, uvl, uvr, luvl, luvr, surf, lm, fb, zbuffer, width);
+            wl, wr, uvl, uvr, luvl, luvr, dynamic_tint, fog_config, surf, lm, fb, zbuffer, width);
         curx1 -= invslope1;
         curx2 -= invslope2;
     }
@@ -2091,6 +2097,8 @@ fn draw_scanline_lm<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rg
     w1: f32, w2: f32,
     uv1: [f32; 2], uv2: [f32; 2],
     luv1: [f32; 2], luv2: [f32; 2],
+    dynamic_tint: embedded_graphics_core::pixelcolor::Rgb565,
+    fog_config: Option<&FogConfig>,
     surf: &crate::texture::Texture,
     lm: Option<&crate::texture::Texture>,
     fb: &mut D,
@@ -2118,17 +2126,30 @@ fn draw_scanline_lm<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rg
         let sv = (uv1[1] * ow1 + t * (uv2[1] * ow2 - uv1[1] * ow1)) / one_over_w;
         let surf_c = surf.sample(su, sv);
 
-        let final_c = if let Some(lm_tex) = lm {
+        let lit_c = if let Some(lm_tex) = lm {
             let lu = (luv1[0] * ow1 + t * (luv2[0] * ow2 - luv1[0] * ow1)) / one_over_w;
             let lv = (luv1[1] * ow1 + t * (luv2[1] * ow2 - luv1[1] * ow1)) / one_over_w;
             let lm_c = lm_tex.sample(lu, lv);
-            // Per-channel normalised multiply
             let r = ((surf_c.r() as u32 * lm_c.r() as u32) / 31).min(31) as u8;
             let g = ((surf_c.g() as u32 * lm_c.g() as u32) / 63).min(63) as u8;
             let b = ((surf_c.b() as u32 * lm_c.b() as u32) / 31).min(31) as u8;
             embedded_graphics_core::pixelcolor::Rgb565::new(r, g, b)
         } else {
             surf_c
+        };
+
+        // Additive dynamic-light tint (saturating per-channel add)
+        let tinted_c = embedded_graphics_core::pixelcolor::Rgb565::new(
+            (lit_c.r() as u16 + dynamic_tint.r() as u16).min(31) as u8,
+            (lit_c.g() as u16 + dynamic_tint.g() as u16).min(63) as u8,
+            (lit_c.b() as u16 + dynamic_tint.b() as u16).min(31) as u8,
+        );
+
+        // Depth-based fog
+        let final_c = if let Some(fog) = fog_config {
+            fog.apply(tinted_c, z)
+        } else {
+            tinted_c
         };
 
         fb.draw_iter([embedded_graphics_core::Pixel(

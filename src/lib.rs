@@ -29,10 +29,12 @@ pub mod error;
 pub mod fixed_math;
 pub mod hardware_profile;
 pub mod hud;
+pub mod lights;
 pub mod lut;
 pub mod mesh;
 #[cfg(feature = "std")]
 pub mod painters;
+pub mod particles;
 #[cfg(feature = "perfcounter")]
 pub mod perfcounter;
 pub mod physics;
@@ -60,6 +62,9 @@ pub use draw::ReadPixel;
 pub use bridge::{
     AsEgPoint, AsNalgebraPoint, draw_to, eg_to_nalgebra, nalgebra_to_eg, render_drawable_to_buffer,
 };
+pub use draw::FogConfig;
+pub use lights::{PointLight, PointLightSet};
+pub use particles::{ParticleSpawn, ParticleSystem};
 pub use renderer::{DirtyRegion, FrameCtx};
 pub use tilebin::{TileBinStats, TileConfig};
 pub use transform_anim::{AnimationPlayer, SampledTransform, TransformKeyframe, TransformTrack};
@@ -98,9 +103,11 @@ pub enum DrawPrimitive {
     },
     /// Perspective-correct textured triangle with baked lightmap.
     ///
-    /// The final pixel colour is `surface_texture.sample(su,sv) * lightmap.sample(lu,lv)`,
-    /// where `*` denotes per-channel normalised multiply.
+    /// The final pixel colour is:
+    /// `clamp(surface.sample(su,sv) × lightmap.sample(lu,lv) + dynamic_tint)`
+    /// where `×` is per-channel normalised multiply.
     /// Set `lightmap_id = u32::MAX` to fall back to full-bright surface colour.
+    /// Set `dynamic_tint = Rgb565::new(0,0,0)` for no dynamic lighting.
     LightmappedTriangle {
         points: [Point2<i32>; 3],
         depths: [f32; 3],
@@ -109,6 +116,8 @@ pub enum DrawPrimitive {
         lm_uvs: [[f32; 2]; 3],
         texture_id: u32,
         lightmap_id: u32,
+        /// Additive RGB565 tint from runtime point lights.
+        dynamic_tint: Rgb565,
     },
 }
 
@@ -119,6 +128,11 @@ pub struct K3dengine {
     caps: Option<crate::config::ProfileCaps>,
     quality_tier: crate::config::QualityTier,
     material_profile: crate::config::MaterialProfile,
+    /// Depth-based fog applied during `execute` / `execute_tiled`.
+    fog: Option<crate::draw::FogConfig>,
+    /// Runtime point lights (max 16).  Applied at face-centre granularity
+    /// during `record` for mesh geometry and at face level for BSP.
+    point_lights: heapless::Vec<crate::lights::PointLight, 16>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -145,7 +159,72 @@ impl K3dengine {
             caps: None,
             quality_tier: crate::config::QualityTier::Balanced,
             material_profile: crate::config::MaterialProfile::Lambert,
+            fog: None,
+            point_lights: heapless::Vec::new(),
         }
+    }
+
+    /// Enable depth-based fog for subsequent [`execute`][Self::execute] calls.
+    pub fn set_fog(&mut self, fog: crate::draw::FogConfig) {
+        self.fog = Some(fog);
+    }
+
+    /// Disable fog (default state).
+    pub fn clear_fog(&mut self) {
+        self.fog = None;
+    }
+
+    /// Add a dynamic point light.  Returns `false` when the 16-light limit
+    /// is reached.
+    pub fn add_point_light(&mut self, light: crate::lights::PointLight) -> bool {
+        self.point_lights.push(light).is_ok()
+    }
+
+    /// Remove all dynamic point lights.
+    pub fn clear_point_lights(&mut self) {
+        self.point_lights.clear();
+    }
+
+    /// Compute the summed additive RGB565 tint from all registered point
+    /// lights at `world_pos`.
+    #[inline]
+    fn light_tint_at(&self, world_pos: Point3<f32>) -> Rgb565 {
+        let mut r = 0u32;
+        let mut g = 0u32;
+        let mut b = 0u32;
+        for light in &self.point_lights {
+            let c = light.contribution_at(world_pos);
+            r += c.r() as u32;
+            g += c.g() as u32;
+            b += c.b() as u32;
+        }
+        Rgb565::new(r.min(31) as u8, g.min(63) as u8, b.min(31) as u8)
+    }
+
+    /// Additively blend `tint` into `base`, saturating per channel.
+    #[inline]
+    fn add_tint(base: Rgb565, tint: Rgb565) -> Rgb565 {
+        Rgb565::new(
+            (base.r() as u16 + tint.r() as u16).min(31) as u8,
+            (base.g() as u16 + tint.g() as u16).min(63) as u8,
+            (base.b() as u16 + tint.b() as u16).min(31) as u8,
+        )
+    }
+
+    /// Compute the world-space centroid of a triangle face.
+    #[inline]
+    fn face_world_center(
+        face: &[usize; 3],
+        vertices: &[[f32; 3]],
+        model_matrix: Matrix4<f32>,
+    ) -> Point3<f32> {
+        let v0 = vertices[face[0]];
+        let v1 = vertices[face[1]];
+        let v2 = vertices[face[2]];
+        let cx = (v0[0] + v1[0] + v2[0]) / 3.0;
+        let cy = (v0[1] + v1[1] + v2[1]) / 3.0;
+        let cz = (v0[2] + v1[2] + v2[2]) / 3.0;
+        model_matrix.transform_point(&Point3::new(cx, cy, cz))
     }
 
     pub fn set_caps(&mut self, caps: crate::config::ProfileCaps) {
@@ -431,30 +510,17 @@ impl K3dengine {
                 RenderMode::Lines => {}
 
                 RenderMode::SolidLightDir(direction) => {
-                    // Pre-compute lighting constants (once per mesh, not per face)
-                    // This optimization reduces redundant calculations in the inner loop
                     let color_as_float = Vector3::new(
                         mesh.color.r() as f32 / 32.0,
                         mesh.color.g() as f32 / 64.0,
                         mesh.color.b() as f32 / 32.0,
                     );
-
-                    // Pre-compute ambient lighting term
                     let ambient_color = color_as_float * 0.1;
-
-                    // Pre-compute adjusted light direction
-                    // Negate only Z component of direction to fix front/back while keeping left/right
                     let adjusted_dir = Vector3::new(direction.x, direction.y, -direction.z);
 
                     for (face, normal) in geometry.faces.iter().zip(geometry.normals.iter()) {
-                        //Backface culling
                         let normal = Vector3::new(normal[0], normal[1], normal[2]);
-
                         let transformed_normal = mesh.model_matrix.transform_vector(&normal);
-
-                        // Backface culling: cull faces pointing away from camera
-                        // This improves performance by ~50% (don't render back faces)
-                        // Z-buffer handles depth ordering, but culling avoids wasted work
                         if self.camera.get_direction().dot(&transformed_normal) < 0.0 {
                             continue;
                         }
@@ -462,23 +528,22 @@ impl K3dengine {
                         if let Some([p1, p2, p3]) =
                             self.transform_points(face, geometry.vertices, transform_matrix)
                         {
-                            // Calculate lighting intensity
                             let intensity = transformed_normal.dot(&adjusted_dir).max(0.0);
-
-                            // Compute final color using pre-computed constants
                             let final_color = color_as_float * intensity + ambient_color;
-
                             let final_color = Vector3::new(
                                 final_color.x.clamp(0.0, 1.0),
                                 final_color.y.clamp(0.0, 1.0),
                                 final_color.z.clamp(0.0, 1.0),
                             );
-
-                            let color = Rgb565::new(
+                            let mut color = Rgb565::new(
                                 (final_color.x * 31.0) as u8,
                                 (final_color.y * 63.0) as u8,
                                 (final_color.z * 31.0) as u8,
                             );
+                            if !self.point_lights.is_empty() {
+                                let wc = Self::face_world_center(face, geometry.vertices, mesh.model_matrix);
+                                color = Self::add_tint(color, self.light_tint_at(wc));
+                            }
                             callback(DrawPrimitive::ColoredTriangleWithDepth {
                                 points: [p1.xy(), p2.xy(), p3.xy()],
                                 depths: [p1.z as f32, p2.z as f32, p3.z as f32],
@@ -508,7 +573,6 @@ impl K3dengine {
                         if let Some([p1, p2, p3]) =
                             self.transform_points(face, geometry.vertices, transform_matrix)
                         {
-                            // Compute per-vertex colors
                             let vertex_colors: [Rgb565; 3] = core::array::from_fn(|k| {
                                 let vn = if !geometry.vertex_normals.is_empty() {
                                     let vn_arr = geometry.vertex_normals[face[k]];
@@ -520,11 +584,19 @@ impl K3dengine {
 
                                 let intensity = vn.dot(&adjusted_dir).max(0.0);
                                 let c = color_as_float * intensity + ambient_color;
-                                Rgb565::new(
+                                let mut vc = Rgb565::new(
                                     (c.x.clamp(0.0, 1.0) * 31.0) as u8,
                                     (c.y.clamp(0.0, 1.0) * 63.0) as u8,
                                     (c.z.clamp(0.0, 1.0) * 31.0) as u8,
-                                )
+                                );
+                                if !self.point_lights.is_empty() {
+                                    let vpos = geometry.vertices[face[k]];
+                                    let wp = mesh.model_matrix.transform_point(
+                                        &Point3::new(vpos[0], vpos[1], vpos[2])
+                                    );
+                                    vc = Self::add_tint(vc, self.light_tint_at(wp));
+                                }
+                                vc
                             });
 
                             callback(DrawPrimitive::GouraudTriangleWithDepth {
@@ -609,11 +681,14 @@ impl K3dengine {
                                 final_color.z.clamp(0.0, 1.0),
                             );
 
-                            let color = Rgb565::new(
+                            let mut color = Rgb565::new(
                                 (final_color.x * 31.0) as u8,
                                 (final_color.y * 63.0) as u8,
                                 (final_color.z * 31.0) as u8,
                             );
+                            if !self.point_lights.is_empty() {
+                                color = Self::add_tint(color, self.light_tint_at(face_center_world));
+                            }
                             callback(DrawPrimitive::ColoredTriangleWithDepth {
                                 points: [p1.xy(), p2.xy(), p3.xy()],
                                 depths: [p1.z as f32, p2.z as f32, p3.z as f32],
@@ -629,32 +704,39 @@ impl K3dengine {
                             if let Some([p1, p2, p3]) =
                                 self.transform_points(face, geometry.vertices, transform_matrix)
                             {
+                                let color = if !self.point_lights.is_empty() {
+                                    let wc = Self::face_world_center(face, geometry.vertices, mesh.model_matrix);
+                                    Self::add_tint(mesh.color, self.light_tint_at(wc))
+                                } else {
+                                    mesh.color
+                                };
                                 callback(DrawPrimitive::ColoredTriangleWithDepth {
                                     points: [p1.xy(), p2.xy(), p3.xy()],
                                     depths: [p1.z as f32, p2.z as f32, p3.z as f32],
-                                    color: mesh.color,
+                                    color,
                                 });
                             }
                         }
                     } else {
                         for (face, normal) in geometry.faces.iter().zip(geometry.normals) {
-                            //Backface culling
                             let normal = Vector3::new(normal[0], normal[1], normal[2]);
-
                             let transformed_normal = mesh.model_matrix.transform_vector(&normal);
-
-                            // Backface culling: cull faces pointing away from camera
                             if self.camera.get_direction().dot(&transformed_normal) < 0.0 {
                                 continue;
                             }
-
                             if let Some([p1, p2, p3]) =
                                 self.transform_points(face, geometry.vertices, transform_matrix)
                             {
+                                let color = if !self.point_lights.is_empty() {
+                                    let wc = Self::face_world_center(face, geometry.vertices, mesh.model_matrix);
+                                    Self::add_tint(mesh.color, self.light_tint_at(wc))
+                                } else {
+                                    mesh.color
+                                };
                                 callback(DrawPrimitive::ColoredTriangleWithDepth {
                                     points: [p1.xy(), p2.xy(), p3.xy()],
                                     depths: [p1.z as f32, p2.z as f32, p3.z as f32],
-                                    color: mesh.color,
+                                    color,
                                 });
                             }
                         }
@@ -662,7 +744,6 @@ impl K3dengine {
                 }
 
                 RenderMode::SectorBright(brightness) => {
-                    // Scale mesh color by brightness factor (Doom-style sector lighting)
                     let factor = brightness as f32 / 255.0;
                     let scaled_r = (mesh.color.r() as f32 * factor) as u8;
                     let scaled_g = (mesh.color.g() as f32 * factor) as u8;
@@ -674,30 +755,39 @@ impl K3dengine {
                             if let Some([p1, p2, p3]) =
                                 self.transform_points(face, geometry.vertices, transform_matrix)
                             {
+                                let color = if !self.point_lights.is_empty() {
+                                    let wc = Self::face_world_center(face, geometry.vertices, mesh.model_matrix);
+                                    Self::add_tint(scaled_color, self.light_tint_at(wc))
+                                } else {
+                                    scaled_color
+                                };
                                 callback(DrawPrimitive::ColoredTriangleWithDepth {
                                     points: [p1.xy(), p2.xy(), p3.xy()],
                                     depths: [p1.z as f32, p2.z as f32, p3.z as f32],
-                                    color: scaled_color,
+                                    color,
                                 });
                             }
                         }
                     } else {
                         for (face, normal) in geometry.faces.iter().zip(geometry.normals) {
-                            // Backface culling
                             let normal = Vector3::new(normal[0], normal[1], normal[2]);
                             let transformed_normal = mesh.model_matrix.transform_vector(&normal);
-
                             if self.camera.get_direction().dot(&transformed_normal) < 0.0 {
                                 continue;
                             }
-
                             if let Some([p1, p2, p3]) =
                                 self.transform_points(face, geometry.vertices, transform_matrix)
                             {
+                                let color = if !self.point_lights.is_empty() {
+                                    let wc = Self::face_world_center(face, geometry.vertices, mesh.model_matrix);
+                                    Self::add_tint(scaled_color, self.light_tint_at(wc))
+                                } else {
+                                    scaled_color
+                                };
                                 callback(DrawPrimitive::ColoredTriangleWithDepth {
                                     points: [p1.xy(), p2.xy(), p3.xy()],
                                     depths: [p1.z as f32, p2.z as f32, p3.z as f32],
-                                    color: scaled_color,
+                                    color,
                                 });
                             }
                         }
@@ -1012,7 +1102,7 @@ impl K3dengine {
                 .filter(|cmd| matches!(cmd, crate::command_buffer::RenderCommand::ClearDepth(_)))
                 .count();
         }
-        crate::renderer::execute_commands_with_dirty_region(fb, frame, commands)
+        crate::renderer::execute_commands_with_dirty_region(fb, frame, commands, self.fog.as_ref())
     }
 
     pub fn execute_tiled<D, const MAX: usize, const BIN_CAP: usize>(
@@ -1027,7 +1117,7 @@ impl K3dengine {
             + embedded_graphics_core::prelude::OriginDimensions,
         <D as embedded_graphics_core::draw_target::DrawTarget>::Error: core::fmt::Debug,
     {
-        crate::renderer::execute_commands_tiled::<D, MAX, BIN_CAP>(fb, frame, commands, tile)
+        crate::renderer::execute_commands_tiled::<D, MAX, BIN_CAP>(fb, frame, commands, tile, self.fog.as_ref())
     }
 }
 

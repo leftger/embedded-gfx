@@ -10,7 +10,7 @@ use embedded_graphics_core::{
 use crate::{
     DrawPrimitive,
     command_buffer::{CommandBuffer, RenderCommand},
-    draw::draw_zbuffered,
+    draw::{FogConfig, draw_zbuffered_with_effects},
     error::{BudgetKind, RenderError},
 };
 
@@ -99,12 +99,13 @@ pub fn execute_commands<D, const MAX: usize>(
     fb: &mut D,
     frame: &mut FrameCtx<'_>,
     cmd: &CommandBuffer<MAX>,
+    fog: Option<&FogConfig>,
 ) -> Result<(), RenderError>
 where
     D: DrawTarget<Color = Rgb565> + OriginDimensions,
     D::Error: Debug,
 {
-    let _ = execute_commands_with_dirty_region(fb, frame, cmd)?;
+    let _ = execute_commands_with_dirty_region(fb, frame, cmd, fog)?;
     Ok(())
 }
 
@@ -112,6 +113,7 @@ pub fn execute_commands_with_dirty_region<D, const MAX: usize>(
     fb: &mut D,
     frame: &mut FrameCtx<'_>,
     cmd: &CommandBuffer<MAX>,
+    fog: Option<&FogConfig>,
 ) -> Result<Option<DirtyRegion>, RenderError>
 where
     D: DrawTarget<Color = Rgb565> + OriginDimensions,
@@ -138,7 +140,7 @@ where
                 frame.zbuffer.fill(*value);
             }
             RenderCommand::Draw(primitive) => {
-                draw_zbuffered(primitive.clone(), fb, frame.zbuffer, frame.width);
+                draw_zbuffered_with_effects(primitive.clone(), fb, frame.zbuffer, frame.width, fog, None);
                 let (min_x, min_y, max_x, max_y) = primitive_bounds(primitive);
                 if let Some((min_x, min_y, max_x, max_y)) =
                     clamp_bounds_to_frame(min_x, min_y, max_x, max_y, frame.width, frame.height)
@@ -166,6 +168,7 @@ pub fn execute_commands_tiled<D, const MAX: usize, const BIN_CAP: usize>(
     frame: &mut FrameCtx<'_>,
     cmd: &CommandBuffer<MAX>,
     tile: crate::tilebin::TileConfig,
+    fog: Option<&FogConfig>,
 ) -> Result<crate::tilebin::TileBinStats, RenderError>
 where
     D: DrawTarget<Color = Rgb565> + OriginDimensions,
@@ -203,7 +206,7 @@ where
             let Some(RenderCommand::Draw(primitive)) = cmd.get(idx) else {
                 continue;
             };
-            draw_zbuffered(primitive.clone(), fb, frame.zbuffer, frame.width);
+            draw_zbuffered_with_effects(primitive.clone(), fb, frame.zbuffer, frame.width, fog, None);
             executed_draw[idx] = true;
         }
     }

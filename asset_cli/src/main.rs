@@ -769,6 +769,894 @@ pub fn import_bsp(bsp_path: &Path, out_path: &Path, with_lightmaps: bool) -> io:
     Ok(())
 }
 
+const WAD_LUMP_VERTEXES: &str = "VERTEXES";
+const WAD_LUMP_LINEDEFS: &str = "LINEDEFS";
+const WAD_LUMP_SIDEDEFS: &str = "SIDEDEFS";
+const WAD_LUMP_SECTORS: &str = "SECTORS";
+const WAD_LUMP_SEGS: &str = "SEGS";
+const WAD_LUMP_SSECTORS: &str = "SSECTORS";
+const WAD_LUMP_NODES: &str = "NODES";
+
+#[derive(Debug, Clone, Copy)]
+struct WadDirEntry {
+    offset: usize,
+    size: usize,
+    name: [u8; 8],
+}
+
+#[derive(Debug, Clone, Copy)]
+struct WadVertex {
+    x: i16,
+    y: i16,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct WadLinedef {
+    start_vertex: u16,
+    end_vertex: u16,
+    right_side: i16,
+    left_side: i16,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct WadSidedef {
+    sector: u16,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct WadSector {
+    floor_height: i16,
+    ceiling_height: i16,
+    light: i16,
+    sector_type: i16,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct WadSeg {
+    start_vertex: u16,
+    end_vertex: u16,
+    linedef: u16,
+    direction: i16,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct WadSsector {
+    seg_count: u16,
+    first_seg: u16,
+}
+
+fn wad_name_to_string(name: &[u8; 8]) -> String {
+    let end = name.iter().position(|b| *b == 0).unwrap_or(8);
+    String::from_utf8_lossy(&name[..end]).to_string()
+}
+
+fn parse_wad_dir(data: &[u8]) -> io::Result<Vec<WadDirEntry>> {
+    if data.len() < 12 {
+        return Err(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "WAD header truncated",
+        ));
+    }
+    let lump_count = read_u32_le(data, 4) as usize;
+    let dir_offset = read_u32_le(data, 8) as usize;
+    let dir_bytes = lump_count
+        .checked_mul(16)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "directory overflow"))?;
+    if dir_offset + dir_bytes > data.len() {
+        return Err(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "WAD directory out of range",
+        ));
+    }
+
+    let mut out = Vec::with_capacity(lump_count);
+    for i in 0..lump_count {
+        let base = dir_offset + i * 16;
+        let offset = read_u32_le(data, base) as usize;
+        let size = read_u32_le(data, base + 4) as usize;
+        let mut name = [0u8; 8];
+        name.copy_from_slice(&data[base + 8..base + 16]);
+        out.push(WadDirEntry { offset, size, name });
+    }
+    Ok(out)
+}
+
+fn wad_find_map_index(dir: &[WadDirEntry], map_name: Option<&str>) -> io::Result<usize> {
+    let required = [
+        WAD_LUMP_VERTEXES,
+        WAD_LUMP_LINEDEFS,
+        WAD_LUMP_SIDEDEFS,
+        WAD_LUMP_SECTORS,
+        WAD_LUMP_SEGS,
+    ];
+
+    if let Some(name) = map_name {
+        for i in 0..dir.len() {
+            if wad_name_to_string(&dir[i].name).eq_ignore_ascii_case(name) {
+                return Ok(i);
+            }
+        }
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "requested map was not found in WAD",
+        ));
+    }
+
+    for i in 0..dir.len() {
+        let has_required = required.iter().all(|needle| {
+            dir.iter()
+                .skip(i + 1)
+                .take(14)
+                .any(|entry| wad_name_to_string(&entry.name).eq_ignore_ascii_case(needle))
+        });
+        if has_required {
+            return Ok(i);
+        }
+    }
+    Err(io::Error::new(
+        io::ErrorKind::InvalidData,
+        "could not find a map marker with required lumps",
+    ))
+}
+
+fn wad_find_lump_after<'a>(
+    dir: &'a [WadDirEntry],
+    map_index: usize,
+    name: &str,
+) -> Option<&'a WadDirEntry> {
+    dir.iter()
+        .skip(map_index + 1)
+        .take(14)
+        .find(|entry| wad_name_to_string(&entry.name).eq_ignore_ascii_case(name))
+}
+
+fn wad_lump_slice<'a>(data: &'a [u8], entry: &WadDirEntry) -> io::Result<&'a [u8]> {
+    if entry.offset + entry.size > data.len() {
+        return Err(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "WAD lump out of bounds",
+        ));
+    }
+    Ok(&data[entry.offset..entry.offset + entry.size])
+}
+
+fn parse_wad_vertices(raw: &[u8]) -> Vec<WadVertex> {
+    raw.chunks_exact(4)
+        .map(|c| WadVertex {
+            x: read_i16_le(c, 0),
+            y: read_i16_le(c, 2),
+        })
+        .collect()
+}
+
+fn parse_wad_linedefs(raw: &[u8]) -> Vec<WadLinedef> {
+    raw.chunks_exact(14)
+        .map(|c| WadLinedef {
+            start_vertex: read_u16_le(c, 0),
+            end_vertex: read_u16_le(c, 2),
+            right_side: read_i16_le(c, 10),
+            left_side: read_i16_le(c, 12),
+        })
+        .collect()
+}
+
+fn parse_wad_sidedefs(raw: &[u8]) -> Vec<WadSidedef> {
+    raw.chunks_exact(30)
+        .map(|c| WadSidedef {
+            sector: read_u16_le(c, 28),
+        })
+        .collect()
+}
+
+fn parse_wad_sectors(raw: &[u8]) -> Vec<WadSector> {
+    raw.chunks_exact(26)
+        .map(|c| WadSector {
+            floor_height: read_i16_le(c, 0),
+            ceiling_height: read_i16_le(c, 2),
+            light: read_i16_le(c, 20),
+            sector_type: read_i16_le(c, 22),
+        })
+        .collect()
+}
+
+fn parse_wad_segs(raw: &[u8]) -> Vec<WadSeg> {
+    raw.chunks_exact(12)
+        .map(|c| WadSeg {
+            start_vertex: read_u16_le(c, 0),
+            end_vertex: read_u16_le(c, 2),
+            linedef: read_u16_le(c, 6),
+            direction: read_i16_le(c, 8),
+        })
+        .collect()
+}
+
+fn parse_wad_ssectors(raw: &[u8]) -> Vec<WadSsector> {
+    raw.chunks_exact(4)
+        .map(|c| WadSsector {
+            seg_count: read_u16_le(c, 0),
+            first_seg: read_u16_le(c, 2),
+        })
+        .collect()
+}
+
+fn clamp_u8(v: i16) -> u8 {
+    v.clamp(0, 255) as u8
+}
+
+fn wad_sector_effect(sector_type: i16) -> Option<(&'static str, f32, f32)> {
+    match sector_type {
+        1 => Some(("Random", 20.0, 0.06)),
+        17 => Some(("Random", 8.0, 0.5)),
+        3 | 12 => Some(("Alternate", 1.0, 0.85)),
+        2 | 4 | 13 => Some(("Alternate", 2.0, 0.7)),
+        8 => Some(("Glow", 0.5, 0.0)),
+        _ => None,
+    }
+}
+
+fn approx_eq2(a: [f32; 2], b: [f32; 2], eps: f32) -> bool {
+    (a[0] - b[0]).abs() <= eps && (a[1] - b[1]).abs() <= eps
+}
+
+fn canonicalize_polygon(points: &mut Vec<[f32; 2]>) {
+    const EPS: f32 = 1e-4;
+    if points.len() < 3 {
+        return;
+    }
+
+    // Remove duplicate points.
+    let mut unique: Vec<[f32; 2]> = Vec::with_capacity(points.len());
+    for p in points.iter().copied() {
+        if !unique.iter().any(|u| approx_eq2(*u, p, EPS)) {
+            unique.push(p);
+        }
+    }
+    if unique.len() < 3 {
+        points.clear();
+        return;
+    }
+
+    // Sort around centroid so fan triangulation produces coherent geometry.
+    let mut cx = 0.0f32;
+    let mut cz = 0.0f32;
+    for p in &unique {
+        cx += p[0];
+        cz += p[1];
+    }
+    cx /= unique.len() as f32;
+    cz /= unique.len() as f32;
+
+    unique.sort_by(|a, b| {
+        let aa = (a[1] - cz).atan2(a[0] - cx);
+        let bb = (b[1] - cz).atan2(b[0] - cx);
+        aa.partial_cmp(&bb).unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    // Rotate so the first vertex is stable (lowest z, then lowest x).
+    let mut first = 0usize;
+    for i in 1..unique.len() {
+        let u = unique[i];
+        let f = unique[first];
+        if u[1] < f[1] || (u[1] == f[1] && u[0] < f[0]) {
+            first = i;
+        }
+    }
+    unique.rotate_left(first);
+    *points = unique;
+}
+
+fn clean_polygon_ordered(points: &mut Vec<[f32; 2]>) {
+    const EPS: f32 = 1e-5;
+    if points.len() < 3 {
+        points.clear();
+        return;
+    }
+
+    // Drop consecutive duplicates while preserving original edge order.
+    let mut out: Vec<[f32; 2]> = Vec::with_capacity(points.len());
+    for p in points.iter().copied() {
+        if out.last().map(|q| !approx_eq2(*q, p, EPS)).unwrap_or(true) {
+            out.push(p);
+        }
+    }
+    if out.len() >= 2 && approx_eq2(out[0], *out.last().unwrap_or(&out[0]), EPS) {
+        out.pop();
+    }
+    if out.len() < 3 {
+        points.clear();
+        return;
+    }
+
+    // Drop collinear vertices to avoid tiny sliver ears.
+    let mut i = 0usize;
+    while out.len() >= 3 && i < out.len() {
+        let n = out.len();
+        let a = out[(i + n - 1) % n];
+        let b = out[i];
+        let c = out[(i + 1) % n];
+        let cross = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+        if cross.abs() <= EPS {
+            out.remove(i);
+            continue;
+        }
+        i += 1;
+    }
+
+    if out.len() < 3 {
+        points.clear();
+        return;
+    }
+    *points = out;
+}
+
+fn polygon_area2(points: &[[f32; 2]]) -> f32 {
+    if points.len() < 3 {
+        return 0.0;
+    }
+    let mut area2 = 0.0f32;
+    for i in 0..points.len() {
+        let a = points[i];
+        let b = points[(i + 1) % points.len()];
+        area2 += a[0] * b[1] - b[0] * a[1];
+    }
+    area2
+}
+
+fn point_in_triangle(p: [f32; 2], a: [f32; 2], b: [f32; 2], c: [f32; 2]) -> bool {
+    let v0 = [c[0] - a[0], c[1] - a[1]];
+    let v1 = [b[0] - a[0], b[1] - a[1]];
+    let v2 = [p[0] - a[0], p[1] - a[1]];
+
+    let dot00 = v0[0] * v0[0] + v0[1] * v0[1];
+    let dot01 = v0[0] * v1[0] + v0[1] * v1[1];
+    let dot02 = v0[0] * v2[0] + v0[1] * v2[1];
+    let dot11 = v1[0] * v1[0] + v1[1] * v1[1];
+    let dot12 = v1[0] * v2[0] + v1[1] * v2[1];
+    let denom = dot00 * dot11 - dot01 * dot01;
+    if denom.abs() < 1e-8 {
+        return false;
+    }
+    let inv = 1.0 / denom;
+    let u = (dot11 * dot02 - dot01 * dot12) * inv;
+    let v = (dot00 * dot12 - dot01 * dot02) * inv;
+    u >= -1e-5 && v >= -1e-5 && (u + v) <= 1.0 + 1e-5
+}
+
+fn triangulate_polygon_ear_clip(points: &[[f32; 2]]) -> Vec<[usize; 3]> {
+    if points.len() < 3 {
+        return Vec::new();
+    }
+    if points.len() == 3 {
+        return vec![[0, 1, 2]];
+    }
+
+    let area2 = polygon_area2(points);
+    if area2.abs() < 1e-6 {
+        return Vec::new();
+    }
+    let ccw = area2 > 0.0;
+    let mut idxs: Vec<usize> = (0..points.len()).collect();
+    let mut tris: Vec<[usize; 3]> = Vec::with_capacity(points.len() - 2);
+    let mut guard = 0usize;
+
+    while idxs.len() > 3 && guard < points.len() * points.len() {
+        guard += 1;
+        let n = idxs.len();
+        let mut ear_found = false;
+        for i in 0..n {
+            let i0 = idxs[(i + n - 1) % n];
+            let i1 = idxs[i];
+            let i2 = idxs[(i + 1) % n];
+            let a = points[i0];
+            let b = points[i1];
+            let c = points[i2];
+
+            let cross = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+            if ccw {
+                if cross <= 1e-7 {
+                    continue;
+                }
+            } else if cross >= -1e-7 {
+                continue;
+            }
+
+            let mut contains_other = false;
+            for &j in &idxs {
+                if j == i0 || j == i1 || j == i2 {
+                    continue;
+                }
+                if point_in_triangle(points[j], a, b, c) {
+                    contains_other = true;
+                    break;
+                }
+            }
+            if contains_other {
+                continue;
+            }
+
+            tris.push([i0, i1, i2]);
+            idxs.remove(i);
+            ear_found = true;
+            break;
+        }
+        if !ear_found {
+            return Vec::new();
+        }
+    }
+
+    if idxs.len() == 3 {
+        tris.push([idxs[0], idxs[1], idxs[2]]);
+    }
+    tris
+}
+
+fn build_subsector_loop(seg_slice: &[WadSeg]) -> Vec<u16> {
+    if seg_slice.is_empty() {
+        return Vec::new();
+    }
+    // Primary path: Doom subsector segs are generally already ordered around
+    // the perimeter. Using this preserves true boundary shape.
+    let ordered: Vec<u16> = seg_slice.iter().map(|s| s.start_vertex).collect();
+    if ordered.len() >= 3 {
+        let mut ok = true;
+        for i in 0..seg_slice.len() {
+            let a = seg_slice[i].end_vertex;
+            let b = seg_slice[(i + 1) % seg_slice.len()].start_vertex;
+            if a != b {
+                ok = false;
+                break;
+            }
+        }
+        if ok {
+            return ordered;
+        }
+    }
+
+    // Fallback: build a boundary loop by walking connected seg endpoints.
+    // Build a boundary loop by walking connected seg endpoints.
+    let mut used = vec![false; seg_slice.len()];
+    let mut loop_ids: Vec<u16> = Vec::with_capacity(seg_slice.len());
+
+    loop_ids.push(seg_slice[0].start_vertex);
+    let mut current = seg_slice[0].end_vertex;
+    used[0] = true;
+
+    for _ in 0..seg_slice.len() {
+        if current == loop_ids[0] {
+            break;
+        }
+        loop_ids.push(current);
+        let mut found = None;
+        for (i, s) in seg_slice.iter().enumerate() {
+            if used[i] {
+                continue;
+            }
+            if s.start_vertex == current {
+                found = Some((i, s.end_vertex));
+                break;
+            }
+            if s.end_vertex == current {
+                found = Some((i, s.start_vertex));
+                break;
+            }
+        }
+        if let Some((idx, next)) = found {
+            used[idx] = true;
+            current = next;
+        } else {
+            break;
+        }
+    }
+
+    // Remove immediate duplicates.
+    let mut dedup: Vec<u16> = Vec::with_capacity(loop_ids.len());
+    for v in loop_ids {
+        if dedup.last().copied() != Some(v) {
+            dedup.push(v);
+        }
+    }
+    dedup
+}
+
+fn import_wad(wad_path: &Path, out_path: &Path, map_name: Option<&str>) -> io::Result<()> {
+    let data = fs::read(wad_path)?;
+    let dir = parse_wad_dir(&data)?;
+    let map_index = wad_find_map_index(&dir, map_name)?;
+    let map_label = wad_name_to_string(&dir[map_index].name);
+
+    let vertices_raw = wad_find_lump_after(&dir, map_index, WAD_LUMP_VERTEXES)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "VERTEXES lump missing"))?;
+    let linedefs_raw = wad_find_lump_after(&dir, map_index, WAD_LUMP_LINEDEFS)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "LINEDEFS lump missing"))?;
+    let sidedefs_raw = wad_find_lump_after(&dir, map_index, WAD_LUMP_SIDEDEFS)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "SIDEDEFS lump missing"))?;
+    let sectors_raw = wad_find_lump_after(&dir, map_index, WAD_LUMP_SECTORS)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "SECTORS lump missing"))?;
+    let segs_raw = wad_find_lump_after(&dir, map_index, WAD_LUMP_SEGS)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "SEGS lump missing"))?;
+    let ssectors_raw = wad_find_lump_after(&dir, map_index, WAD_LUMP_SSECTORS)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "SSECTORS lump missing"))?;
+    let _ = wad_find_lump_after(&dir, map_index, WAD_LUMP_NODES);
+
+    let vertices = parse_wad_vertices(wad_lump_slice(&data, vertices_raw)?);
+    let linedefs = parse_wad_linedefs(wad_lump_slice(&data, linedefs_raw)?);
+    let sidedefs = parse_wad_sidedefs(wad_lump_slice(&data, sidedefs_raw)?);
+    let sectors = parse_wad_sectors(wad_lump_slice(&data, sectors_raw)?);
+    let segs = parse_wad_segs(wad_lump_slice(&data, segs_raw)?);
+    let _ssectors = parse_wad_ssectors(wad_lump_slice(&data, ssectors_raw)?);
+
+    const UNIT_SCALE: f32 = 1.0 / 64.0;
+
+    let mut out_vertices: Vec<[f32; 3]> = Vec::new();
+    let mut out_uvs: Vec<[f32; 2]> = Vec::new();
+    let mut out_faces: Vec<(u32, u16, u32, u16, u16, u8, u16)> = Vec::new();
+    let mut nav_wall_segments: Vec<[f32; 4]> = Vec::new();
+    let mut nav_floor_points: Vec<[f32; 2]> = Vec::new();
+    let mut nav_floor_regions: Vec<(u32, u16, f32, f32)> = Vec::new();
+    let mut emitted_floor_loops = 0usize;
+
+    for seg in &segs {
+        let linedef = if let Some(v) = linedefs.get(seg.linedef as usize) {
+            *v
+        } else {
+            continue;
+        };
+        let side_idx = if seg.direction == 0 {
+            linedef.right_side
+        } else {
+            linedef.left_side
+        };
+        let back_side_idx = if seg.direction == 0 {
+            linedef.left_side
+        } else {
+            linedef.right_side
+        };
+        if side_idx < 0 {
+            continue;
+        }
+        // Skip two-sided segs for this phase to avoid coplanar duplicate walls.
+        if back_side_idx >= 0 {
+            continue;
+        }
+        let sidedef = if let Some(v) = sidedefs.get(side_idx as usize) {
+            *v
+        } else {
+            continue;
+        };
+        let sector_idx = sidedef.sector as usize;
+        let sector = if let Some(v) = sectors.get(sector_idx) {
+            *v
+        } else {
+            continue;
+        };
+        let v1 = if let Some(v) = vertices.get(seg.start_vertex as usize) {
+            *v
+        } else {
+            continue;
+        };
+        let v2 = if let Some(v) = vertices.get(seg.end_vertex as usize) {
+            *v
+        } else {
+            continue;
+        };
+
+        let floor = sector.floor_height as f32 * UNIT_SCALE;
+        let ceil = sector.ceiling_height as f32 * UNIT_SCALE;
+        let x1 = v1.x as f32 * UNIT_SCALE;
+        let z1 = v1.y as f32 * UNIT_SCALE;
+        let x2 = v2.x as f32 * UNIT_SCALE;
+        let z2 = v2.y as f32 * UNIT_SCALE;
+
+        let first_vert = out_vertices.len() as u32;
+        out_vertices.extend_from_slice(&[
+            [x1, floor, z1],
+            [x2, floor, z2],
+            [x2, ceil, z2],
+            [x1, ceil, z1],
+        ]);
+        out_uvs.extend_from_slice(&[[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]]);
+        out_faces.push((
+            first_vert,
+            4,
+            0,
+            0xFFFF,
+            0,
+            0,
+            sector_idx.min(u16::MAX as usize) as u16,
+        ));
+        nav_wall_segments.push([x1, z1, x2, z2]);
+    }
+
+    // Floor/ceiling generation from linedef loops per sector.
+    let mut sector_edges: Vec<Vec<(u16, u16)>> = vec![Vec::new(); sectors.len()];
+    for ld in &linedefs {
+        if ld.right_side >= 0
+            && let Some(sd) = sidedefs.get(ld.right_side as usize)
+            && let Some(edges) = sector_edges.get_mut(sd.sector as usize)
+        {
+            edges.push((ld.start_vertex, ld.end_vertex));
+        }
+        if ld.left_side >= 0
+            && let Some(sd) = sidedefs.get(ld.left_side as usize)
+            && let Some(edges) = sector_edges.get_mut(sd.sector as usize)
+        {
+            edges.push((ld.end_vertex, ld.start_vertex));
+        }
+    }
+
+    for (sid_usize, edges) in sector_edges.iter().enumerate() {
+        if edges.is_empty() {
+            continue;
+        }
+        let sid = sid_usize.min(u16::MAX as usize) as u16;
+        let sector = sectors[sid_usize];
+        let floor = sector.floor_height as f32 * UNIT_SCALE;
+        let ceil = sector.ceiling_height as f32 * UNIT_SCALE;
+
+        let mut used = vec![false; edges.len()];
+        for seed in 0..edges.len() {
+            if used[seed] {
+                continue;
+            }
+            used[seed] = true;
+            let (start_v, mut current_v) = edges[seed];
+            let mut loop_ids = vec![start_v, current_v];
+            let mut guard = 0usize;
+            while current_v != start_v && guard < edges.len() * 2 {
+                guard += 1;
+                let mut next: Option<(usize, u16)> = None;
+                for (ei, (a, b)) in edges.iter().enumerate() {
+                    if used[ei] {
+                        continue;
+                    }
+                    if *a == current_v {
+                        next = Some((ei, *b));
+                        break;
+                    }
+                }
+                if let Some((ei, nv)) = next {
+                    used[ei] = true;
+                    current_v = nv;
+                    loop_ids.push(current_v);
+                } else {
+                    break;
+                }
+            }
+            if loop_ids.len() < 4 || *loop_ids.last().unwrap_or(&u16::MAX) != start_v {
+                continue;
+            }
+            loop_ids.pop();
+
+            let mut poly: Vec<[f32; 2]> = Vec::with_capacity(loop_ids.len());
+            for vid in loop_ids {
+                if let Some(v) = vertices.get(vid as usize) {
+                    poly.push([v.x as f32 * UNIT_SCALE, v.y as f32 * UNIT_SCALE]);
+                }
+            }
+            clean_polygon_ordered(&mut poly);
+            if poly.len() < 3 {
+                continue;
+            }
+            // Ensure floor winding is consistent (CCW in XZ -> upward normal).
+            if polygon_area2(&poly) < 0.0 {
+                poly.reverse();
+            }
+
+            let mut tri_indices = triangulate_polygon_ear_clip(&poly);
+            if tri_indices.is_empty() {
+                canonicalize_polygon(&mut poly);
+                clean_polygon_ordered(&mut poly);
+                tri_indices = triangulate_polygon_ear_clip(&poly);
+            }
+            if tri_indices.is_empty() {
+                for i in 1..(poly.len() - 1) {
+                    tri_indices.push([0, i, i + 1]);
+                }
+            }
+            if tri_indices.is_empty() {
+                continue;
+            }
+
+            emitted_floor_loops += 1;
+            let nav_first = nav_floor_points.len() as u32;
+            for p in &poly {
+                nav_floor_points.push(*p);
+            }
+            nav_floor_regions.push((nav_first, poly.len() as u16, floor, ceil));
+
+            let mut min_px = f32::INFINITY;
+            let mut max_px = f32::NEG_INFINITY;
+            let mut min_pz = f32::INFINITY;
+            let mut max_pz = f32::NEG_INFINITY;
+            for p in &poly {
+                min_px = min_px.min(p[0]);
+                max_px = max_px.max(p[0]);
+                min_pz = min_pz.min(p[1]);
+                max_pz = max_pz.max(p[1]);
+            }
+            let span_x = (max_px - min_px).max(1e-3);
+            let span_z = (max_pz - min_pz).max(1e-3);
+
+            for tri in &tri_indices {
+                let first_floor = out_vertices.len() as u32;
+                for &pi in tri {
+                    let p = poly[pi];
+                    out_vertices.push([p[0], floor, p[1]]);
+                    out_uvs.push([(p[0] - min_px) / span_x, (p[1] - min_pz) / span_z]);
+                }
+                out_faces.push((first_floor, 3, 0, 0xFFFF, 0, 0, sid));
+
+                let first_ceil = out_vertices.len() as u32;
+                for &pi in [tri[0], tri[2], tri[1]].iter() {
+                    let p = poly[pi];
+                    out_vertices.push([p[0], ceil, p[1]]);
+                    out_uvs.push([(p[0] - min_px) / span_x, (p[1] - min_pz) / span_z]);
+                }
+                out_faces.push((first_ceil, 3, 0, 0xFFFF, 0, 0, sid));
+            }
+        }
+    }
+
+    let mut out = String::new();
+    out.push_str("// Auto-generated by asset_cli import-wad — DO NOT EDIT\n");
+    out.push_str("// Source: ");
+    out.push_str(&wad_path.to_string_lossy());
+    out.push('\n');
+    out.push_str("// Map: ");
+    out.push_str(&map_label);
+    out.push('\n');
+    out.push_str("use embedded_3dgfx::bsp::data::*;\n");
+    out.push_str("use embedded_3dgfx::sector_lights::{LightEffectKind, SectorLight};\n\n");
+
+    out.push_str("pub static BSP_PLANES: [Plane; 0] = [];\n");
+    out.push_str("pub static BSP_NODES: [Node; 0] = [];\n\n");
+    out.push_str("pub static BSP_LEAVES: [Leaf; 1] = [\n");
+    out.push_str(&format!(
+        "    Leaf {{ cluster: 0, mins: [{}, {}, {}], maxs: [{}, {}, {}], first_marksurface: 0, num_marksurfaces: {} }},\n",
+        -32768i16, -32768i16, -32768i16, 32767i16, 32767i16, 32767i16, out_faces.len().min(u16::MAX as usize)
+    ));
+    out.push_str("];\n\n");
+
+    out.push_str(&format!(
+        "pub static BSP_FACES: [Face; {}] = [\n",
+        out_faces.len()
+    ));
+    for (fv, nv, tex, lm, plane, side, sector_light_id) in &out_faces {
+        out.push_str(&format!(
+            "    Face {{ first_vert: {fv}, num_verts: {nv}, texture_id: {tex}, lightmap_id: {lm}, plane: {plane}, side: {side}, sector_light_id: {sector_light_id} }},\n"
+        ));
+    }
+    out.push_str("];\n\n");
+
+    out.push_str(&format!(
+        "pub static BSP_MARKSURFACES: [u16; {}] = [\n    ",
+        out_faces.len()
+    ));
+    for i in 0..out_faces.len() {
+        out.push_str(&format!("{}, ", i.min(u16::MAX as usize)));
+        if i % 16 == 15 {
+            out.push_str("\n    ");
+        }
+    }
+    out.push_str("\n];\n\n");
+
+    out.push_str(&format!(
+        "pub static BSP_VERTICES: [[f32; 3]; {}] = [\n",
+        out_vertices.len()
+    ));
+    for v in &out_vertices {
+        out.push_str(&format!("    [{:.6}, {:.6}, {:.6}],\n", v[0], v[1], v[2]));
+    }
+    out.push_str("];\n\n");
+
+    out.push_str(&format!(
+        "pub static BSP_UVS: [[f32; 2]; {}] = [\n",
+        out_uvs.len()
+    ));
+    for uv in &out_uvs {
+        out.push_str(&format!("    [{:.6}, {:.6}],\n", uv[0], uv[1]));
+    }
+    out.push_str("];\n\n");
+
+    out.push_str("#[derive(Clone, Copy, Debug)]\n");
+    out.push_str("pub struct NavFloorRegion {\n");
+    out.push_str("    pub first_point: u32,\n");
+    out.push_str("    pub point_count: u16,\n");
+    out.push_str("    pub floor_y: f32,\n");
+    out.push_str("    pub ceil_y: f32,\n");
+    out.push_str("}\n\n");
+
+    out.push_str(&format!(
+        "pub static BSP_NAV_WALL_SEGMENTS: [[f32; 4]; {}] = [\n",
+        nav_wall_segments.len()
+    ));
+    for seg in &nav_wall_segments {
+        out.push_str(&format!(
+            "    [{:.6}, {:.6}, {:.6}, {:.6}],\n",
+            seg[0], seg[1], seg[2], seg[3]
+        ));
+    }
+    out.push_str("];\n\n");
+
+    out.push_str(&format!(
+        "pub static BSP_NAV_FLOOR_POINTS: [[f32; 2]; {}] = [\n",
+        nav_floor_points.len()
+    ));
+    for p in &nav_floor_points {
+        out.push_str(&format!("    [{:.6}, {:.6}],\n", p[0], p[1]));
+    }
+    out.push_str("];\n\n");
+
+    out.push_str(&format!(
+        "pub static BSP_NAV_FLOOR_REGIONS: [NavFloorRegion; {}] = [\n",
+        nav_floor_regions.len()
+    ));
+    for (first_point, point_count, floor_y, ceil_y) in &nav_floor_regions {
+        out.push_str(&format!(
+            "    NavFloorRegion {{ first_point: {first_point}, point_count: {point_count}, floor_y: {floor_y:.6}, ceil_y: {ceil_y:.6} }},\n"
+        ));
+    }
+    out.push_str("];\n\n");
+
+    out.push_str("pub static BSP_LM_UVS: [[f32; 2]; 0] = [];\n");
+    out.push_str("pub static BSP_VIS: [u8; 1] = [0x01];\n");
+    out.push_str("pub static BSP_VIS_OFFSETS: [u32; 1] = [0];\n");
+    out.push_str("pub const BSP_NUM_CLUSTERS: u16 = 1;\n\n");
+
+    out.push_str(&format!(
+        "pub static BSP_SECTOR_LIGHTS: [SectorLight; {}] = [\n",
+        sectors.len()
+    ));
+    for (i, s) in sectors.iter().enumerate() {
+        let base = clamp_u8(s.light);
+        let alt = base.saturating_sub(64);
+        if let Some((kind, speed, duration)) = wad_sector_effect(s.sector_type) {
+            out.push_str(&format!(
+                "    SectorLight {{ base: {base}, alt: {alt}, speed: {speed:.3}, duration: {duration:.3}, sync: {sync:.3}, effect: Some(LightEffectKind::{kind}) }},\n",
+                sync = (i as f32 * 0.137).fract()
+            ));
+        } else {
+            out.push_str(&format!(
+                "    SectorLight {{ base: {base}, alt: {alt}, speed: 0.0, duration: 0.0, sync: 0.0, effect: None }},\n"
+            ));
+        }
+    }
+    out.push_str("];\n\n");
+
+    out.push_str("pub fn bsp_world() -> BspWorld<'static> {\n");
+    out.push_str("    BspWorld::new(\n");
+    out.push_str("        &BSP_PLANES,\n        &BSP_NODES,\n        &BSP_LEAVES,\n");
+    out.push_str("        &BSP_FACES,\n        &BSP_MARKSURFACES,\n        &BSP_VERTICES,\n");
+    out.push_str(
+        "        &BSP_UVS,\n        &BSP_LM_UVS,\n        &BSP_VIS,\n        &BSP_VIS_OFFSETS,\n        BSP_NUM_CLUSTERS,\n",
+    );
+    out.push_str("    )\n}\n\n");
+    out.push_str("pub fn bsp_sector_lights() -> &'static [SectorLight] {\n");
+    out.push_str("    &BSP_SECTOR_LIGHTS\n}\n");
+    out.push_str("pub fn bsp_nav_wall_segments() -> &'static [[f32; 4]] {\n");
+    out.push_str("    &BSP_NAV_WALL_SEGMENTS\n}\n");
+    out.push_str("pub fn bsp_nav_floor_points() -> &'static [[f32; 2]] {\n");
+    out.push_str("    &BSP_NAV_FLOOR_POINTS\n}\n");
+    out.push_str("pub fn bsp_nav_floor_regions() -> &'static [NavFloorRegion] {\n");
+    out.push_str("    &BSP_NAV_FLOOR_REGIONS\n}\n");
+    out.push_str("\n");
+    out.push_str("// Keep this file valid when Cargo compiles it as a standalone example.\n");
+    out.push_str("pub fn main() {}\n");
+
+    fs::write(out_path, out)?;
+    eprintln!(
+        "Wrote {} from map {}: {} vertices, {} faces, {} sectors (floor_regions: {}, floor_loops: {})",
+        out_path.display(),
+        map_label,
+        out_vertices.len(),
+        out_faces.len(),
+        sectors.len(),
+        nav_floor_regions.len(),
+        emitted_floor_loops
+    );
+    Ok(())
+}
+
 #[derive(Debug, Clone)]
 struct QuantizedMesh {
     vertices_q: Vec<[i16; 3]>,
@@ -783,6 +1671,7 @@ fn usage() {
   asset_cli transcode-texture --input <image.ppm> --output <texture.rgb565>
   asset_cli pack-scene --output <scene.e3dscene> --chunk <kind:path> [--chunk <kind:path> ...]
   asset_cli import-bsp --input <level.bsp> --output <level_bsp.rs> [--no-lightmaps]
+  asset_cli import-wad --input <doom.wad> --output <level_wad.rs> [--map MAP01]
 
 Quake 1 BSP (version 29) importer.
 Emits a Rust source file with pub static arrays and a bsp_world() constructor.
@@ -1048,6 +1937,14 @@ fn main() -> io::Result<()> {
             let no_lightmaps = args.iter().any(|a| a == "--no-lightmaps");
             import_bsp(Path::new(&input), Path::new(&output), !no_lightmaps)?;
         }
+        "import-wad" => {
+            let input = parse_flag(&args, "--input")
+                .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "missing --input"))?;
+            let output = parse_flag(&args, "--output")
+                .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "missing --output"))?;
+            let map = parse_flag(&args, "--map");
+            import_wad(Path::new(&input), Path::new(&output), map.as_deref())?;
+        }
         _ => {
             usage();
             return Err(io::Error::new(
@@ -1058,4 +1955,24 @@ fn main() -> io::Result<()> {
     }
     io::stdout().flush()?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wad_name_trims_nul_padding() {
+        let name = *b"MAP01\0\0\0";
+        assert_eq!(wad_name_to_string(&name), "MAP01");
+    }
+
+    #[test]
+    fn wad_sector_effect_maps_known_types() {
+        let glow = wad_sector_effect(8).expect("type 8 should map to glow");
+        assert_eq!(glow.0, "Glow");
+        let random = wad_sector_effect(1).expect("type 1 should map to random");
+        assert_eq!(random.0, "Random");
+        assert!(wad_sector_effect(999).is_none());
+    }
 }

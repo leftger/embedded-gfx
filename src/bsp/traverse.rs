@@ -462,6 +462,7 @@ mod tests {
             lightmap_id: 0xFFFF,
             plane: 0,
             side: 0,
+            sector_light_id: u16::MAX,
         },
         Face {
             first_vert: 3,
@@ -470,6 +471,7 @@ mod tests {
             lightmap_id: 0xFFFF,
             plane: 0,
             side: 0,
+            sector_light_id: u16::MAX,
         },
     ];
 
@@ -608,6 +610,7 @@ mod tests {
             lightmap_id: 0xFFFF,
             plane: 0,
             side: 0,
+            sector_light_id: u16::MAX,
         }];
 
         let world = BspWorld::new(

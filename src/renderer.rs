@@ -159,6 +159,7 @@ fn tint_primitive(
             lm_uvs,
             texture_id,
             lightmap_id,
+            brightness,
             dynamic_tint,
         } => DrawPrimitive::LightmappedTriangle {
             points,
@@ -168,6 +169,7 @@ fn tint_primitive(
             lm_uvs,
             texture_id,
             lightmap_id,
+            brightness,
             dynamic_tint: apply_post(dynamic_tint, tint, palette_mode),
         },
         other => other,

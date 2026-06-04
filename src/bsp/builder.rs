@@ -167,6 +167,7 @@ fn push_quad_face(
         lightmap_id,
         plane: 0,
         side: 0,
+        sector_light_id: u16::MAX,
     });
     Ok(face_index as u16)
 }

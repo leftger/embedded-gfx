@@ -46,6 +46,7 @@ pub mod renderer;
 pub mod retro;
 pub mod scene_format;
 pub mod scene_stream;
+pub mod sector_lights;
 pub mod skeleton;
 #[cfg(feature = "physics")]
 pub mod softbody;
@@ -77,6 +78,7 @@ pub use renderer::{DirtyRegion, FrameCtx};
 pub use retro::{
     LightLevels, PaletteMode, RetroStyle, ScreenTint, SkyConfig, StippleMode, TextureMapping,
 };
+pub use sector_lights::{LightEffectKind, SectorLight, light_level_at, light_level_u8_at};
 pub use tilebin::{TileBinStats, TileConfig};
 pub use transform_anim::{AnimationPlayer, SampledTransform, TransformKeyframe, TransformTrack};
 pub use tween::{Easing, Tween, Tween3, apply_easing, lerp, lerp3, scale_rgb565};
@@ -127,6 +129,8 @@ pub enum DrawPrimitive {
         lm_uvs: [[f32; 2]; 3],
         texture_id: u32,
         lightmap_id: u32,
+        /// Per-face brightness multiplier in 0..=255 (255 = no darkening).
+        brightness: u8,
         /// Additive RGB565 tint from runtime point lights.
         dynamic_tint: Rgb565,
     },

@@ -36,6 +36,7 @@ use crate::{
     error::RenderError,
     lights::PointLight,
     renderer::FrameCtx,
+    sector_lights::{SectorLight, light_level_u8_at},
     texture::TextureManager,
 };
 
@@ -342,6 +343,19 @@ impl K3dengine {
         commands: &mut CommandBuffer<MAX>,
         telemetry: Option<&mut BspTelemetry>,
     ) -> Result<(), RenderError> {
+        self.record_bsp_with_sector_lights(world, scratch, commands, None, 0.0, telemetry)
+    }
+
+    /// Record BSP geometry while applying optional animated sector lights.
+    pub fn record_bsp_with_sector_lights<const MAX: usize>(
+        &self,
+        world: &BspWorld<'_>,
+        scratch: &mut BspScratch<'_>,
+        commands: &mut CommandBuffer<MAX>,
+        sector_lights: Option<&[SectorLight]>,
+        time_seconds: f32,
+        telemetry: Option<&mut BspTelemetry>,
+    ) -> Result<(), RenderError> {
         commands.clear();
         commands.push(RenderCommand::ClearDepth(u32::MAX))?;
         scratch.mark_new_frame();
@@ -385,25 +399,33 @@ impl K3dengine {
                 );
 
                 for pt in projected.iter() {
-                    let prim = if face.lightmap_id == 0xFFFF {
-                        DrawPrimitive::TexturedTriangleWithDepth {
-                            points: [pt.points[0], pt.points[1], pt.points[2]],
-                            depths: pt.depths,
-                            ws: pt.ws,
-                            uvs: pt.uvs,
-                            texture_id: face.texture_id,
+                    let brightness = if let Some(lights) = sector_lights {
+                        if face.sector_light_id == u16::MAX {
+                            255
+                        } else {
+                            lights
+                                .get(face.sector_light_id as usize)
+                                .map_or(255, |light| light_level_u8_at(light, time_seconds))
                         }
                     } else {
-                        DrawPrimitive::LightmappedTriangle {
-                            points: [pt.points[0], pt.points[1], pt.points[2]],
-                            depths: pt.depths,
-                            ws: pt.ws,
-                            surface_uvs: pt.uvs,
-                            lm_uvs: pt.lm_uvs,
-                            texture_id: face.texture_id,
-                            lightmap_id: face.lightmap_id as u32,
-                            dynamic_tint,
-                        }
+                        255
+                    }
+                    // Keep a small floor to avoid complete black-outs on low-light sectors.
+                    .max(32);
+                    let prim = DrawPrimitive::LightmappedTriangle {
+                        points: [pt.points[0], pt.points[1], pt.points[2]],
+                        depths: pt.depths,
+                        ws: pt.ws,
+                        surface_uvs: pt.uvs,
+                        lm_uvs: pt.lm_uvs,
+                        texture_id: face.texture_id,
+                        lightmap_id: if face.lightmap_id == 0xFFFF {
+                            u32::MAX
+                        } else {
+                            face.lightmap_id as u32
+                        },
+                        brightness,
+                        dynamic_tint,
                     };
 
                     if let Err(e) = commands.push(RenderCommand::Draw(prim)) {
@@ -487,6 +509,7 @@ impl K3dengine {
                             lm_uvs,
                             texture_id,
                             lightmap_id,
+                            brightness,
                             dynamic_tint,
                         } => {
                             draw_zbuffered_lightmapped_mapped(
@@ -497,6 +520,7 @@ impl K3dengine {
                                 lm_uvs,
                                 texture_id,
                                 lightmap_id,
+                                brightness,
                                 dynamic_tint,
                                 self.fog.as_ref(),
                                 texture_manager,
@@ -565,7 +589,7 @@ impl K3dengine {
         D: DrawTarget<Color = Rgb565> + OriginDimensions,
         D::Error: Debug,
     {
-        use crate::draw::{draw_zbuffered_lightmapped_mapped, draw_zbuffered_with_textures_mapped};
+        use crate::draw::draw_zbuffered_lightmapped_mapped;
 
         frame.validate()?;
         frame.zbuffer.fill(u32::MAX);
@@ -605,48 +629,30 @@ impl K3dengine {
                 );
 
                 for pt in projected.iter() {
-                    if face.lightmap_id == 0xFFFF {
-                        let prim = DrawPrimitive::TexturedTriangleWithDepth {
-                            points: [pt.points[0], pt.points[1], pt.points[2]],
-                            depths: pt.depths,
-                            ws: pt.ws,
-                            uvs: pt.uvs,
-                            texture_id: face.texture_id,
-                        };
-                        draw_zbuffered_with_textures_mapped(
-                            prim,
-                            fb,
-                            frame.zbuffer,
-                            frame.width,
-                            texture_manager,
-                            self.fog.as_ref(),
-                            self.dither.as_ref(),
-                            self.texture_mapping,
-                            self.stipple_mode,
-                            self.screen_tint,
-                            self.palette_mode,
-                        );
-                    } else {
-                        draw_zbuffered_lightmapped_mapped(
-                            [pt.points[0], pt.points[1], pt.points[2]],
-                            pt.depths,
-                            pt.ws,
-                            pt.uvs,
-                            pt.lm_uvs,
-                            face.texture_id,
-                            face.lightmap_id as u32,
-                            dynamic_tint,
-                            self.fog.as_ref(),
-                            texture_manager,
-                            fb,
-                            frame.zbuffer,
-                            frame.width,
-                            self.texture_mapping,
-                            self.stipple_mode,
-                            self.screen_tint,
-                            self.palette_mode,
-                        );
-                    }
+                    draw_zbuffered_lightmapped_mapped(
+                        [pt.points[0], pt.points[1], pt.points[2]],
+                        pt.depths,
+                        pt.ws,
+                        pt.uvs,
+                        pt.lm_uvs,
+                        face.texture_id,
+                        if face.lightmap_id == 0xFFFF {
+                            u32::MAX
+                        } else {
+                            face.lightmap_id as u32
+                        },
+                        255,
+                        dynamic_tint,
+                        self.fog.as_ref(),
+                        texture_manager,
+                        fb,
+                        frame.zbuffer,
+                        frame.width,
+                        self.texture_mapping,
+                        self.stipple_mode,
+                        self.screen_tint,
+                        self.palette_mode,
+                    );
                     tel.triangles_emitted += 1;
                     emitted_any = true;
                 }
@@ -843,6 +849,7 @@ pub mod test_level {
             lightmap_id: 0xFFFF,
             plane: 0,
             side: 0,
+            sector_light_id: u16::MAX,
         },
         // Room A ceiling
         Face {
@@ -852,6 +859,7 @@ pub mod test_level {
             lightmap_id: 0xFFFF,
             plane: 0,
             side: 0,
+            sector_light_id: u16::MAX,
         },
         // Room B floor
         Face {
@@ -861,6 +869,7 @@ pub mod test_level {
             lightmap_id: 0xFFFF,
             plane: 0,
             side: 0,
+            sector_light_id: u16::MAX,
         },
         // Room B ceiling
         Face {
@@ -870,6 +879,7 @@ pub mod test_level {
             lightmap_id: 0xFFFF,
             plane: 0,
             side: 0,
+            sector_light_id: u16::MAX,
         },
     ];
 
@@ -949,6 +959,7 @@ mod tests {
     use super::*;
     use crate::bsp::scratch::BspScratch;
     use crate::bsp::test_level;
+    use crate::sector_lights::{LightEffectKind, SectorLight};
     use nalgebra::Point3;
 
     #[test]
@@ -1024,6 +1035,56 @@ mod tests {
             .count();
 
         assert_eq!(count1, count2);
+    }
+
+    #[test]
+    fn record_bsp_with_sector_lights_keeps_output_when_faces_unmapped() {
+        let world = test_level::world();
+        let mut vf_a = [0u32; 4];
+        let mut vf_b = [0u32; 4];
+        let mut scratch_a = BspScratch::new(&mut vf_a);
+        let mut scratch_b = BspScratch::new(&mut vf_b);
+
+        let mut engine = K3dengine::new(320, 240);
+        engine.camera.set_position(Point3::new(-2.0, 0.0, 0.0));
+        engine.camera.set_target(Point3::new(0.0, 0.0, 0.0));
+
+        let mut commands_base: CommandBuffer<512> = CommandBuffer::new();
+        engine
+            .record_bsp(&world, &mut scratch_a, &mut commands_base, None)
+            .unwrap();
+        let base_draw_count = commands_base
+            .iter()
+            .filter(|c| matches!(c, RenderCommand::Draw(_)))
+            .count();
+
+        let lights = [SectorLight {
+            base: 255,
+            alt: 48,
+            speed: 0.5,
+            duration: 0.0,
+            sync: 0.0,
+            effect: Some(LightEffectKind::Glow),
+        }];
+
+        let mut commands_with_lights: CommandBuffer<512> = CommandBuffer::new();
+        engine
+            .record_bsp_with_sector_lights(
+                &world,
+                &mut scratch_b,
+                &mut commands_with_lights,
+                Some(&lights),
+                1.0,
+                None,
+            )
+            .unwrap();
+        let lit_draw_count = commands_with_lights
+            .iter()
+            .filter(|c| matches!(c, RenderCommand::Draw(_)))
+            .count();
+
+        // test_level faces use u16::MAX sector_light_id, so command emission should match.
+        assert_eq!(base_draw_count, lit_draw_count);
     }
 
     #[test]

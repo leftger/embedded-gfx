@@ -2054,6 +2054,7 @@ pub fn draw_zbuffered_lightmapped<
     lm_uvs: [[f32; 2]; 3],
     texture_id: u32,
     lightmap_id: u32,
+    brightness: u8,
     dynamic_tint: embedded_graphics_core::pixelcolor::Rgb565,
     fog_config: Option<&FogConfig>,
     texture_manager: &crate::texture::TextureManager<N>,
@@ -2071,6 +2072,7 @@ pub fn draw_zbuffered_lightmapped<
         lm_uvs,
         texture_id,
         lightmap_id,
+        brightness,
         dynamic_tint,
         fog_config,
         texture_manager,
@@ -2095,6 +2097,7 @@ pub fn draw_zbuffered_lightmapped_mapped<
     mut lm_uvs: [[f32; 2]; 3],
     texture_id: u32,
     lightmap_id: u32,
+    brightness: u8,
     dynamic_tint: embedded_graphics_core::pixelcolor::Rgb565,
     fog_config: Option<&FogConfig>,
     texture_manager: &crate::texture::TextureManager<N>,
@@ -2192,6 +2195,7 @@ pub fn draw_zbuffered_lightmapped_mapped<
             stipple_mode,
             screen_tint,
             palette_mode,
+            brightness,
         );
     } else if p1.y == p2.y {
         fill_lm_top_flat(
@@ -2221,6 +2225,7 @@ pub fn draw_zbuffered_lightmapped_mapped<
             stipple_mode,
             screen_tint,
             palette_mode,
+            brightness,
         );
     } else {
         // Split at the middle vertex
@@ -2267,6 +2272,7 @@ pub fn draw_zbuffered_lightmapped_mapped<
             stipple_mode,
             screen_tint,
             palette_mode,
+            brightness,
         );
         fill_lm_top_flat(
             p2,
@@ -2295,6 +2301,7 @@ pub fn draw_zbuffered_lightmapped_mapped<
             stipple_mode,
             screen_tint,
             palette_mode,
+            brightness,
         );
     }
 }
@@ -2328,6 +2335,7 @@ fn fill_lm_bottom_flat<D: DrawTarget<Color = embedded_graphics_core::pixelcolor:
     stipple_mode: StippleMode,
     screen_tint: Option<ScreenTint>,
     palette_mode: PaletteMode,
+    brightness: u8,
 ) where
     <D as DrawTarget>::Error: core::fmt::Debug,
 {
@@ -2385,6 +2393,7 @@ fn fill_lm_bottom_flat<D: DrawTarget<Color = embedded_graphics_core::pixelcolor:
             stipple_mode,
             screen_tint,
             palette_mode,
+            brightness,
         );
         curx1 += invslope1;
         curx2 += invslope2;
@@ -2420,6 +2429,7 @@ fn fill_lm_top_flat<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rg
     stipple_mode: StippleMode,
     screen_tint: Option<ScreenTint>,
     palette_mode: PaletteMode,
+    brightness: u8,
 ) where
     <D as DrawTarget>::Error: core::fmt::Debug,
 {
@@ -2477,6 +2487,7 @@ fn fill_lm_top_flat<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rg
             stipple_mode,
             screen_tint,
             palette_mode,
+            brightness,
         );
         curx1 -= invslope1;
         curx2 -= invslope2;
@@ -2508,6 +2519,7 @@ fn draw_scanline_lm<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rg
     stipple_mode: StippleMode,
     screen_tint: Option<ScreenTint>,
     palette_mode: PaletteMode,
+    brightness: u8,
 ) where
     <D as DrawTarget>::Error: core::fmt::Debug,
 {
@@ -2551,6 +2563,12 @@ fn draw_scanline_lm<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rg
         } else {
             surf_c
         };
+
+        let lit_c = embedded_graphics_core::pixelcolor::Rgb565::new(
+            ((lit_c.r() as u16 * brightness as u16) / 255).min(31) as u8,
+            ((lit_c.g() as u16 * brightness as u16) / 255).min(63) as u8,
+            ((lit_c.b() as u16 * brightness as u16) / 255).min(31) as u8,
+        );
 
         // Additive dynamic-light tint (saturating per-channel add)
         let tinted_c = embedded_graphics_core::pixelcolor::Rgb565::new(

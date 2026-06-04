@@ -63,6 +63,9 @@ pub struct Face {
     pub plane: u16,
     /// Non-zero if the face's outward normal faces the *back* of `plane`.
     pub side: u8,
+    /// Optional index into a sector light table.
+    /// `u16::MAX` means "no animated sector light attached".
+    pub sector_light_id: u16,
 }
 
 /// The complete borrowed BSP world.
@@ -162,6 +165,7 @@ mod tests {
             lightmap_id: 0xFFFF,
             plane: 0,
             side: 0,
+            sector_light_id: u16::MAX,
         }];
         let marksurfaces = [0u16];
         let vertices = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];

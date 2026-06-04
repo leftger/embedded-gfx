@@ -1,5 +1,7 @@
 //! Doom-style sector light animation descriptors and evaluators.
 
+use micromath::F32Ext;
+
 /// Animated light waveform kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LightEffectKind {

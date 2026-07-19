@@ -1,7 +1,7 @@
 workspace = { members = ["load_stl", "asset_cli"] }
 [package]
 name = "embedded-3dgfx"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/leftger/embedded-3dgfx"

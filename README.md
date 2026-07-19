@@ -17,6 +17,7 @@ A `no_std` 3D graphics and physics engine for embedded systems, optimized for re
 
 ## Recent additions
 
+- **Textured meshes via record/execute** — `RenderMode::Textured` + `K3dengine::execute_with_textures` let the normal mesh pipeline draw texture-mapped triangles (previously `execute()` silently dropped them; textures required bypassing `record`/`execute` entirely). Textured and flat-colored/lit meshes can be recorded together in one `record()` call. See `examples/mesh_texture_demo.rs`.
 - **Particle system** — fixed-capacity, no-alloc billboard emitter (`ParticleSystem<N>`). Supports color and size interpolation over particle lifetime, gravity/acceleration, and camera-facing billboards. Integrates with the record/execute pipeline via `sys.record(&engine, &mut cmd_buf)`.
 - **Runtime depth fog** — `K3dengine::set_fog(FogConfig)` enables per-pixel linear depth fog applied during rasterization across both mesh and BSP paths.
 - **Dynamic point lights** — `K3dengine::add_point_light(PointLight)` registers runtime point lights with squared-distance falloff that are composited as an additive RGB565 tint on top of baked/directional lighting at face granularity.

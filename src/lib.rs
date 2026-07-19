@@ -463,7 +463,15 @@ impl K3dengine {
             if point.w < 0.0 {
                 return None;
             }
-            if point.z < self.camera.near || point.z > self.camera.far {
+            // `point.w` is the view-space depth (distance along the view
+            // direction) for a standard perspective projection, so this is
+            // a proper "is the view depth within [near, far]" test. This
+            // used to compare pre-divide clip.z instead, which is not
+            // linear in view depth -- the "safe" window it accepted started
+            // well above `near` itself, silently culling geometry closer to
+            // the camera than roughly the midpoint of [near, far]. Matches
+            // the fix already applied to `transform_point_with_w`.
+            if point.w < self.camera.near || point.w > self.camera.far {
                 return None;
             }
 
@@ -499,13 +507,17 @@ impl K3dengine {
         if point.w <= 0.0 {
             return None;
         }
+        // Same fix as `transform_point`/`transform_point_with_w`: test the
+        // view-space depth (`point.w`) against `[near, far]`, not the
+        // post-divide NDC z (which is confined to roughly `[-1, 1]` and can
+        // never satisfy a "world scale" near/far pair).
+        if point.w < self.camera.near || point.w > self.camera.far {
+            return None;
+        }
 
         let x_fp = div_fp(to_fp(point.x), to_fp(point.w))?;
         let y_fp = div_fp(to_fp(point.y), to_fp(point.w))?;
         let z_ndc = from_fp(div_fp(to_fp(point.z), to_fp(point.w))?);
-        if z_ndc < self.camera.near || z_ndc > self.camera.far {
-            return None;
-        }
 
         let x = ((1.0 + from_fp(x_fp)) * 0.5 * self.width as f32) as i32;
         let y = ((1.0 - from_fp(y_fp)) * 0.5 * self.height as f32) as i32;
@@ -1208,6 +1220,84 @@ impl K3dengine {
                         }
                     }
                 }
+
+                RenderMode::Textured => {
+                    // Requires both a texture and per-vertex UVs; silently
+                    // skip the mesh (move to the next one) if either is
+                    // missing, same graceful-degradation style as `Lines`
+                    // with no `lines`/`faces` data.
+                    let Some(texture_id) = geometry.texture_id else {
+                        continue;
+                    };
+                    if geometry.uvs.is_empty() {
+                        continue;
+                    }
+
+                    // Unlike `Solid`, this doesn't route through
+                    // `emit_clipped` (which only carries a flat `Rgb565`,
+                    // not per-vertex UVs) -- a face with any vertex behind
+                    // the near plane or outside the frustum is dropped
+                    // whole, same as `GouraudLightDir`/`BlinnPhong`.
+                    if geometry.normals.is_empty() {
+                        for face in geometry.faces.iter() {
+                            if let Some((points, ws)) = self.transform_points_with_w(
+                                face,
+                                geometry.vertices,
+                                transform_matrix,
+                            ) {
+                                callback(DrawPrimitive::TexturedTriangleWithDepth {
+                                    points: [points[0].xy(), points[1].xy(), points[2].xy()],
+                                    depths: [
+                                        points[0].z as f32,
+                                        points[1].z as f32,
+                                        points[2].z as f32,
+                                    ],
+                                    ws,
+                                    uvs: [
+                                        geometry.uvs[face[0]],
+                                        geometry.uvs[face[1]],
+                                        geometry.uvs[face[2]],
+                                    ],
+                                    texture_id,
+                                });
+                            }
+                        }
+                    } else {
+                        for (face, normal) in geometry.faces.iter().zip(geometry.normals) {
+                            let normal = Vector3::new(normal[0], normal[1], normal[2]);
+                            let transformed_normal = mesh.model_matrix.transform_vector(&normal);
+                            if self.is_backface(
+                                face,
+                                geometry.vertices,
+                                mesh.model_matrix,
+                                &transformed_normal,
+                            ) {
+                                continue;
+                            }
+                            if let Some((points, ws)) = self.transform_points_with_w(
+                                face,
+                                geometry.vertices,
+                                transform_matrix,
+                            ) {
+                                callback(DrawPrimitive::TexturedTriangleWithDepth {
+                                    points: [points[0].xy(), points[1].xy(), points[2].xy()],
+                                    depths: [
+                                        points[0].z as f32,
+                                        points[1].z as f32,
+                                        points[2].z as f32,
+                                    ],
+                                    ws,
+                                    uvs: [
+                                        geometry.uvs[face[0]],
+                                        geometry.uvs[face[1]],
+                                        geometry.uvs[face[2]],
+                                    ],
+                                    texture_id,
+                                });
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -1532,6 +1622,60 @@ impl K3dengine {
         )
     }
 
+    /// Like [`Self::execute`], but resolves [`RenderMode::Textured`] meshes'
+    /// `DrawPrimitive::TexturedTriangleWithDepth`/`LightmappedTriangle`
+    /// primitives via `texture_manager` instead of silently dropping them.
+    ///
+    /// `record()` doesn't need a texture manager (it only transforms
+    /// geometry into primitives, it doesn't sample pixels), so a scene
+    /// mixing textured and flat-colored/lit meshes still goes through one
+    /// `record()` call -- only `execute()` needs to change to
+    /// `execute_with_textures()` once any mesh in the batch uses
+    /// `RenderMode::Textured`.
+    pub fn execute_with_textures<D, const MAX: usize, const N: usize>(
+        &self,
+        fb: &mut D,
+        frame: &mut crate::renderer::FrameCtx<'_>,
+        commands: &crate::command_buffer::CommandBuffer<MAX>,
+        texture_manager: &crate::texture::TextureManager<N>,
+        telemetry: Option<&mut crate::telemetry::ExecuteTelemetry>,
+    ) -> Result<Option<crate::renderer::DirtyRegion>, crate::error::RenderError>
+    where
+        D: embedded_graphics_core::draw_target::DrawTarget<Color = Rgb565>
+            + embedded_graphics_core::prelude::OriginDimensions,
+        <D as embedded_graphics_core::draw_target::DrawTarget>::Error: core::fmt::Debug,
+    {
+        if let Some(t) = telemetry {
+            t.commands_total = commands.len();
+            t.draw_commands = commands
+                .iter()
+                .filter(|cmd| matches!(cmd, crate::command_buffer::RenderCommand::Draw(_)))
+                .count();
+            t.clear_color_commands = commands
+                .iter()
+                .filter(|cmd| matches!(cmd, crate::command_buffer::RenderCommand::ClearColor(_)))
+                .count();
+            t.clear_depth_commands = commands
+                .iter()
+                .filter(|cmd| matches!(cmd, crate::command_buffer::RenderCommand::ClearDepth(_)))
+                .count();
+        }
+        let camera_dir = self.camera.get_direction();
+        crate::renderer::execute_commands_with_dirty_region_effects_textured(
+            fb,
+            frame,
+            commands,
+            texture_manager,
+            self.fog.as_ref(),
+            self.dither.as_ref(),
+            self.screen_tint,
+            self.stipple_mode,
+            self.palette_mode,
+            self.sky,
+            [camera_dir.x, camera_dir.y, camera_dir.z],
+        )
+    }
+
     pub fn execute_tiled<D, const MAX: usize, const BIN_CAP: usize>(
         &self,
         fb: &mut D,
@@ -1731,23 +1875,46 @@ mod tests {
     #[test]
     fn test_transform_point_near_plane_clipping() {
         let engine = K3dengine::new(640, 480);
-        let model_matrix = nalgebra::Matrix4::identity();
+        // Use the camera's real projection, not a raw identity matrix: the
+        // near/far check now tests clip-space W (view depth), which is
+        // only meaningful under an actual perspective projection -- an
+        // identity "model_matrix" leaves W pinned at the homogeneous 1.0
+        // regardless of the point's z, so it can't exercise this check.
+        let transform_matrix = engine.camera.vp_matrix;
 
-        // Point too close to camera (before near plane)
-        let point = [0.0, 0.0, -0.01];
-        let result = engine.transform_point(&point, model_matrix);
+        // Point too close to camera: distance 0.1, before the near=0.4 plane.
+        let point = [0.0, 0.0, -0.1];
+        let result = engine.transform_point(&point, transform_matrix);
         assert!(result.is_none());
     }
 
     #[test]
     fn test_transform_point_far_plane_clipping() {
         let engine = K3dengine::new(640, 480);
-        let model_matrix = nalgebra::Matrix4::identity();
+        let transform_matrix = engine.camera.vp_matrix;
 
-        // Point too far from camera (beyond far plane)
+        // Point too far from camera: distance 1000, beyond the far=20 plane.
         let point = [0.0, 0.0, -1000.0];
-        let result = engine.transform_point(&point, model_matrix);
+        let result = engine.transform_point(&point, transform_matrix);
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_transform_point_within_near_far_not_culled() {
+        // Regression test: `transform_point`'s near/far check used to
+        // compare pre-divide clip.z against camera.near/far, which for the
+        // default near=0.4/far=20 camera silently culled anything closer
+        // than roughly 1.17 units -- even though it's well within
+        // [near, far]. z=-0.8 falls in that dead zone.
+        let engine = K3dengine::new(640, 480);
+        let transform_matrix = engine.camera.vp_matrix;
+
+        let point = [0.0, 0.0, -0.8];
+        let result = engine.transform_point(&point, transform_matrix);
+        assert!(
+            result.is_some(),
+            "a point at distance 0.8 (within [near=0.4, far=20]) should not be culled"
+        );
     }
 
     #[test]

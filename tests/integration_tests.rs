@@ -8,6 +8,7 @@ use embedded_3dgfx::error::{BudgetKind, RecoveryAction, RenderError};
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
 use embedded_3dgfx::renderer::FrameCtx;
 use embedded_3dgfx::telemetry::{ExecuteTelemetry, RecordTelemetry};
+use embedded_3dgfx::texture::{Texture, TextureManager};
 use embedded_3dgfx::{K3dengine, RetroStyle};
 use embedded_graphics_core::pixelcolor::Rgb565;
 use embedded_graphics_core::prelude::*;
@@ -197,6 +198,136 @@ fn test_full_rendering_pipeline_solid() {
 
     // Should have rendered filled triangle
     assert!(fb.pixel_count() > 50);
+}
+
+#[test]
+fn test_textured_quad_record_and_execute_with_textures() {
+    // End-to-end coverage for `RenderMode::Textured`: `record()` must emit
+    // `TexturedTriangleWithDepth` primitives with real per-vertex UVs, and
+    // `execute_with_textures()` must resolve them via the `TextureManager`
+    // (plain `execute()` silently drops textured primitives -- that's the
+    // whole reason this method exists).
+    let engine = K3dengine::new(640, 480);
+
+    // Same quad-as-two-triangles convention used elsewhere in this crate
+    // (e.g. the Markham `cube_digit` consumer): corners in
+    // [bottom-left, bottom-right, top-right, top-left] order, split along
+    // the bottom-left/top-right diagonal.
+    let vertices = [
+        [-0.5, -0.5, -5.0],
+        [0.5, -0.5, -5.0],
+        [0.5, 0.5, -5.0],
+        [-0.5, 0.5, -5.0],
+    ];
+    let faces = [[0, 1, 2], [0, 2, 3]];
+    let uvs = [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]];
+
+    // 2x2 (power-of-2) texture, one distinct color per corner, so a
+    // correctly-oriented (non-mirrored, non-degenerate) UV mapping should
+    // produce all four colors somewhere in the rendered quad.
+    static TEX_DATA: [Rgb565; 4] = [
+        Rgb565::CSS_RED,   // (u=0, v=0): top-left
+        Rgb565::CSS_GREEN, // (u=1, v=0): top-right
+        Rgb565::CSS_BLUE,  // (u=0, v=1): bottom-left
+        Rgb565::CSS_WHITE, // (u=1, v=1): bottom-right
+    ];
+    let texture = Texture::new(&TEX_DATA, 2, 2);
+    let mut tex_mgr = TextureManager::<1>::new();
+    let texture_id = tex_mgr
+        .add_texture(texture)
+        .expect("texture manager has room");
+
+    let geometry = Geometry {
+        vertices: &vertices,
+        faces: &faces,
+        colors: &[],
+        lines: &[],
+        normals: &[],
+        vertex_normals: &[],
+        uvs: &uvs,
+        texture_id: Some(texture_id),
+    };
+
+    let mut mesh = K3dMesh::new(geometry);
+    mesh.set_render_mode(RenderMode::Textured);
+
+    let mut fb = TestFramebuffer::new(640, 480);
+    let mut zbuffer = vec![u32::MAX; 640 * 480];
+    let mut cmd = CommandBuffer::<128>::new();
+    engine
+        .record(std::iter::once(&mesh), &mut cmd, None)
+        .unwrap();
+    let mut frame = FrameCtx {
+        zbuffer: &mut zbuffer,
+        width: 640,
+        height: 480,
+    };
+    engine
+        .execute_with_textures(&mut fb, &mut frame, &cmd, &tex_mgr, None)
+        .unwrap();
+
+    assert!(
+        fb.pixel_count() > 50,
+        "textured quad should rasterize a non-trivial number of pixels"
+    );
+    for expected in [
+        Rgb565::CSS_RED,
+        Rgb565::CSS_GREEN,
+        Rgb565::CSS_BLUE,
+        Rgb565::CSS_WHITE,
+    ] {
+        assert!(
+            fb.pixels.iter().any(|(_, _, c)| *c == expected),
+            "expected color {expected:?} to appear in the rendered quad"
+        );
+    }
+}
+
+#[test]
+fn test_textured_mode_without_uvs_or_texture_id_renders_nothing() {
+    // `RenderMode::Textured` requires both `geometry.uvs` and
+    // `geometry.texture_id` -- a mesh missing either should be skipped
+    // gracefully (no primitives emitted, no panic), not treated as an
+    // error.
+    let engine = K3dengine::new(640, 480);
+    let vertices = [
+        [-0.5, -0.5, -5.0],
+        [0.5, -0.5, -5.0],
+        [0.5, 0.5, -5.0],
+        [-0.5, 0.5, -5.0],
+    ];
+    let faces = [[0, 1, 2], [0, 2, 3]];
+
+    let geometry = Geometry {
+        vertices: &vertices,
+        faces: &faces,
+        colors: &[],
+        lines: &[],
+        normals: &[],
+        vertex_normals: &[],
+        uvs: &[], // no UVs, and no texture_id below
+        texture_id: None,
+    };
+    let mut mesh = K3dMesh::new(geometry);
+    mesh.set_render_mode(RenderMode::Textured);
+
+    let mut fb = TestFramebuffer::new(640, 480);
+    let mut zbuffer = vec![u32::MAX; 640 * 480];
+    let mut cmd = CommandBuffer::<128>::new();
+    engine
+        .record(std::iter::once(&mesh), &mut cmd, None)
+        .unwrap();
+    let mut frame = FrameCtx {
+        zbuffer: &mut zbuffer,
+        width: 640,
+        height: 480,
+    };
+    let tex_mgr = TextureManager::<1>::new();
+    engine
+        .execute_with_textures(&mut fb, &mut frame, &cmd, &tex_mgr, None)
+        .unwrap();
+
+    assert_eq!(fb.pixel_count(), 0);
 }
 
 #[test]

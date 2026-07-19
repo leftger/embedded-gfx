@@ -408,6 +408,157 @@ where
     Ok(region)
 }
 
+/// Like [`execute_commands_with_dirty_region_effects`], but resolves
+/// [`DrawPrimitive::TexturedTriangleWithDepth`]/[`DrawPrimitive::LightmappedTriangle`]
+/// via `texture_manager` instead of silently dropping them (mirrors
+/// `bsp::execute_bsp_textured`'s dispatch pattern). Non-textured primitives
+/// still go through `tint_primitive` + `draw_zbuffered_with_effects`, same
+/// as the non-textured `execute*` functions, so mixing textured and
+/// flat-colored meshes in one scene keeps consistent tint/palette
+/// behavior.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_commands_with_dirty_region_effects_textured<D, const MAX: usize, const N: usize>(
+    fb: &mut D,
+    frame: &mut FrameCtx<'_>,
+    cmd: &CommandBuffer<MAX>,
+    texture_manager: &crate::texture::TextureManager<N>,
+    fog: Option<&FogConfig>,
+    dither: Option<&DitherConfig>,
+    screen_tint: Option<ScreenTint>,
+    stipple_mode: StippleMode,
+    palette_mode: PaletteMode,
+    sky: Option<SkyConfig>,
+    camera_dir: [f32; 3],
+) -> Result<Option<DirtyRegion>, RenderError>
+where
+    D: DrawTarget<Color = Rgb565> + OriginDimensions,
+    D::Error: Debug,
+{
+    use crate::draw::{draw_zbuffered_lightmapped_mapped, draw_zbuffered_with_textures_mapped};
+    use crate::retro::TextureMapping;
+
+    frame.validate()?;
+    let mut dirty_bounds: Option<(i32, i32, i32, i32)> = None;
+    if let Some(sky_cfg) = sky {
+        draw_sky_background(
+            fb,
+            frame.width,
+            frame.height,
+            sky_cfg,
+            camera_dir,
+            screen_tint,
+            palette_mode,
+        )?;
+        dirty_bounds = Some((
+            0,
+            0,
+            frame.width.saturating_sub(1) as i32,
+            frame.height.saturating_sub(1) as i32,
+        ));
+    }
+
+    for c in cmd.iter() {
+        match c {
+            RenderCommand::ClearColor(color) => {
+                let w = frame.width as i32;
+                let h = frame.height as i32;
+                let clear_color = apply_post(*color, screen_tint, palette_mode);
+                for y in 0..h {
+                    for x in 0..w {
+                        fb.draw_iter([Pixel(Point::new(x, y), clear_color)])
+                            .map_err(|_| {
+                                RenderError::InvalidInput("draw target rejected clear write")
+                            })?;
+                    }
+                }
+            }
+            RenderCommand::ClearDepth(value) => {
+                frame.zbuffer.fill(*value);
+            }
+            RenderCommand::Draw(primitive) => {
+                match primitive {
+                    DrawPrimitive::LightmappedTriangle {
+                        points,
+                        depths,
+                        ws,
+                        surface_uvs,
+                        lm_uvs,
+                        texture_id,
+                        lightmap_id,
+                        brightness,
+                        dynamic_tint,
+                    } => {
+                        draw_zbuffered_lightmapped_mapped(
+                            *points,
+                            *depths,
+                            *ws,
+                            *surface_uvs,
+                            *lm_uvs,
+                            *texture_id,
+                            *lightmap_id,
+                            *brightness,
+                            *dynamic_tint,
+                            fog,
+                            texture_manager,
+                            fb,
+                            frame.zbuffer,
+                            frame.width,
+                            TextureMapping::PerspectiveCorrect,
+                            stipple_mode,
+                            screen_tint,
+                            palette_mode,
+                        );
+                    }
+                    DrawPrimitive::TexturedTriangle { .. }
+                    | DrawPrimitive::TexturedTriangleWithDepth { .. } => {
+                        draw_zbuffered_with_textures_mapped(
+                            primitive.clone(),
+                            fb,
+                            frame.zbuffer,
+                            frame.width,
+                            texture_manager,
+                            fog,
+                            dither,
+                            TextureMapping::PerspectiveCorrect,
+                            stipple_mode,
+                            screen_tint,
+                            palette_mode,
+                        );
+                    }
+                    _ => {
+                        let prim = tint_primitive(primitive, screen_tint, palette_mode);
+                        draw_zbuffered_with_effects(
+                            prim,
+                            fb,
+                            frame.zbuffer,
+                            frame.width,
+                            fog,
+                            dither,
+                        );
+                    }
+                }
+                let (min_x, min_y, max_x, max_y) = primitive_bounds(primitive);
+                if let Some((min_x, min_y, max_x, max_y)) =
+                    clamp_bounds_to_frame(min_x, min_y, max_x, max_y, frame.width, frame.height)
+                {
+                    dirty_bounds = Some(match dirty_bounds {
+                        Some((cx0, cy0, cx1, cy1)) => (
+                            cx0.min(min_x),
+                            cy0.min(min_y),
+                            cx1.max(max_x),
+                            cy1.max(max_y),
+                        ),
+                        None => (min_x, min_y, max_x, max_y),
+                    });
+                }
+            }
+        }
+    }
+
+    let region = dirty_bounds.and_then(|(x0, y0, x1, y1)| DirtyRegion::from_bounds(x0, y0, x1, y1));
+    Ok(region)
+}
+
 pub fn execute_commands_tiled<D, const MAX: usize, const BIN_CAP: usize>(
     fb: &mut D,
     frame: &mut FrameCtx<'_>,

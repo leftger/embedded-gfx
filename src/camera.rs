@@ -105,6 +105,17 @@ impl Camera {
         self.projection_matrix = projection.to_homogeneous();
         self.vp_matrix = self.projection_matrix * self.view_matrix;
     }
+
+    #[cfg(feature = "dsp")]
+    /// Smoothly track target position using low-pass damping filter.
+    pub fn smooth_track_dsp(&mut self, target: Point3<f32>, alpha: f32) {
+        let alpha_clamped = alpha.clamp(0.01, 1.0);
+        let cur = self.target;
+        let smoothed_x = cur.x + (target.x - cur.x) * alpha_clamped;
+        let smoothed_y = cur.y + (target.y - cur.y) * alpha_clamped;
+        let smoothed_z = cur.z + (target.z - cur.z) * alpha_clamped;
+        self.set_target(Point3::new(smoothed_x, smoothed_y, smoothed_z));
+    }
 }
 
 #[cfg(test)]

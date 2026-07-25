@@ -1,6 +1,6 @@
-//! Q16.16 fixed-point math — Rust port of `__arm_2d_math.h`
+//! Q16.16 fixed-point math module
 //!
-//! Provides the same set of operations as the Arm-2D math library:
+//! Provides fixed-point math operations for embedded environments:
 //! - Type alias `Q16` (i32 with 16 fractional bits, range ≈ ±32767.9999847)
 //! - Conversion: `f32 ↔ Q16`, `i16 ↔ Q16`, `q31 ↔ Q16`
 //! - Arithmetic: `mul_q16`, `mul_n_q16`, `div_q16`, `div_n_q16`
@@ -31,88 +31,68 @@ pub const Q16_MIN: i32 = i32::MIN;
 pub type Q16 = i32;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Conversions  (mirrors reinterpret_* in __arm_2d_math.h)
+// Conversions
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Convert `f32` → `Q16.16` with correct rounding.
-///
-/// Equivalent to Arm-2D `reinterpret_q16_f32`.
 #[inline(always)]
 pub fn to_q16(v: f32) -> Q16 {
     (v * 65536.0_f32 + if v >= 0.0 { 0.5 } else { -0.5 }) as i32
 }
 
 /// Convert `Q16.16` → `f32`.
-///
-/// Equivalent to Arm-2D `reinterpret_f32_q16`.
 #[inline(always)]
 pub fn from_q16(v: Q16) -> f32 {
     v as f32 / 65536.0_f32
 }
 
 /// Convert `i16` integer → `Q16.16` (shift left 16).
-///
-/// Equivalent to Arm-2D `reinterpret_q16_s16`.
 #[inline(always)]
 pub fn from_i16_q16(v: i16) -> Q16 {
     (v as i32) << 16
 }
 
 /// Convert `Q16.16` → `i16` integer (truncate fractional bits).
-///
-/// Equivalent to Arm-2D `reinterpret_s16_q16`.
 #[inline(always)]
 pub fn to_i16_q16(v: Q16) -> i16 {
     (v >> 16) as i16
 }
 
 /// Reinterpret a Q31 value as Q16.16 by shifting right 15 bits.
-///
-/// Equivalent to Arm-2D `reinterpret_q16_q31`.
 #[inline(always)]
 pub fn q31_to_q16(q31: i32) -> Q16 {
     q31 >> 15
 }
 
 /// Reinterpret Q16.16 as Q31 by shifting left 16 bits (use i64 to avoid overflow).
-///
-/// Equivalent to Arm-2D `reinterpret_q31_q16`.
 #[inline(always)]
 pub fn q16_to_q31(v: Q16) -> i64 {
     (v as i64) << 16
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Arithmetic  (mirrors mul_q16 / div_q16 in __arm_2d_math.h)
+// Arithmetic
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Multiply two Q16.16 values. Uses i64 intermediate (SMULL on Cortex-M).
-///
-/// Equivalent to Arm-2D `mul_q16`.
 #[inline(always)]
 pub fn mul_q16(a: Q16, b: Q16) -> Q16 {
     ((a as i64 * b as i64) >> 16) as i32
 }
 
 /// Multiply a Q16.16 value by a plain `i32` integer (no fractional scaling).
-///
-/// Equivalent to Arm-2D `mul_n_q16`.
 #[inline(always)]
 pub fn mul_n_q16(a: Q16, n: i32) -> Q16 {
     a.wrapping_mul(n)
 }
 
 /// Multiply a Q16.16 value by an `f32` scalar.
-///
-/// Equivalent to Arm-2D `mul_f_q16`.
 #[inline(always)]
 pub fn mul_f_q16(a: Q16, f: f32) -> Q16 {
     mul_q16(a, to_q16(f))
 }
 
 /// Divide two Q16.16 values. Returns 0 on division by zero.
-///
-/// Equivalent to Arm-2D `div_q16`.
 #[inline(always)]
 pub fn div_q16(a: Q16, b: Q16) -> Q16 {
     if b == 0 {
@@ -122,8 +102,6 @@ pub fn div_q16(a: Q16, b: Q16) -> Q16 {
 }
 
 /// Divide a Q16.16 value by a plain `i32` integer. Returns 0 on division by zero.
-///
-/// Equivalent to Arm-2D `div_n_q16`.
 #[inline(always)]
 pub fn div_n_q16(a: Q16, n: i32) -> Q16 {
     if n == 0 {
@@ -133,40 +111,33 @@ pub fn div_n_q16(a: Q16, n: i32) -> Q16 {
 }
 
 /// Divide a Q16.16 value by an `f32` scalar.
-///
-/// Equivalent to Arm-2D `div_f_q16`.
 #[inline(always)]
 pub fn div_f_q16(a: Q16, f: f32) -> Q16 {
     div_q16(a, to_q16(f))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Saturating arithmetic  (mirrors qadd_q16 / qsub_q16 in __arm_2d_math.h)
+// Saturating arithmetic
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Saturating add: clamps the result to `[i32::MIN, i32::MAX]`.
-///
-/// Equivalent to Arm-2D `qadd_q16`.
 #[inline(always)]
 pub fn qadd_q16(a: Q16, b: Q16) -> Q16 {
     (a as i64 + b as i64).clamp(Q16_MIN as i64, Q16_MAX as i64) as i32
 }
 
 /// Saturating subtract: clamps the result to `[i32::MIN, i32::MAX]`.
-///
-/// Equivalent to Arm-2D `qsub_q16`.
 #[inline(always)]
 pub fn qsub_q16(a: Q16, b: Q16) -> Q16 {
     (a as i64 - b as i64).clamp(Q16_MIN as i64, Q16_MAX as i64) as i32
 }
 
 /// Absolute value of a Q16.16 number.
-///
-/// Equivalent to Arm-2D `abs_q16`.
 #[inline(always)]
 pub fn abs_q16(a: Q16) -> Q16 {
     a.abs()
 }
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -186,8 +157,6 @@ pub fn lerp_q16(a: Q16, b: Q16, t: i32, denom: i32) -> Q16 {
 }
 
 /// Convert an angle in degrees to Q16.16 radians.
-///
-/// Mirrors `ARM_2D_ANGLE` macro: `angle * pi / 180`.
 #[inline(always)]
 pub fn angle_to_q16(degrees: f32) -> Q16 {
     to_q16(degrees * core::f32::consts::PI / 180.0)
@@ -197,9 +166,6 @@ pub fn angle_to_q16(degrees: f32) -> Q16 {
 ///
 /// Uses integer shift: `(1 << 32) / v` — gives approx 6 correct decimal digits.
 /// Returns `Q16_MAX` for zero or near-zero input (safe sentinel).
-///
-/// This mirrors the fast-reciprocal pattern used inside Arm-2D scanline loops
-/// to replace per-pixel division with a multiply-by-reciprocal.
 #[inline(always)]
 pub fn recip_q16(v: Q16) -> Q16 {
     if v == 0 {
@@ -236,8 +202,7 @@ pub fn div_fp(a: i32, b: i32) -> Option<i32> {
 
 /// Per-scanline interpolator for z-buffer depth and (u, v) texture coordinates.
 ///
-/// This is the core inner-loop accelerator ported from Arm-2D's scanline
-/// rasterization pattern (`__arm_2d_math.h` + `__arm_2d_impl.h`).
+/// Accelerated scanline rasterization helper.
 /// It pre-computes Q16.16 per-pixel step values for `z`, `u`, and `v` so
 /// the inner loop only does three wrapping additions instead of floating-point
 /// divisions per pixel — critical for MCU scanline performance.

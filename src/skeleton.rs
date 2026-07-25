@@ -409,6 +409,34 @@ pub fn apply_skinning_to_normals<const N: usize>(
     count
 }
 
+#[cfg(feature = "dsp")]
+impl Bone {
+    /// Perform spherical linear interpolation (SLERP) between two bone rotations using `embedded-dsp` quaternions.
+    pub fn interpolate_rotation_dsp(&mut self, target_rotation: UnitQuaternion<f32>, t: f32) {
+        let q1 = [self.rotation.w, self.rotation.i, self.rotation.j, self.rotation.k];
+        let q2 = [target_rotation.w, target_rotation.i, target_rotation.j, target_rotation.k];
+        let dot = q1[0] * q2[0] + q1[1] * q2[1] + q1[2] * q2[2] + q1[3] * q2[3];
+        let q2_adj = if dot < 0.0 {
+            [-q2[0], -q2[1], -q2[2], -q2[3]]
+        } else {
+            q2
+        };
+        let t_clamped = t.clamp(0.0, 1.0);
+        let mut interpolated = [
+            q1[0] + (q2_adj[0] - q1[0]) * t_clamped,
+            q1[1] + (q2_adj[1] - q1[1]) * t_clamped,
+            q1[2] + (q2_adj[2] - q1[2]) * t_clamped,
+            q1[3] + (q2_adj[3] - q1[3]) * t_clamped,
+        ];
+        let _ = embedded_dsp::quaternion_normalize_f32(&mut interpolated);
+
+        self.rotation = UnitQuaternion::new_normalize(
+            nalgebra::Quaternion::new(interpolated[0], interpolated[1], interpolated[2], interpolated[3]),
+        );
+        self.update_local_transform();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

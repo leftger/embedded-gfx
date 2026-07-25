@@ -1,45 +1,45 @@
-//! Integration tests for Arm-2D ported features in embedded-3dgfx.
+//! Integration tests for accelerated 2D features in embedded-3dgfx.
 //!
 //! Covers:
-//! 1. Fast alpha blending (RGB565 & RGBA8888) — arm_2d_alpha_blending.h port
-//! 2. 2xSSAA sub-pixel anti-aliased rasterization — __arm_2d_tile_2xssaa_transform.h port
-//! 3. Q16.16 affine texture mapping & billboard scanline sampler — arm_2d_transform.h port
-//! 4. Translucent 3D triangle rendering with depth-buffer — arm_2d_alpha_blending.h port
+//! 1. Fast alpha blending (RGB565 & RGBA8888)
+//! 2. 2xSSAA sub-pixel anti-aliased rasterization
+//! 3. Q16.16 affine texture mapping & billboard scanline sampler
+//! 4. Translucent 3D triangle rendering with depth-buffer
 
 extern crate std;
 
 use embedded_3dgfx::draw::{
-    arm_2d_blend_rgb565, arm_2d_blend_rgba8888, arm_2d_blend_rgba8888_to_rgb565,
+    fast_blend_rgb565, fast_blend_rgba8888, fast_blend_rgba8888_to_rgb565,
 };
 use embedded_3dgfx::texture::Texture;
 use embedded_graphics_core::pixelcolor::{Rgb565, RgbColor, WebColors};
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 1. ARM-2D FAST ALPHA BLENDING  (arm_2d_alpha_blending.h)
+// 1. FAST ALPHA BLENDING
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[test]
-fn test_arm_2d_blend_rgb565_fully_opaque() {
+fn test_fast_blend_rgb565_fully_opaque() {
     let bg = Rgb565::new(0, 0, 0);
     let fg = Rgb565::new(31, 63, 31); // white in RGB565 max components
-    let result = arm_2d_blend_rgb565(bg, fg, 255);
+    let result = fast_blend_rgb565(bg, fg, 255);
     assert_eq!(result, fg, "alpha=255 must return foreground verbatim");
 }
 
 #[test]
-fn test_arm_2d_blend_rgb565_fully_transparent() {
+fn test_fast_blend_rgb565_fully_transparent() {
     let bg = Rgb565::CSS_GREEN;
     let fg = Rgb565::CSS_RED;
-    let result = arm_2d_blend_rgb565(bg, fg, 0);
+    let result = fast_blend_rgb565(bg, fg, 0);
     assert_eq!(result, bg, "alpha=0 must return background verbatim");
 }
 
 #[test]
-fn test_arm_2d_blend_rgb565_midpoint() {
+fn test_fast_blend_rgb565_midpoint() {
     // 50% blend of black onto white — result should be near mid-grey
     let bg = Rgb565::new(31, 63, 31); // white
     let fg = Rgb565::new(0, 0, 0);   // black
-    let result = arm_2d_blend_rgb565(bg, fg, 128);
+    let result = fast_blend_rgb565(bg, fg, 128);
     // Mid-point: each channel ≈ half maximum
     assert!(result.r() <= 16, "r channel should be ~half white");
     assert!(result.g() <= 32, "g channel should be ~half white");
@@ -50,10 +50,10 @@ fn test_arm_2d_blend_rgb565_midpoint() {
 }
 
 #[test]
-fn test_arm_2d_blend_rgb565_quarter_alpha() {
+fn test_fast_blend_rgb565_quarter_alpha() {
     let bg = Rgb565::new(0, 0, 0);
     let fg = Rgb565::new(31, 63, 31);
-    let result = arm_2d_blend_rgb565(bg, fg, 64); // ~25% fg
+    let result = fast_blend_rgb565(bg, fg, 64); // ~25% fg
     // At 25%, result channels should be roughly 25% of maximum
     assert!(result.r() <= 9, "r ~25% of 31");
     assert!(result.g() <= 17, "g ~25% of 63");
@@ -61,25 +61,25 @@ fn test_arm_2d_blend_rgb565_quarter_alpha() {
 }
 
 #[test]
-fn test_arm_2d_blend_rgb565_three_quarter_alpha() {
+fn test_fast_blend_rgb565_three_quarter_alpha() {
     let bg = Rgb565::new(0, 0, 0);
     let fg = Rgb565::new(31, 63, 31);
-    let result = arm_2d_blend_rgb565(bg, fg, 192); // ~75% fg
+    let result = fast_blend_rgb565(bg, fg, 192); // ~75% fg
     assert!(result.r() >= 22, "r ~75% of 31");
     assert!(result.g() >= 44, "g ~75% of 63");
     assert!(result.b() >= 22, "b ~75% of 31");
 }
 
 #[test]
-fn test_arm_2d_blend_rgb565_associativity() {
+fn test_fast_blend_rgb565_associativity() {
     // blend(bg, A->B at alpha) and blend(result, B->C at alpha) should chain correctly
     let black = Rgb565::new(0, 0, 0);
     let white = Rgb565::new(31, 63, 31);
-    let mid = arm_2d_blend_rgb565(black, white, 128);
+    let mid = fast_blend_rgb565(black, white, 128);
     // mid should be lighter than black
     assert!(mid.r() > 0 || mid.g() > 0 || mid.b() > 0);
     // chained 50% on top
-    let result2 = arm_2d_blend_rgb565(mid, white, 128);
+    let result2 = fast_blend_rgb565(mid, white, 128);
     // result2 should be lighter than mid
     assert!(result2.r() >= mid.r());
     assert!(result2.g() >= mid.g());
@@ -87,26 +87,26 @@ fn test_arm_2d_blend_rgb565_associativity() {
 }
 
 #[test]
-fn test_arm_2d_blend_rgba8888_fully_opaque() {
+fn test_fast_blend_rgba8888_fully_opaque() {
     let bg = [10u8, 20, 30, 255];
     let fg = [200u8, 150, 100, 255];
-    let result = arm_2d_blend_rgba8888(bg, fg);
+    let result = fast_blend_rgba8888(bg, fg);
     assert_eq!(&result[..3], &fg[..3], "fully opaque fg replaces bg RGB");
 }
 
 #[test]
-fn test_arm_2d_blend_rgba8888_fully_transparent() {
+fn test_fast_blend_rgba8888_fully_transparent() {
     let bg = [10u8, 20, 30, 255];
     let fg = [200u8, 150, 100, 0];
-    let result = arm_2d_blend_rgba8888(bg, fg);
+    let result = fast_blend_rgba8888(bg, fg);
     assert_eq!(&result[..3], &bg[..3], "transparent fg leaves bg unchanged");
 }
 
 #[test]
-fn test_arm_2d_blend_rgba8888_midpoint() {
+fn test_fast_blend_rgba8888_midpoint() {
     let bg = [0u8, 0, 0, 255];
     let fg = [200u8, 200, 200, 128];
-    let result = arm_2d_blend_rgba8888(bg, fg);
+    let result = fast_blend_rgba8888(bg, fg);
     // ~50% of 200 ≈ 100 for each channel
     assert!(result[0] >= 90 && result[0] <= 110, "R channel mid-blend");
     assert!(result[1] >= 90 && result[1] <= 110, "G channel mid-blend");
@@ -114,28 +114,28 @@ fn test_arm_2d_blend_rgba8888_midpoint() {
 }
 
 #[test]
-fn test_arm_2d_blend_rgba8888_to_rgb565_opaque() {
+fn test_fast_blend_rgba8888_to_rgb565_opaque() {
     let bg = Rgb565::CSS_BLACK;
     let fg_rgba: [u8; 4] = [248, 0, 0, 255]; // pure red (fits RGB565 scale)
-    let result = arm_2d_blend_rgba8888_to_rgb565(bg, fg_rgba);
+    let result = fast_blend_rgba8888_to_rgb565(bg, fg_rgba);
     assert_eq!(result.r(), 31, "fully opaque red should give max R component");
     assert_eq!(result.g(), 0, "no green");
     assert_eq!(result.b(), 0, "no blue");
 }
 
 #[test]
-fn test_arm_2d_blend_rgba8888_to_rgb565_transparent() {
+fn test_fast_blend_rgba8888_to_rgb565_transparent() {
     let bg = Rgb565::CSS_WHITE;
     let fg_rgba: [u8; 4] = [0, 0, 0, 0]; // fully transparent black
-    let result = arm_2d_blend_rgba8888_to_rgb565(bg, fg_rgba);
+    let result = fast_blend_rgba8888_to_rgb565(bg, fg_rgba);
     assert_eq!(result, bg, "transparent fg must preserve background");
 }
 
 #[test]
-fn test_arm_2d_blend_rgba8888_to_rgb565_half_alpha() {
+fn test_fast_blend_rgba8888_to_rgb565_half_alpha() {
     let bg = Rgb565::new(0, 0, 0); // black bg
     let fg_rgba: [u8; 4] = [248, 248, 248, 128]; // ~50% white
-    let result = arm_2d_blend_rgba8888_to_rgb565(bg, fg_rgba);
+    let result = fast_blend_rgba8888_to_rgb565(bg, fg_rgba);
     // Should be grey-ish: RGB565 r∈[12..20], g∈[24..40], b∈[12..20]
     assert!(result.r() > 0, "should blend some red channel");
     assert!(result.g() > 0, "should blend some green channel");
@@ -143,7 +143,7 @@ fn test_arm_2d_blend_rgba8888_to_rgb565_half_alpha() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 2. Q16.16 AFFINE TEXTURE MAPPING  (arm_2d_transform.h port)
+// 2. Q16.16 AFFINE TEXTURE MAPPING
 // ─────────────────────────────────────────────────────────────────────────────
 
 static CHECKER_DATA: [Rgb565; 64] = {
@@ -482,8 +482,8 @@ fn test_alpha_blend_chain_over_background() {
     let black = Rgb565::new(0, 0, 0);
     let white = Rgb565::new(31, 63, 31);
 
-    let step1 = arm_2d_blend_rgb565(black, white, 128);
-    let step2 = arm_2d_blend_rgb565(step1, white, 128);
+    let step1 = fast_blend_rgb565(black, white, 128);
+    let step2 = fast_blend_rgb565(step1, white, 128);
 
     // step2 should be lighter than step1
     assert!(step2.r() >= step1.r(), "each blend step increases brightness (R)");
@@ -499,9 +499,48 @@ fn test_alpha_blend_chain_over_background() {
 fn test_rgba8888_premultiplied_white_over_black() {
     let bg = [0u8, 0, 0, 255];
     let fg = [255u8, 255, 255, 200]; // nearly-opaque white
-    let result = arm_2d_blend_rgba8888(bg, fg);
+    let result = fast_blend_rgba8888(bg, fg);
     // ~78% white over black → all channels should be ~200
     assert!(result[0] >= 190 && result[0] <= 210, "R channel ≈200");
     assert!(result[1] >= 190 && result[1] <= 210, "G channel ≈200");
     assert!(result[2] >= 190 && result[2] <= 210, "B channel ≈200");
 }
+
+#[test]
+fn test_reverse_color_rgb565() {
+    use embedded_3dgfx::draw::reverse_color_rgb565;
+    let black = Rgb565::new(0, 0, 0);
+    let white = Rgb565::new(31, 63, 31);
+    assert_eq!(reverse_color_rgb565(black), white, "inverting black gives white");
+    assert_eq!(reverse_color_rgb565(white), black, "inverting white gives black");
+
+    let red = Rgb565::new(31, 0, 0);
+    let cyan = Rgb565::new(0, 63, 31);
+    assert_eq!(reverse_color_rgb565(red), cyan, "inverting red gives cyan");
+}
+
+#[test]
+fn test_reverse_color_rgba8888() {
+    use embedded_3dgfx::draw::reverse_color_rgba8888;
+    let color = [255, 0, 100, 128];
+    let inverted = reverse_color_rgba8888(color);
+    assert_eq!(inverted, [0, 255, 155, 128], "alpha is preserved, RGB is inverted");
+}
+
+#[test]
+fn test_2xssaa_texture_sampling() {
+    static RAW: [Rgb565; 4] = [
+        Rgb565::new(31, 0, 0),  // Red
+        Rgb565::new(0, 63, 0),  // Green
+        Rgb565::new(0, 0, 31),  // Blue
+        Rgb565::new(31, 63, 31),// White
+    ];
+    let tex = Texture::new(&RAW, 2, 2);
+    // Center sampling with 2xSSAA (sub-pixel averaging)
+    let ssaa_color = tex.sample_affine_2xssaa_q16(32768, 32768);
+    // Averaging all 4 pixels: R ~ (31+0+0+31)/4 = 15, G ~ (0+63+0+63)/4 = 31, B ~ (0+0+31+31)/4 = 15
+    assert!(ssaa_color.r() >= 14 && ssaa_color.r() <= 16);
+    assert!(ssaa_color.g() >= 30 && ssaa_color.g() <= 32);
+    assert!(ssaa_color.b() >= 14 && ssaa_color.b() <= 16);
+}
+

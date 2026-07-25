@@ -71,17 +71,18 @@ pub use bridge::{
 };
 pub use character::CharacterController;
 pub use draw::{
-    DitherConfig, FogConfig, arm_2d_blend_rgb565, arm_2d_blend_rgba8888,
-    arm_2d_blend_rgba8888_to_rgb565, draw_zbuffered_2xssaa,
+    DitherConfig, FogConfig, fast_blend_rgb565, fast_blend_rgba8888,
+    fast_blend_rgba8888_to_rgb565, reverse_color_rgb565, reverse_color_rgba8888,
+    draw_zbuffered_2xssaa,
 };
 pub use fixed_math::{
     // Type alias and constants
     Q16, Q16_MAX, Q16_MIN, FP_ONE,
-    // Conversions (arm_2d_math.h reinterpret_* family)
+    // Conversions
     to_q16, from_q16, from_i16_q16, to_i16_q16, q31_to_q16, q16_to_q31,
-    // Arithmetic (arm_2d_math.h mul_*/div_* family)
+    // Arithmetic
     mul_q16, mul_n_q16, mul_f_q16, div_q16, div_n_q16, div_f_q16,
-    // Saturating arithmetic (arm_2d_math.h qadd_*/qsub_*)
+    // Saturating arithmetic
     qadd_q16, qsub_q16, abs_q16,
     // Helpers
     lerp_q16, angle_to_q16, recip_q16,

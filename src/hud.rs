@@ -153,7 +153,7 @@ impl<const N: usize> HudLayer<N> {
         }
     }
 
-    /// Draw all elements with Arm-2D translucent alpha blending onto a read-capable framebuffer target.
+    /// Draw all elements with fast translucent alpha blending onto a read-capable framebuffer target.
     #[cfg(feature = "aa")]
     pub fn draw_blended<D>(&self, target: &mut D)
     where
@@ -172,7 +172,7 @@ impl<const N: usize> HudLayer<N> {
                     for (px, py) in rect_pixels(x, y, w, h) {
                         let pt = Point::new(px, py);
                         let bg = target.read_pixel(pt);
-                        let blended = crate::draw::arm_2d_blend_rgb565(bg, color, alpha);
+                        let blended = crate::draw::fast_blend_rgb565(bg, color, alpha);
                         let _ = target.draw_iter([Pixel(pt, blended)]);
                     }
                 }
@@ -187,7 +187,7 @@ impl<const N: usize> HudLayer<N> {
                     for (px, py) in border_pixels(x, y, w, h) {
                         let pt = Point::new(px, py);
                         let bg = target.read_pixel(pt);
-                        let blended = crate::draw::arm_2d_blend_rgb565(bg, color, alpha);
+                        let blended = crate::draw::fast_blend_rgb565(bg, color, alpha);
                         let _ = target.draw_iter([Pixel(pt, blended)]);
                     }
                 }

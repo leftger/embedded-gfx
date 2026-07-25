@@ -48,11 +48,11 @@ pub trait ReadPixel {
     fn read_pixel(&self, point: Point) -> Rgb565;
 }
 
-/// Arm-2D fast RGB565 alpha blending.
+/// Fast RGB565 alpha blending.
 ///
 /// Blends `fg` color over `bg` color using an 8-bit alpha value `alpha` ∈ \[0, 255\].
 #[inline(always)]
-pub fn arm_2d_blend_rgb565(bg: Rgb565, fg: Rgb565, alpha: u8) -> Rgb565 {
+pub fn fast_blend_rgb565(bg: Rgb565, fg: Rgb565, alpha: u8) -> Rgb565 {
     if alpha == 255 {
         return fg;
     }
@@ -67,11 +67,11 @@ pub fn arm_2d_blend_rgb565(bg: Rgb565, fg: Rgb565, alpha: u8) -> Rgb565 {
     Rgb565::new(r as u8, g as u8, b as u8)
 }
 
-/// Arm-2D fast RGBA8888 alpha blending.
+/// Fast RGBA8888 alpha blending.
 ///
 /// Blends `fg` RGBA8888 channel tuple over `bg` RGBA8888 channel tuple.
 #[inline(always)]
-pub fn arm_2d_blend_rgba8888(bg: [u8; 4], fg: [u8; 4]) -> [u8; 4] {
+pub fn fast_blend_rgba8888(bg: [u8; 4], fg: [u8; 4]) -> [u8; 4] {
     let a = fg[3] as u32;
     if a == 255 {
         return fg;
@@ -87,11 +87,11 @@ pub fn arm_2d_blend_rgba8888(bg: [u8; 4], fg: [u8; 4]) -> [u8; 4] {
     [r as u8, g as u8, b as u8, out_a as u8]
 }
 
-/// Arm-2D fast RGBA8888 to RGB565 alpha blending.
+/// Fast RGBA8888 to RGB565 alpha blending.
 ///
 /// Blends an RGBA8888 foreground pixel directly onto an RGB565 background pixel.
 #[inline(always)]
-pub fn arm_2d_blend_rgba8888_to_rgb565(bg: Rgb565, fg_rgba: [u8; 4]) -> Rgb565 {
+pub fn fast_blend_rgba8888_to_rgb565(bg: Rgb565, fg_rgba: [u8; 4]) -> Rgb565 {
     let alpha = fg_rgba[3];
     if alpha == 0 {
         return bg;
@@ -100,8 +100,25 @@ pub fn arm_2d_blend_rgba8888_to_rgb565(bg: Rgb565, fg_rgba: [u8; 4]) -> Rgb565 {
     let fg_g = fg_rgba[1] >> 2;
     let fg_b = fg_rgba[2] >> 3;
     let fg_565 = Rgb565::new(fg_r, fg_g, fg_b);
-    arm_2d_blend_rgb565(bg, fg_565, alpha)
+    fast_blend_rgb565(bg, fg_565, alpha)
 }
+
+/// Fast color inversion (reverse color) filter for RGB565.
+///
+/// Inverts RGB color channels.
+#[inline(always)]
+pub fn reverse_color_rgb565(c: Rgb565) -> Rgb565 {
+    Rgb565::new(31 - c.r(), 63 - c.g(), 31 - c.b())
+}
+
+/// Fast color inversion (reverse color) filter for RGBA8888.
+///
+/// Inverts R, G, B channels while preserving alpha.
+#[inline(always)]
+pub fn reverse_color_rgba8888(rgba: [u8; 4]) -> [u8; 4] {
+    [255 - rgba[0], 255 - rgba[1], 255 - rgba[2], rgba[3]]
+}
+
 
 /// Component-wise blend in 8-bit fixed-point coverage.
 /// `coverage_q8` ∈ [0, 256]; 256 = full triangle color, 0 = full background.
@@ -4383,7 +4400,7 @@ fn fill_bottom_flat_translucent<
 
             if z < zbuffer[idx] {
                 zbuffer[idx] = z;
-                let draw_color = arm_2d_blend_rgb565(Rgb565::BLACK, color, alpha);
+                let draw_color = fast_blend_rgb565(Rgb565::BLACK, color, alpha);
                 let _ = fb.draw_iter([embedded_graphics_core::Pixel(Point::new(x, scanline_y), draw_color)]);
             }
         }
@@ -4445,7 +4462,7 @@ fn fill_top_flat_translucent<
 
             if z < zbuffer[idx] {
                 zbuffer[idx] = z;
-                let draw_color = arm_2d_blend_rgb565(Rgb565::BLACK, color, alpha);
+                let draw_color = fast_blend_rgb565(Rgb565::BLACK, color, alpha);
                 let _ = fb.draw_iter([embedded_graphics_core::Pixel(Point::new(x, scanline_y), draw_color)]);
             }
         }
@@ -4774,29 +4791,30 @@ mod tests {
     }
 
     #[test]
-    fn test_arm_2d_blend_rgb565() {
+    fn test_fast_blend_rgb565() {
         let bg = Rgb565::BLACK;
         let fg = Rgb565::WHITE;
-        assert_eq!(arm_2d_blend_rgb565(bg, fg, 0), bg);
-        assert_eq!(arm_2d_blend_rgb565(bg, fg, 255), fg);
+        assert_eq!(fast_blend_rgb565(bg, fg, 0), bg);
+        assert_eq!(fast_blend_rgb565(bg, fg, 255), fg);
 
-        let blended = arm_2d_blend_rgb565(bg, fg, 128);
+        let blended = fast_blend_rgb565(bg, fg, 128);
         assert!(blended.r() > 0 && blended.r() < 31);
     }
 
     #[test]
-    fn test_arm_2d_blend_rgba8888() {
+    fn test_fast_blend_rgba8888() {
         let bg = [0, 0, 0, 255];
         let fg = [255, 255, 255, 128];
-        let out = arm_2d_blend_rgba8888(bg, fg);
+        let out = fast_blend_rgba8888(bg, fg);
         assert!(out[0] > 0 && out[0] < 255);
     }
 
     #[test]
-    fn test_arm_2d_blend_rgba8888_to_rgb565() {
+    fn test_fast_blend_rgba8888_to_rgb565() {
         let bg = Rgb565::BLACK;
         let fg = [255, 0, 0, 255];
-        let out = arm_2d_blend_rgba8888_to_rgb565(bg, fg);
+        let out = fast_blend_rgba8888_to_rgb565(bg, fg);
         assert_eq!(out, Rgb565::CSS_RED);
     }
 }
+

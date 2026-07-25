@@ -4,7 +4,7 @@
 //! 3D rendering. It uses static texture data and power-of-2 dimensions for
 //! efficient wrapping without divisions.
 
-use embedded_graphics_core::pixelcolor::Rgb565;
+use embedded_graphics_core::pixelcolor::{Rgb565, RgbColor};
 use heapless::Vec as HeaplessVec;
 
 /// A 2D texture with RGB565 pixel data
@@ -109,6 +109,25 @@ impl Texture {
         let tex_x = (((u_q16 as u64 * self.width as u64) >> 16) as u32) & self.width_mask;
         let tex_y = (((v_q16 as u64 * self.height as u64) >> 16) as u32) & self.height_mask;
         self.data[(tex_y * self.width + tex_x) as usize]
+    }
+
+    /// Sample the texture at Q16.16 fixed-point UV coordinates using 2xSSAA (4-sample sub-pixel anti-aliasing).
+    ///
+    /// Offsets 4 sub-pixel samples by ±0.25 in Q16 (±0x4000)
+    /// and averages their colors to reduce texture aliasing at non-rectilinear angles.
+    #[inline]
+    pub fn sample_affine_2xssaa_q16(&self, u_q16: u32, v_q16: u32) -> Rgb565 {
+        const OFF: u32 = 0x4000; // 0.25 in Q16.16
+        let p0 = self.sample_affine_q16(u_q16.wrapping_sub(OFF), v_q16.wrapping_sub(OFF));
+        let p1 = self.sample_affine_q16(u_q16.wrapping_add(OFF), v_q16.wrapping_sub(OFF));
+        let p2 = self.sample_affine_q16(u_q16.wrapping_sub(OFF), v_q16.wrapping_add(OFF));
+        let p3 = self.sample_affine_q16(u_q16.wrapping_add(OFF), v_q16.wrapping_add(OFF));
+
+        let r = (p0.r() as u32 + p1.r() as u32 + p2.r() as u32 + p3.r() as u32 + 2) >> 2;
+        let g = (p0.g() as u32 + p1.g() as u32 + p2.g() as u32 + p3.g() as u32 + 2) >> 2;
+        let b = (p0.b() as u32 + p1.b() as u32 + p2.b() as u32 + p3.b() as u32 + 2) >> 2;
+
+        Rgb565::new(r as u8, g as u8, b as u8)
     }
 
     /// Sample a horizontal scanline using Q16.16 fixed-point affine UV stepping.

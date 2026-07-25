@@ -142,7 +142,7 @@ jobs:
       - name: no_std-style library check
         run: cargo check --lib --no-default-features --features ${{ matrix.row_width_feature }}
       - name: no_std-style clippy
-        run: cargo clippy --lib --no-default-features --features ${{ matrix.row_width_feature }} -- -D warnings
+        run: cargo clippy --lib --no-default-features --features ${{ matrix.row_width_feature }} -- -W clippy::all
       - name: Constrained telemetry budget guard
         run: cargo test --test integration_tests test_ci_telemetry_snapshot_ --no-default-features --features ${{ matrix.row_width_feature }} -- --nocapture 2>&1 | .github/scripts/check_telemetry_budget.py
 

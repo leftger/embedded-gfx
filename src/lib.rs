@@ -70,7 +70,26 @@ pub use bridge::{
     AsEgPoint, AsNalgebraPoint, draw_to, eg_to_nalgebra, nalgebra_to_eg, render_drawable_to_buffer,
 };
 pub use character::CharacterController;
-pub use draw::{DitherConfig, FogConfig};
+pub use draw::{
+    DitherConfig, FogConfig, arm_2d_blend_rgb565, arm_2d_blend_rgba8888,
+    arm_2d_blend_rgba8888_to_rgb565, draw_zbuffered_2xssaa,
+};
+pub use fixed_math::{
+    // Type alias and constants
+    Q16, Q16_MAX, Q16_MIN, FP_ONE,
+    // Conversions (arm_2d_math.h reinterpret_* family)
+    to_q16, from_q16, from_i16_q16, to_i16_q16, q31_to_q16, q16_to_q31,
+    // Arithmetic (arm_2d_math.h mul_*/div_* family)
+    mul_q16, mul_n_q16, mul_f_q16, div_q16, div_n_q16, div_f_q16,
+    // Saturating arithmetic (arm_2d_math.h qadd_*/qsub_*)
+    qadd_q16, qsub_q16, abs_q16,
+    // Helpers
+    lerp_q16, angle_to_q16, recip_q16,
+    // Scanline z/uv accelerator
+    ScanlineInterp,
+    // Legacy shims kept for backward compat
+    to_fp, from_fp, mul_fp, div_fp,
+};
 pub use input::InputState;
 pub use lights::{PointLight, PointLightSet};
 pub use particles::{ParticleSpawn, ParticleSystem};
@@ -92,6 +111,12 @@ pub enum DrawPrimitive {
         points: [Point2<i32>; 3],
         depths: [f32; 3],
         color: Rgb565,
+    },
+    TranslucentTriangleWithDepth {
+        points: [Point2<i32>; 3],
+        depths: [f32; 3],
+        color: Rgb565,
+        alpha: u8,
     },
     GouraudTriangle {
         points: [Point2<i32>; 3],

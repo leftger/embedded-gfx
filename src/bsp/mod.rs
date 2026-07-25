@@ -772,6 +772,7 @@ fn prim_bounds(p: &DrawPrimitive) -> (i32, i32, i32, i32) {
         DrawPrimitive::Line([a, b], _) => (a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y)),
         DrawPrimitive::ColoredTriangle(pts, _)
         | DrawPrimitive::ColoredTriangleWithDepth { points: pts, .. }
+        | DrawPrimitive::TranslucentTriangleWithDepth { points: pts, .. }
         | DrawPrimitive::GouraudTriangle { points: pts, .. }
         | DrawPrimitive::GouraudTriangleWithDepth { points: pts, .. }
         | DrawPrimitive::TexturedTriangle { points: pts, .. }

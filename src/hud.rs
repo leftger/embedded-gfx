@@ -30,6 +30,24 @@ pub enum HudElement {
         h: u32,
         color: Rgb565,
     },
+    /// Translucent filled rectangle with 8-bit alpha \[0, 255\].
+    TranslucentRect {
+        x: i32,
+        y: i32,
+        w: u32,
+        h: u32,
+        color: Rgb565,
+        alpha: u8,
+    },
+    /// Translucent 1-pixel-wide outline border with 8-bit alpha \[0, 255\].
+    TranslucentBorder {
+        x: i32,
+        y: i32,
+        w: u32,
+        h: u32,
+        color: Rgb565,
+        alpha: u8,
+    },
 }
 
 /// A 2D HUD overlay layer holding up to `N` elements.
@@ -83,6 +101,18 @@ impl<const N: usize> HudLayer<N> {
                         rect_pixels(x, y, w, h).map(|(px, py)| Pixel(Point::new(px, py), color)),
                     );
                 }
+                HudElement::TranslucentRect {
+                    x,
+                    y,
+                    w,
+                    h,
+                    color,
+                    alpha: _,
+                } => {
+                    let _ = target.draw_iter(
+                        rect_pixels(x, y, w, h).map(|(px, py)| Pixel(Point::new(px, py), color)),
+                    );
+                }
                 HudElement::ProgressBar {
                     x,
                     y,
@@ -106,10 +136,63 @@ impl<const N: usize> HudLayer<N> {
                         );
                     }
                 }
-                HudElement::Border { x, y, w, h, color } => {
+                HudElement::Border { x, y, w, h, color }
+                | HudElement::TranslucentBorder {
+                    x,
+                    y,
+                    w,
+                    h,
+                    color,
+                    alpha: _,
+                } => {
                     let _ = target.draw_iter(
                         border_pixels(x, y, w, h).map(|(px, py)| Pixel(Point::new(px, py), color)),
                     );
+                }
+            }
+        }
+    }
+
+    /// Draw all elements with Arm-2D translucent alpha blending onto a read-capable framebuffer target.
+    #[cfg(feature = "aa")]
+    pub fn draw_blended<D>(&self, target: &mut D)
+    where
+        D: DrawTarget<Color = Rgb565> + crate::draw::ReadPixel,
+    {
+        for elem in &self.elements {
+            match *elem {
+                HudElement::TranslucentRect {
+                    x,
+                    y,
+                    w,
+                    h,
+                    color,
+                    alpha,
+                } => {
+                    for (px, py) in rect_pixels(x, y, w, h) {
+                        let pt = Point::new(px, py);
+                        let bg = target.read_pixel(pt);
+                        let blended = crate::draw::arm_2d_blend_rgb565(bg, color, alpha);
+                        let _ = target.draw_iter([Pixel(pt, blended)]);
+                    }
+                }
+                HudElement::TranslucentBorder {
+                    x,
+                    y,
+                    w,
+                    h,
+                    color,
+                    alpha,
+                } => {
+                    for (px, py) in border_pixels(x, y, w, h) {
+                        let pt = Point::new(px, py);
+                        let bg = target.read_pixel(pt);
+                        let blended = crate::draw::arm_2d_blend_rgb565(bg, color, alpha);
+                        let _ = target.draw_iter([Pixel(pt, blended)]);
+                    }
+                }
+                _ => {
+                    self.draw(target);
                 }
             }
         }

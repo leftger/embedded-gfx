@@ -26,6 +26,7 @@ fn primitive_bounds(primitive: &DrawPrimitive) -> (i32, i32, i32, i32) {
         DrawPrimitive::Line([a, b], _) => (a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y)),
         DrawPrimitive::ColoredTriangle(points, _)
         | DrawPrimitive::ColoredTriangleWithDepth { points, .. }
+        | DrawPrimitive::TranslucentTriangleWithDepth { points, .. }
         | DrawPrimitive::GouraudTriangle { points, .. }
         | DrawPrimitive::GouraudTriangleWithDepth { points, .. }
         | DrawPrimitive::TexturedTriangle { points, .. }

@@ -101,6 +101,32 @@ impl Texture {
         self.data[(tex_y * self.width + tex_x) as usize]
     }
 
+    /// Sample the texture at Q16.16 fixed-point UV coordinates using fast affine indexing.
+    ///
+    /// `u_q16` and `v_q16` are 16.16 fixed-point numbers where 65536 represents 1.0.
+    #[inline(always)]
+    pub fn sample_affine_q16(&self, u_q16: u32, v_q16: u32) -> Rgb565 {
+        let tex_x = (((u_q16 as u64 * self.width as u64) >> 16) as u32) & self.width_mask;
+        let tex_y = (((v_q16 as u64 * self.height as u64) >> 16) as u32) & self.height_mask;
+        self.data[(tex_y * self.width + tex_x) as usize]
+    }
+
+    /// Sample a horizontal scanline using Q16.16 fixed-point affine UV stepping.
+    pub fn sample_affine_scanline_q16(
+        &self,
+        mut u_q16: u32,
+        mut v_q16: u32,
+        du_q16: u32,
+        dv_q16: u32,
+        out_buffer: &mut [Rgb565],
+    ) {
+        for pixel in out_buffer.iter_mut() {
+            *pixel = self.sample_affine_q16(u_q16, v_q16);
+            u_q16 = u_q16.wrapping_add(du_q16);
+            v_q16 = v_q16.wrapping_add(dv_q16);
+        }
+    }
+
     /// Get texture dimensions
     pub fn dimensions(&self) -> (u32, u32) {
         (self.width, self.height)
@@ -454,5 +480,30 @@ mod tests {
             manager.get(anim_id).unwrap().sample(0.0, 0.0),
             Rgb565::CSS_GREEN
         );
+    }
+
+    #[test]
+    fn test_texture_sample_affine_q16() {
+        static DATA: [Rgb565; 16] = [
+            Rgb565::CSS_RED, Rgb565::CSS_GREEN, Rgb565::CSS_BLUE, Rgb565::CSS_YELLOW,
+            Rgb565::CSS_CYAN, Rgb565::CSS_MAGENTA, Rgb565::CSS_WHITE, Rgb565::CSS_BLACK,
+            Rgb565::CSS_RED, Rgb565::CSS_GREEN, Rgb565::CSS_BLUE, Rgb565::CSS_YELLOW,
+            Rgb565::CSS_CYAN, Rgb565::CSS_MAGENTA, Rgb565::CSS_WHITE, Rgb565::CSS_BLACK,
+        ];
+        let texture = Texture::new(&DATA, 4, 4);
+
+        // Q16.16 for (0.5, 0.5) => (32768, 32768)
+        let sample = texture.sample_affine_q16(32768, 32768);
+        assert_eq!(sample, Rgb565::CSS_BLUE);
+    }
+
+    #[test]
+    fn test_texture_sample_affine_scanline_q16() {
+        static DATA: [Rgb565; 16] = [Rgb565::CSS_RED; 16];
+        let texture = Texture::new(&DATA, 4, 4);
+
+        let mut scanline = [Rgb565::CSS_BLACK; 4];
+        texture.sample_affine_scanline_q16(0, 0, 16384, 0, &mut scanline);
+        assert_eq!(scanline[0], Rgb565::CSS_RED);
     }
 }

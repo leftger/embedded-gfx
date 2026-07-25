@@ -1,5 +1,6 @@
 //! Doom-style sector light animation descriptors and evaluators.
 
+#[allow(unused_imports)]
 use micromath::F32Ext;
 
 /// Animated light waveform kind.

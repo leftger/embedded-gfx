@@ -62,6 +62,7 @@ fn primitive_bounds(primitive: &DrawPrimitive) -> (i32, i32, i32, i32) {
         DrawPrimitive::Line([a, b], _) => (a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y)),
         DrawPrimitive::ColoredTriangle(points, _)
         | DrawPrimitive::ColoredTriangleWithDepth { points, .. }
+        | DrawPrimitive::TranslucentTriangleWithDepth { points, .. }
         | DrawPrimitive::GouraudTriangle { points, .. }
         | DrawPrimitive::GouraudTriangleWithDepth { points, .. }
         | DrawPrimitive::TexturedTriangle { points, .. }
@@ -129,6 +130,17 @@ fn tint_primitive(
             points,
             depths,
             color: apply_post(color, tint, palette_mode),
+        },
+        DrawPrimitive::TranslucentTriangleWithDepth {
+            points,
+            depths,
+            color,
+            alpha,
+        } => DrawPrimitive::TranslucentTriangleWithDepth {
+            points,
+            depths,
+            color: apply_post(color, tint, palette_mode),
+            alpha,
         },
         DrawPrimitive::GouraudTriangle { points, colors } => DrawPrimitive::GouraudTriangle {
             points,
@@ -653,4 +665,24 @@ where
     }
 
     Ok(stats)
+}
+
+/// Execute commands using 2xSSAA (Super-Sampling Anti-Aliasing) scanline rasterization.
+#[cfg(feature = "aa")]
+pub fn execute_commands_2xssaa<D, const MAX: usize>(
+    fb: &mut D,
+    frame: &mut FrameCtx<'_>,
+    cmd_buf: &CommandBuffer<MAX>,
+) -> Result<(), RenderError>
+where
+    D: DrawTarget<Color = Rgb565> + crate::draw::ReadPixel,
+    <D as DrawTarget>::Error: Debug,
+{
+    frame.validate()?;
+    for c in cmd_buf.iter() {
+        if let RenderCommand::Draw(primitive) = c {
+            crate::draw::draw_zbuffered_2xssaa(primitive.clone(), fb, frame.zbuffer, frame.width);
+        }
+    }
+    Ok(())
 }

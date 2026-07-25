@@ -48,6 +48,61 @@ pub trait ReadPixel {
     fn read_pixel(&self, point: Point) -> Rgb565;
 }
 
+/// Arm-2D fast RGB565 alpha blending.
+///
+/// Blends `fg` color over `bg` color using an 8-bit alpha value `alpha` ∈ \[0, 255\].
+#[inline(always)]
+pub fn arm_2d_blend_rgb565(bg: Rgb565, fg: Rgb565, alpha: u8) -> Rgb565 {
+    if alpha == 255 {
+        return fg;
+    }
+    if alpha == 0 {
+        return bg;
+    }
+    let a = alpha as u32;
+    let inv = 255 - a;
+    let r = (bg.r() as u32 * inv + fg.r() as u32 * a) / 255;
+    let g = (bg.g() as u32 * inv + fg.g() as u32 * a) / 255;
+    let b = (bg.b() as u32 * inv + fg.b() as u32 * a) / 255;
+    Rgb565::new(r as u8, g as u8, b as u8)
+}
+
+/// Arm-2D fast RGBA8888 alpha blending.
+///
+/// Blends `fg` RGBA8888 channel tuple over `bg` RGBA8888 channel tuple.
+#[inline(always)]
+pub fn arm_2d_blend_rgba8888(bg: [u8; 4], fg: [u8; 4]) -> [u8; 4] {
+    let a = fg[3] as u32;
+    if a == 255 {
+        return fg;
+    }
+    if a == 0 {
+        return bg;
+    }
+    let inv = 255 - a;
+    let r = (bg[0] as u32 * inv + fg[0] as u32 * a) / 255;
+    let g = (bg[1] as u32 * inv + fg[1] as u32 * a) / 255;
+    let b = (bg[2] as u32 * inv + fg[2] as u32 * a) / 255;
+    let out_a = fg[3] as u32 + (bg[3] as u32 * inv) / 255;
+    [r as u8, g as u8, b as u8, out_a as u8]
+}
+
+/// Arm-2D fast RGBA8888 to RGB565 alpha blending.
+///
+/// Blends an RGBA8888 foreground pixel directly onto an RGB565 background pixel.
+#[inline(always)]
+pub fn arm_2d_blend_rgba8888_to_rgb565(bg: Rgb565, fg_rgba: [u8; 4]) -> Rgb565 {
+    let alpha = fg_rgba[3];
+    if alpha == 0 {
+        return bg;
+    }
+    let fg_r = fg_rgba[0] >> 3;
+    let fg_g = fg_rgba[1] >> 2;
+    let fg_b = fg_rgba[2] >> 3;
+    let fg_565 = Rgb565::new(fg_r, fg_g, fg_b);
+    arm_2d_blend_rgb565(bg, fg_565, alpha)
+}
+
 /// Component-wise blend in 8-bit fixed-point coverage.
 /// `coverage_q8` ∈ [0, 256]; 256 = full triangle color, 0 = full background.
 #[cfg(feature = "aa")]
@@ -608,6 +663,12 @@ pub fn draw<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
             points,
             depths: _,
             color,
+        }
+        | DrawPrimitive::TranslucentTriangleWithDepth {
+            points,
+            depths: _,
+            color,
+            alpha: _,
         } => {
             // This variant should use draw_zbuffered() instead
             // For compatibility, render without Z-buffering (ignoring depths)
@@ -912,6 +973,230 @@ where
         // Anything else (Gouraud, textured, points) — fall back to the
         // non-AA path. AA variants for those can be added as needed.
         other => draw_zbuffered(other, fb, zbuffer, width),
+    }
+}
+
+/// Z-buffered drawing with 2xSSAA (Super-Sampling Anti-Aliasing) sub-pixel edge anti-aliasing.
+#[cfg(feature = "aa")]
+#[inline]
+pub fn draw_zbuffered_2xssaa<D>(primitive: DrawPrimitive, fb: &mut D, zbuffer: &mut [u32], width: usize)
+where
+    D: DrawTarget<Color = Rgb565> + ReadPixel,
+    <D as DrawTarget>::Error: Debug,
+{
+    match primitive {
+        DrawPrimitive::ColoredTriangleWithDepth {
+            mut points,
+            mut depths,
+            color,
+        } => {
+            if points[0].y > points[1].y {
+                points.swap(0, 1);
+                depths.swap(0, 1);
+            }
+            if points[0].y > points[2].y {
+                points.swap(0, 2);
+                depths.swap(0, 2);
+            }
+            if points[1].y > points[2].y {
+                points.swap(1, 2);
+                depths.swap(1, 2);
+            }
+            let [p1, p2, p3] = points;
+            let [z1, z2, z3] = depths;
+
+            let scr_w = width as i32;
+            let scr_h = (zbuffer.len() / width) as i32;
+            if p1.x < 0 && p2.x < 0 && p3.x < 0 { return; }
+            if p1.x >= scr_w && p2.x >= scr_w && p3.x >= scr_w { return; }
+            if p1.y < 0 && p2.y < 0 && p3.y < 0 { return; }
+            if p1.y >= scr_h && p2.y >= scr_h && p3.y >= scr_h { return; }
+
+            fill_triangle_zbuffered_2xssaa(p1, p2, p3, z1, z2, z3, color, fb, zbuffer, width);
+        }
+        DrawPrimitive::Line([p1, p2], color) => {
+            draw_line_aa(p1.x, p1.y, p2.x, p2.y, color, fb);
+        }
+        other => draw_zbuffered(other, fb, zbuffer, width),
+    }
+}
+
+#[cfg(feature = "aa")]
+#[inline(always)]
+fn fill_triangle_zbuffered_2xssaa<D>(
+    p1: nalgebra::Point2<i32>,
+    p2: nalgebra::Point2<i32>,
+    p3: nalgebra::Point2<i32>,
+    z1: f32,
+    z2: f32,
+    z3: f32,
+    color: Rgb565,
+    fb: &mut D,
+    zbuffer: &mut [u32],
+    width: usize,
+) where
+    D: DrawTarget<Color = Rgb565> + ReadPixel,
+    <D as DrawTarget>::Error: Debug,
+{
+    let p1_eg = Point::new(p1.x, p1.y);
+    let p2_eg = Point::new(p2.x, p2.y);
+    let p3_eg = Point::new(p3.x, p3.y);
+
+    let z1_int = (z1 * 65536.0) as u32;
+    let z2_int = (z2 * 65536.0) as u32;
+    let z3_int = (z3 * 65536.0) as u32;
+
+    if p2_eg.y == p3_eg.y {
+        fill_bottom_flat_2xssaa(p1_eg, p2_eg, p3_eg, z1_int, z2_int, z3_int, color, fb, zbuffer, width);
+    } else if p1_eg.y == p2_eg.y {
+        fill_top_flat_2xssaa(p1_eg, p2_eg, p3_eg, z1_int, z2_int, z3_int, color, fb, zbuffer, width);
+    } else {
+        let t = (p2_eg.y - p1_eg.y) as f32 / (p3_eg.y - p1_eg.y) as f32;
+        let p4 = Point::new(
+            (p1_eg.x as f32 + t * (p3_eg.x - p1_eg.x) as f32) as i32,
+            p2_eg.y,
+        );
+        let z4_int = (z1_int as i64 + (t * (z3_int as i64 - z1_int as i64) as f32) as i64) as u32;
+        fill_bottom_flat_2xssaa(p1_eg, p2_eg, p4, z1_int, z2_int, z4_int, color, fb, zbuffer, width);
+        fill_top_flat_2xssaa(p2_eg, p4, p3_eg, z2_int, z4_int, z3_int, color, fb, zbuffer, width);
+    }
+}
+
+#[cfg(feature = "aa")]
+#[inline(always)]
+fn fill_bottom_flat_2xssaa<D>(
+    p1: Point,
+    p2: Point,
+    p3: Point,
+    z1: u32,
+    z2: u32,
+    z3: u32,
+    color: Rgb565,
+    fb: &mut D,
+    zbuffer: &mut [u32],
+    width: usize,
+) where
+    D: DrawTarget<Color = Rgb565> + ReadPixel,
+    <D as DrawTarget>::Error: Debug,
+{
+    let height = p2.y - p1.y;
+    if height == 0 { return; }
+    let invslope1 = ((p2.x - p1.x) << 16) / height;
+    let invslope2 = ((p3.x - p1.x) << 16) / height;
+
+    let mut curx1 = p1.x << 16;
+    let mut curx2 = p1.x << 16;
+
+    for scanline_y in p1.y..=p2.y {
+        let dy = scanline_y - p1.y;
+        let z_left = (z1 as i64 + ((z2 as i64 - z1 as i64) * dy as i64 / height as i64)) as u32;
+        let z_right = (z1 as i64 + ((z3 as i64 - z1 as i64) * dy as i64 / height as i64)) as u32;
+
+        ssaa2x_scanline(curx1, curx2, scanline_y, z_left, z_right, color, fb, zbuffer, width);
+
+        curx1 += invslope1;
+        curx2 += invslope2;
+    }
+}
+
+#[cfg(feature = "aa")]
+#[inline(always)]
+fn fill_top_flat_2xssaa<D>(
+    p1: Point,
+    p2: Point,
+    p3: Point,
+    z1: u32,
+    z2: u32,
+    z3: u32,
+    color: Rgb565,
+    fb: &mut D,
+    zbuffer: &mut [u32],
+    width: usize,
+) where
+    D: DrawTarget<Color = Rgb565> + ReadPixel,
+    <D as DrawTarget>::Error: Debug,
+{
+    let height = p3.y - p1.y;
+    if height == 0 { return; }
+    let invslope1 = ((p3.x - p1.x) << 16) / height;
+    let invslope2 = ((p3.x - p2.x) << 16) / height;
+
+    let mut curx1 = p3.x << 16;
+    let mut curx2 = p3.x << 16;
+
+    for scanline_y in (p1.y..=p3.y).rev() {
+        let dy = scanline_y - p1.y;
+        let z_left = (z1 as i64 + ((z3 as i64 - z1 as i64) * dy as i64 / height as i64)) as u32;
+        let z_right = (z2 as i64 + ((z3 as i64 - z2 as i64) * dy as i64 / height as i64)) as u32;
+
+        ssaa2x_scanline(curx1, curx2, scanline_y, z_left, z_right, color, fb, zbuffer, width);
+
+        curx1 -= invslope1;
+        curx2 -= invslope2;
+    }
+}
+
+#[cfg(feature = "aa")]
+#[inline(always)]
+fn ssaa2x_scanline<D>(
+    cx1: i32,
+    cx2: i32,
+    y: i32,
+    z_left: u32,
+    z_right: u32,
+    color: Rgb565,
+    fb: &mut D,
+    zbuffer: &mut [u32],
+    width: usize,
+) where
+    D: DrawTarget<Color = Rgb565> + ReadPixel,
+    <D as DrawTarget>::Error: Debug,
+{
+    let (left_fx, right_fx, z_l, z_r) = if cx1 <= cx2 {
+        (cx1, cx2, z_left, z_right)
+    } else {
+        (cx2, cx1, z_right, z_left)
+    };
+
+    let l_int = left_fx >> 16;
+    let r_int = right_fx >> 16;
+    let span = r_int - l_int;
+
+    let eval_subsamples = |x: i32| -> u32 {
+        let fx1 = (x << 16) | 16384;
+        let fx2 = (x << 16) | 49152;
+        let s1 = (fx1 >= left_fx && fx1 <= right_fx) as u32;
+        let s2 = (fx2 >= left_fx && fx2 <= right_fx) as u32;
+        s1 + s2
+    };
+
+    if l_int == r_int {
+        let samples = eval_subsamples(l_int);
+        if samples > 0 {
+            let cov_q8 = samples * 128;
+            aa_pixel(fb, l_int, y, color, z_l, zbuffer, width, cov_q8.min(256));
+        }
+        return;
+    }
+
+    let left_samples = eval_subsamples(l_int);
+    if left_samples > 0 {
+        let cov_q8 = left_samples * 128;
+        aa_pixel(fb, l_int, y, color, z_l, zbuffer, width, cov_q8.min(256));
+    }
+
+    if span > 1 {
+        for x in (l_int + 1)..r_int {
+            let t = (x - l_int) as f32 / span as f32;
+            let z = (z_l as f32 + t * (z_r as f32 - z_l as f32)) as u32;
+            aa_pixel(fb, x, y, color, z, zbuffer, width, 256);
+        }
+    }
+
+    let right_samples = eval_subsamples(r_int);
+    if right_samples > 0 {
+        let cov_q8 = right_samples * 128;
+        aa_pixel(fb, r_int, y, color, z_r, zbuffer, width, cov_q8.min(256));
     }
 }
 
@@ -1795,6 +2080,39 @@ pub fn draw_zbuffered_with_effects<
                 width,
                 fog_config,
                 dither_config,
+            );
+        }
+        DrawPrimitive::TranslucentTriangleWithDepth {
+            mut points,
+            mut depths,
+            color,
+            alpha,
+        } => {
+            if points[0].y > points[1].y {
+                points.swap(0, 1);
+                depths.swap(0, 1);
+            }
+            if points[0].y > points[2].y {
+                points.swap(0, 2);
+                depths.swap(0, 2);
+            }
+            if points[1].y > points[2].y {
+                points.swap(1, 2);
+                depths.swap(1, 2);
+            }
+
+            let [p1, p2, p3] = points;
+            let [z1, z2, z3] = depths;
+
+            let scr_w = width as i32;
+            let scr_h = (zbuffer.len() / width) as i32;
+            if p1.x < 0 && p2.x < 0 && p3.x < 0 { return; }
+            if p1.x >= scr_w && p2.x >= scr_w && p3.x >= scr_w { return; }
+            if p1.y < 0 && p2.y < 0 && p3.y < 0 { return; }
+            if p1.y >= scr_h && p2.y >= scr_h && p3.y >= scr_h { return; }
+
+            fill_triangle_zbuffered_translucent(
+                p1, p2, p3, z1, z2, z3, color, alpha, fb, zbuffer, width,
             );
         }
         DrawPrimitive::GouraudTriangleWithDepth {
@@ -3971,6 +4289,172 @@ fn draw_scanline_zbuffered_textured<
     }
 }
 
+#[inline(always)]
+fn fill_triangle_zbuffered_translucent<
+    D: DrawTarget<Color = Rgb565>,
+>(
+    p1: nalgebra::Point2<i32>,
+    p2: nalgebra::Point2<i32>,
+    p3: nalgebra::Point2<i32>,
+    z1: f32,
+    z2: f32,
+    z3: f32,
+    color: Rgb565,
+    alpha: u8,
+    fb: &mut D,
+    zbuffer: &mut [u32],
+    width: usize,
+) where
+    <D as DrawTarget>::Error: Debug,
+{
+    let p1_eg = Point::new(p1.x, p1.y);
+    let p2_eg = Point::new(p2.x, p2.y);
+    let p3_eg = Point::new(p3.x, p3.y);
+
+    let z1_int = (z1 * 65536.0) as u32;
+    let z2_int = (z2 * 65536.0) as u32;
+    let z3_int = (z3 * 65536.0) as u32;
+
+    if p2_eg.y == p3_eg.y {
+        fill_bottom_flat_translucent(p1_eg, p2_eg, p3_eg, z1_int, z2_int, z3_int, color, alpha, fb, zbuffer, width);
+    } else if p1_eg.y == p2_eg.y {
+        fill_top_flat_translucent(p1_eg, p2_eg, p3_eg, z1_int, z2_int, z3_int, color, alpha, fb, zbuffer, width);
+    } else {
+        let t = (p2_eg.y - p1_eg.y) as f32 / (p3_eg.y - p1_eg.y) as f32;
+        let p4 = Point::new(
+            (p1_eg.x as f32 + t * (p3_eg.x - p1_eg.x) as f32) as i32,
+            p2_eg.y,
+        );
+        let z4_int = (z1_int as i64 + (t * (z3_int as i64 - z1_int as i64) as f32) as i64) as u32;
+        fill_bottom_flat_translucent(p1_eg, p2_eg, p4, z1_int, z2_int, z4_int, color, alpha, fb, zbuffer, width);
+        fill_top_flat_translucent(p2_eg, p4, p3_eg, z2_int, z4_int, z3_int, color, alpha, fb, zbuffer, width);
+    }
+}
+
+#[inline(always)]
+fn fill_bottom_flat_translucent<
+    D: DrawTarget<Color = Rgb565>,
+>(
+    p1: Point,
+    p2: Point,
+    p3: Point,
+    z1: u32,
+    z2: u32,
+    z3: u32,
+    color: Rgb565,
+    alpha: u8,
+    fb: &mut D,
+    zbuffer: &mut [u32],
+    width: usize,
+) where
+    <D as DrawTarget>::Error: Debug,
+{
+    let height = p2.y - p1.y;
+    if height == 0 { return; }
+    let invslope1 = ((p2.x - p1.x) << 16) / height;
+    let invslope2 = ((p3.x - p1.x) << 16) / height;
+
+    let mut curx1 = p1.x << 16;
+    let mut curx2 = p1.x << 16;
+
+    for scanline_y in p1.y..=p2.y {
+        let dy = scanline_y - p1.y;
+        let z_left = (z1 as i64 + ((z2 as i64 - z1 as i64) * dy as i64 / height as i64)) as u32;
+        let z_right = (z1 as i64 + ((z3 as i64 - z1 as i64) * dy as i64 / height as i64)) as u32;
+
+        let (left_x, right_x, z_l, z_r) = if curx1 <= curx2 {
+            (curx1 >> 16, curx2 >> 16, z_left, z_right)
+        } else {
+            (curx2 >> 16, curx1 >> 16, z_right, z_left)
+        };
+
+        let span = right_x - left_x;
+        for x in left_x..=right_x {
+            if x < 0 || scanline_y < 0 || x >= width as i32 { continue; }
+            let idx = (scanline_y as usize) * width + (x as usize);
+            if idx >= zbuffer.len() { continue; }
+
+            let z = if span > 0 {
+                let t = (x - left_x) as f32 / span as f32;
+                (z_l as f32 + t * (z_r as f32 - z_l as f32)) as u32
+            } else {
+                z_l
+            };
+
+            if z < zbuffer[idx] {
+                zbuffer[idx] = z;
+                let draw_color = arm_2d_blend_rgb565(Rgb565::BLACK, color, alpha);
+                let _ = fb.draw_iter([embedded_graphics_core::Pixel(Point::new(x, scanline_y), draw_color)]);
+            }
+        }
+
+        curx1 += invslope1;
+        curx2 += invslope2;
+    }
+}
+
+#[inline(always)]
+fn fill_top_flat_translucent<
+    D: DrawTarget<Color = Rgb565>,
+>(
+    p1: Point,
+    p2: Point,
+    p3: Point,
+    z1: u32,
+    z2: u32,
+    z3: u32,
+    color: Rgb565,
+    alpha: u8,
+    fb: &mut D,
+    zbuffer: &mut [u32],
+    width: usize,
+) where
+    <D as DrawTarget>::Error: Debug,
+{
+    let height = p3.y - p1.y;
+    if height == 0 { return; }
+    let invslope1 = ((p3.x - p1.x) << 16) / height;
+    let invslope2 = ((p3.x - p2.x) << 16) / height;
+
+    let mut curx1 = p3.x << 16;
+    let mut curx2 = p3.x << 16;
+
+    for scanline_y in (p1.y..=p3.y).rev() {
+        let dy = scanline_y - p1.y;
+        let z_left = (z1 as i64 + ((z3 as i64 - z1 as i64) * dy as i64 / height as i64)) as u32;
+        let z_right = (z2 as i64 + ((z3 as i64 - z2 as i64) * dy as i64 / height as i64)) as u32;
+
+        let (left_x, right_x, z_l, z_r) = if curx1 <= curx2 {
+            (curx1 >> 16, curx2 >> 16, z_left, z_right)
+        } else {
+            (curx2 >> 16, curx1 >> 16, z_right, z_left)
+        };
+
+        let span = right_x - left_x;
+        for x in left_x..=right_x {
+            if x < 0 || scanline_y < 0 || x >= width as i32 { continue; }
+            let idx = (scanline_y as usize) * width + (x as usize);
+            if idx >= zbuffer.len() { continue; }
+
+            let z = if span > 0 {
+                let t = (x - left_x) as f32 / span as f32;
+                (z_l as f32 + t * (z_r as f32 - z_l as f32)) as u32
+            } else {
+                z_l
+            };
+
+            if z < zbuffer[idx] {
+                zbuffer[idx] = z;
+                let draw_color = arm_2d_blend_rgb565(Rgb565::BLACK, color, alpha);
+                let _ = fb.draw_iter([embedded_graphics_core::Pixel(Point::new(x, scanline_y), draw_color)]);
+            }
+        }
+
+        curx1 -= invslope1;
+        curx2 -= invslope2;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     extern crate std;
@@ -4287,5 +4771,32 @@ mod tests {
             assert_eq!(zbuffer[idx], 1000);
         }
         assert!(fb.pixel_count() >= 64);
+    }
+
+    #[test]
+    fn test_arm_2d_blend_rgb565() {
+        let bg = Rgb565::BLACK;
+        let fg = Rgb565::WHITE;
+        assert_eq!(arm_2d_blend_rgb565(bg, fg, 0), bg);
+        assert_eq!(arm_2d_blend_rgb565(bg, fg, 255), fg);
+
+        let blended = arm_2d_blend_rgb565(bg, fg, 128);
+        assert!(blended.r() > 0 && blended.r() < 31);
+    }
+
+    #[test]
+    fn test_arm_2d_blend_rgba8888() {
+        let bg = [0, 0, 0, 255];
+        let fg = [255, 255, 255, 128];
+        let out = arm_2d_blend_rgba8888(bg, fg);
+        assert!(out[0] > 0 && out[0] < 255);
+    }
+
+    #[test]
+    fn test_arm_2d_blend_rgba8888_to_rgb565() {
+        let bg = Rgb565::BLACK;
+        let fg = [255, 0, 0, 255];
+        let out = arm_2d_blend_rgba8888_to_rgb565(bg, fg);
+        assert_eq!(out, Rgb565::CSS_RED);
     }
 }

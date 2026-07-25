@@ -138,7 +138,6 @@ pub fn abs_q16(a: Q16) -> Q16 {
     a.abs()
 }
 
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
@@ -180,15 +179,21 @@ pub fn recip_q16(v: Q16) -> Q16 {
 
 /// Convert `f32` to Q16.16 (legacy alias for [`to_q16`]).
 #[inline(always)]
-pub fn to_fp(v: f32) -> i32 { to_q16(v) }
+pub fn to_fp(v: f32) -> i32 {
+    to_q16(v)
+}
 
 /// Convert Q16.16 to `f32` (legacy alias for [`from_q16`]).
 #[inline(always)]
-pub fn from_fp(v: i32) -> f32 { from_q16(v) }
+pub fn from_fp(v: i32) -> f32 {
+    from_q16(v)
+}
 
 /// Multiply two Q16.16 values (legacy alias for [`mul_q16`]).
 #[inline(always)]
-pub fn mul_fp(a: i32, b: i32) -> i32 { mul_q16(a, b) }
+pub fn mul_fp(a: i32, b: i32) -> i32 {
+    mul_q16(a, b)
+}
 
 /// Divide two Q16.16 values, returning `Option` (legacy alias for [`div_q16`]).
 #[inline(always)]
@@ -231,11 +236,11 @@ pub fn div_fp(a: i32, b: i32) -> Option<i32> {
 /// ```
 #[derive(Debug, Clone, Copy)]
 pub struct ScanlineInterp {
-    z_cur:  u32,
+    z_cur: u32,
     z_step: i32,
-    u_cur:  u32,
+    u_cur: u32,
     u_step: i32,
-    v_cur:  u32,
+    v_cur: u32,
     v_step: i32,
 }
 
@@ -249,9 +254,12 @@ impl ScanlineInterp {
     /// - `span` — number of pixels across the scanline (0 is valid — returns left values)
     #[inline]
     pub fn new(
-        z_left: u32, z_right: u32,
-        u_left: u32, u_right: u32,
-        v_left: u32, v_right: u32,
+        z_left: u32,
+        z_right: u32,
+        u_left: u32,
+        u_right: u32,
+        v_left: u32,
+        v_right: u32,
         span: i32,
     ) -> Self {
         let (z_step, u_step, v_step) = if span > 0 {
@@ -263,9 +271,12 @@ impl ScanlineInterp {
             (0, 0, 0)
         };
         Self {
-            z_cur: z_left, z_step,
-            u_cur: u_left, u_step,
-            v_cur: v_left, v_step,
+            z_cur: z_left,
+            z_step,
+            u_cur: u_left,
+            u_step,
+            v_cur: v_left,
+            v_step,
         }
     }
 
@@ -277,15 +288,21 @@ impl ScanlineInterp {
 
     /// Current depth value (Q16.16 `u32`).
     #[inline(always)]
-    pub fn z(&self) -> u32 { self.z_cur }
+    pub fn z(&self) -> u32 {
+        self.z_cur
+    }
 
     /// Current U texture coordinate (Q16.16 `u32`).
     #[inline(always)]
-    pub fn u(&self) -> u32 { self.u_cur }
+    pub fn u(&self) -> u32 {
+        self.u_cur
+    }
 
     /// Current V texture coordinate (Q16.16 `u32`).
     #[inline(always)]
-    pub fn v(&self) -> u32 { self.v_cur }
+    pub fn v(&self) -> u32 {
+        self.v_cur
+    }
 
     /// Advance all interpolators by one pixel.
     #[inline(always)]
@@ -305,7 +322,9 @@ impl ScanlineInterp {
 
     /// Current depth as `f32`.
     #[inline(always)]
-    pub fn z_f32(&self) -> f32 { self.z_cur as f32 / 65536.0 }
+    pub fn z_f32(&self) -> f32 {
+        self.z_cur as f32 / 65536.0
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -326,7 +345,10 @@ mod tests {
             let q = to_q16(v);
             let back = from_q16(q);
             let lsb = 1.0 / 65536.0_f32;
-            assert!((back - v).abs() <= lsb, "roundtrip failed for {v}: got {back}");
+            assert!(
+                (back - v).abs() <= lsb,
+                "roundtrip failed for {v}: got {back}"
+            );
         }
     }
 
@@ -344,7 +366,10 @@ mod tests {
         let q31_one = 0x7FFF_FFFFi32;
         let q16 = q31_to_q16(q31_one);
         let f = from_q16(q16);
-        assert!((f - 1.0).abs() < 1e-4, "Q31->Q16 should be near 1.0, got {f}");
+        assert!(
+            (f - 1.0).abs() < 1e-4,
+            "Q31->Q16 should be near 1.0, got {f}"
+        );
     }
 
     // ── Arithmetic ───────────────────────────────────────────────────────────
@@ -407,7 +432,10 @@ mod tests {
 
     #[test]
     fn qadd_q16_no_overflow() {
-        assert_eq!(from_q16(qadd_q16(to_q16(1.0), to_q16(2.0))).round() as i32, 3);
+        assert_eq!(
+            from_q16(qadd_q16(to_q16(1.0), to_q16(2.0))).round() as i32,
+            3
+        );
     }
 
     #[test]
@@ -450,7 +478,11 @@ mod tests {
         let a = to_q16(10.0);
         let b = to_q16(20.0);
         assert_eq!(lerp_q16(a, b, 0, 10), a, "t=0 must return left endpoint");
-        assert_eq!(lerp_q16(a, b, 10, 10), b, "t=denom must return right endpoint");
+        assert_eq!(
+            lerp_q16(a, b, 10, 10),
+            b,
+            "t=denom must return right endpoint"
+        );
     }
 
     #[test]
@@ -464,33 +496,47 @@ mod tests {
     fn angle_to_q16_90_degrees() {
         let q = angle_to_q16(90.0);
         let rad = from_q16(q);
-        assert!((rad - core::f32::consts::FRAC_PI_2).abs() < 1e-4,
-            "90 deg should be pi/2, got {rad}");
+        assert!(
+            (rad - core::f32::consts::FRAC_PI_2).abs() < 1e-4,
+            "90 deg should be pi/2, got {rad}"
+        );
     }
 
     #[test]
     fn angle_to_q16_360_degrees() {
         let q = angle_to_q16(360.0);
         let rad = from_q16(q);
-        assert!((rad - 2.0 * core::f32::consts::PI).abs() < 1e-4,
-            "360 deg should be 2*pi, got {rad}");
+        assert!(
+            (rad - 2.0 * core::f32::consts::PI).abs() < 1e-4,
+            "360 deg should be 2*pi, got {rad}"
+        );
     }
 
     #[test]
     fn recip_q16_one() {
         let result = from_q16(recip_q16(FP_ONE));
-        assert!((result - 1.0).abs() < 0.01, "recip(1.0) approx 1.0, got {result}");
+        assert!(
+            (result - 1.0).abs() < 0.01,
+            "recip(1.0) approx 1.0, got {result}"
+        );
     }
 
     #[test]
     fn recip_q16_two() {
         let result = from_q16(recip_q16(to_q16(2.0)));
-        assert!((result - 0.5).abs() < 0.01, "recip(2.0) approx 0.5, got {result}");
+        assert!(
+            (result - 0.5).abs() < 0.01,
+            "recip(2.0) approx 0.5, got {result}"
+        );
     }
 
     #[test]
     fn recip_q16_zero_returns_sentinel() {
-        assert_eq!(recip_q16(0), Q16_MAX, "recip(0) must return Q16_MAX sentinel");
+        assert_eq!(
+            recip_q16(0),
+            Q16_MAX,
+            "recip(0) must return Q16_MAX sentinel"
+        );
     }
 
     // ── Legacy shims ──────────────────────────────────────────────────────────
@@ -526,7 +572,12 @@ mod tests {
         }
         // Max truncation error = step_size_remainder * steps_remaining ≤ span % denom
         let diff = (interp.z() as i64 - 65536i64).abs();
-        assert!(diff <= 10, "z after 10 steps should be within 10 of 65536, got {} (diff={})", interp.z(), diff);
+        assert!(
+            diff <= 10,
+            "z after 10 steps should be within 10 of 65536, got {} (diff={})",
+            interp.z(),
+            diff
+        );
     }
 
     #[test]
@@ -537,8 +588,16 @@ mod tests {
         }
         let u_err = (interp.u() as i64 - 65536i64).abs();
         let v_err = (interp.v() as i64 - 65536i64).abs();
-        assert!(u_err <= 1, "u after 8 steps should be 65536 +/- 1, got {}", interp.u());
-        assert!(v_err <= 1, "v after 8 steps should be 65536 +/- 1, got {}", interp.v());
+        assert!(
+            u_err <= 1,
+            "u after 8 steps should be 65536 +/- 1, got {}",
+            interp.u()
+        );
+        assert!(
+            v_err <= 1,
+            "v after 8 steps should be 65536 +/- 1, got {}",
+            interp.v()
+        );
     }
 
     #[test]
@@ -556,7 +615,11 @@ mod tests {
         interp.step_n(5);
         let expected = 50000u32;
         let diff = (interp.z() as i64 - expected as i64).abs();
-        assert!(diff <= 1, "step_n(5) should land at 50000 +/- 1, got {}", interp.z());
+        assert!(
+            diff <= 1,
+            "step_n(5) should land at 50000 +/- 1, got {}",
+            interp.z()
+        );
     }
 
     #[test]

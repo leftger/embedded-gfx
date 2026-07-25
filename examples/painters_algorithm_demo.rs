@@ -100,6 +100,7 @@ fn as_painter_primitive(prim: &DrawPrimitive) -> Option<DrawPrimitive> {
         // Painter fallback for this demo only supports flat/gouraud primitives.
         DrawPrimitive::TexturedTriangle { .. }
         | DrawPrimitive::TexturedTriangleWithDepth { .. }
+        | DrawPrimitive::TranslucentTriangleWithDepth { .. }
         | DrawPrimitive::LightmappedTriangle { .. } => None,
     }
 }

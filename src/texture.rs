@@ -504,10 +504,22 @@ mod tests {
     #[test]
     fn test_texture_sample_affine_q16() {
         static DATA: [Rgb565; 16] = [
-            Rgb565::CSS_RED, Rgb565::CSS_GREEN, Rgb565::CSS_BLUE, Rgb565::CSS_YELLOW,
-            Rgb565::CSS_CYAN, Rgb565::CSS_MAGENTA, Rgb565::CSS_WHITE, Rgb565::CSS_BLACK,
-            Rgb565::CSS_RED, Rgb565::CSS_GREEN, Rgb565::CSS_BLUE, Rgb565::CSS_YELLOW,
-            Rgb565::CSS_CYAN, Rgb565::CSS_MAGENTA, Rgb565::CSS_WHITE, Rgb565::CSS_BLACK,
+            Rgb565::CSS_RED,
+            Rgb565::CSS_GREEN,
+            Rgb565::CSS_BLUE,
+            Rgb565::CSS_YELLOW,
+            Rgb565::CSS_CYAN,
+            Rgb565::CSS_MAGENTA,
+            Rgb565::CSS_WHITE,
+            Rgb565::CSS_BLACK,
+            Rgb565::CSS_RED,
+            Rgb565::CSS_GREEN,
+            Rgb565::CSS_BLUE,
+            Rgb565::CSS_YELLOW,
+            Rgb565::CSS_CYAN,
+            Rgb565::CSS_MAGENTA,
+            Rgb565::CSS_WHITE,
+            Rgb565::CSS_BLACK,
         ];
         let texture = Texture::new(&DATA, 4, 4);
 

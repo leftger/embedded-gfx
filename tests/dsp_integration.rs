@@ -13,7 +13,10 @@ fn test_dsp_skeleton_slerp() {
     bone.interpolate_rotation_dsp(target_rot, 0.5);
 
     let euler = bone.rotation.euler_angles();
-    assert!((euler.1 - core::f32::consts::PI / 4.0).abs() < 0.1, "Halfway Y rot is ~45 deg");
+    assert!(
+        (euler.1 - core::f32::consts::PI / 4.0).abs() < 0.1,
+        "Halfway Y rot is ~45 deg"
+    );
 }
 
 #[cfg(feature = "dsp")]

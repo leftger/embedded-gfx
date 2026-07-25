@@ -8,9 +8,7 @@
 
 extern crate std;
 
-use embedded_3dgfx::draw::{
-    fast_blend_rgb565, fast_blend_rgba8888, fast_blend_rgba8888_to_rgb565,
-};
+use embedded_3dgfx::draw::{fast_blend_rgb565, fast_blend_rgba8888, fast_blend_rgba8888_to_rgb565};
 use embedded_3dgfx::texture::Texture;
 use embedded_graphics_core::pixelcolor::{Rgb565, RgbColor, WebColors};
 
@@ -38,7 +36,7 @@ fn test_fast_blend_rgb565_fully_transparent() {
 fn test_fast_blend_rgb565_midpoint() {
     // 50% blend of black onto white — result should be near mid-grey
     let bg = Rgb565::new(31, 63, 31); // white
-    let fg = Rgb565::new(0, 0, 0);   // black
+    let fg = Rgb565::new(0, 0, 0); // black
     let result = fast_blend_rgb565(bg, fg, 128);
     // Mid-point: each channel ≈ half maximum
     assert!(result.r() <= 16, "r channel should be ~half white");
@@ -118,7 +116,11 @@ fn test_fast_blend_rgba8888_to_rgb565_opaque() {
     let bg = Rgb565::CSS_BLACK;
     let fg_rgba: [u8; 4] = [248, 0, 0, 255]; // pure red (fits RGB565 scale)
     let result = fast_blend_rgba8888_to_rgb565(bg, fg_rgba);
-    assert_eq!(result.r(), 31, "fully opaque red should give max R component");
+    assert_eq!(
+        result.r(),
+        31,
+        "fully opaque red should give max R component"
+    );
     assert_eq!(result.g(), 0, "no green");
     assert_eq!(result.b(), 0, "no blue");
 }
@@ -196,7 +198,11 @@ fn test_affine_scanline_q16_step_across_solid() {
     // Step du = 65536/8 = 8192 per pixel across the texture width
     tex.sample_affine_scanline_q16(0, 0, 8192, 0, &mut scanline);
     for (i, &px) in scanline.iter().enumerate() {
-        assert_eq!(px, Rgb565::CSS_RED, "pixel {i} should be red on solid texture");
+        assert_eq!(
+            px,
+            Rgb565::CSS_RED,
+            "pixel {i} should be red on solid texture"
+        );
     }
 }
 
@@ -218,7 +224,7 @@ fn test_affine_scanline_q16_step_vertical() {
 fn test_affine_q16_full_texture_traversal() {
     let tex = Texture::new(&CHECKER_DATA, 8, 8);
     // Walk all 64 texels in row-major Q16.16 steps
-    let du: u32 = 65536 / 8;   // 8192
+    let du: u32 = 65536 / 8; // 8192
     let dv: u32 = 65536 / 8;
 
     let mut mismatches = 0u32;
@@ -237,7 +243,10 @@ fn test_affine_q16_full_texture_traversal() {
             }
         }
     }
-    assert_eq!(mismatches, 0, "all 64 texels must match the checkerboard pattern");
+    assert_eq!(
+        mismatches, 0,
+        "all 64 texels must match the checkerboard pattern"
+    );
 }
 
 #[test]
@@ -267,10 +276,10 @@ use nalgebra::{Point3, Vector3};
 fn test_billboard_default_uv_q16_corners() {
     let uvs = Billboard::default_uv_q16();
     // [bottom-left, bottom-right, top-right, top-left]
-    assert_eq!(uvs[0], [0, 0],           "BL = (0,0) in Q16");
-    assert_eq!(uvs[1], [65536, 0],       "BR = (1.0, 0) in Q16");
-    assert_eq!(uvs[2], [65536, 65536],   "TR = (1.0, 1.0) in Q16");
-    assert_eq!(uvs[3], [0, 65536],       "TL = (0, 1.0) in Q16");
+    assert_eq!(uvs[0], [0, 0], "BL = (0,0) in Q16");
+    assert_eq!(uvs[1], [65536, 0], "BR = (1.0, 0) in Q16");
+    assert_eq!(uvs[2], [65536, 65536], "TR = (1.0, 1.0) in Q16");
+    assert_eq!(uvs[3], [0, 65536], "TL = (0, 1.0) in Q16");
 }
 
 #[test]
@@ -281,7 +290,7 @@ fn test_billboard_custom_uv_q16() {
     bb.uv = Some([[0.0, 0.0], [0.5, 0.0], [0.5, 0.5], [0.0, 0.5]]);
     let uvs = bb.get_uv_q16();
     assert_eq!(uvs[0], [0, 0]);
-    assert_eq!(uvs[1], [32768, 0]);   // 0.5 * 65536
+    assert_eq!(uvs[1], [32768, 0]); // 0.5 * 65536
     assert_eq!(uvs[2], [32768, 32768]);
     assert_eq!(uvs[3], [0, 32768]);
 }
@@ -305,10 +314,10 @@ fn test_billboard_textured_quad_q16_layout() {
 fn test_billboard_q16_from_float_position_scale() {
     let pos = Point3::new(2.0, 3.0, -1.0);
     let bq = BillboardQ16::from_float(pos, 0.5, Rgb565::CSS_RED);
-    assert_eq!(bq.position_q16[0], 131072,  "x=2.0 → 131072 in Q16.16");
-    assert_eq!(bq.position_q16[1], 196608,  "y=3.0 → 196608 in Q16.16");
-    assert_eq!(bq.position_q16[2], -65536,  "z=-1.0 → -65536 in Q16.16");
-    assert_eq!(bq.size_q16, 32768,          "size=0.5 → 32768 in Q16.16");
+    assert_eq!(bq.position_q16[0], 131072, "x=2.0 → 131072 in Q16.16");
+    assert_eq!(bq.position_q16[1], 196608, "y=3.0 → 196608 in Q16.16");
+    assert_eq!(bq.position_q16[2], -65536, "z=-1.0 → -65536 in Q16.16");
+    assert_eq!(bq.size_q16, 32768, "size=0.5 → 32768 in Q16.16");
 }
 
 #[test]
@@ -327,7 +336,7 @@ fn test_billboard_fast_transform_matches_manual() {
     let pos = Point3::new(0.0, 0.0, 0.0);
     let bb = Billboard::new(pos, 2.0, Rgb565::CSS_RED);
     let right = Vector3::new(1.0, 0.0, 0.0);
-    let up    = Vector3::new(0.0, 1.0, 0.0);
+    let up = Vector3::new(0.0, 1.0, 0.0);
 
     let quad = bb.transform_billboard_fast(right, up);
     // Half-size = 1.0; BL = (-1,-1,0), BR = (1,-1,0), TR = (1,1,0), TL = (-1,1,0)
@@ -357,7 +366,11 @@ struct MockFb {
 
 impl MockFb {
     fn new(w: u32, h: u32) -> Self {
-        Self { pixels: std::vec![Rgb565::CSS_BLACK; (w * h) as usize], width: w, height: h }
+        Self {
+            pixels: std::vec![Rgb565::CSS_BLACK; (w * h) as usize],
+            width: w,
+            height: h,
+        }
     }
     fn pixel_at(&self, x: u32, y: u32) -> Rgb565 {
         self.pixels[(y * self.width + x) as usize]
@@ -415,14 +428,15 @@ fn test_translucent_triangle_blends_correctly() {
         alpha: 128,
     };
 
-    embedded_3dgfx::draw::draw_zbuffered_with_effects(
-        prim, &mut fb, &mut zbuffer, 16, None, None,
-    );
+    embedded_3dgfx::draw::draw_zbuffered_with_effects(prim, &mut fb, &mut zbuffer, 16, None, None);
 
     // alpha=128 blends half of red over pure black: r ≈ 15, g=0, b=0
     let px = fb.pixel_at(0, 0);
-    assert!(px.r() >= 13 && px.r() <= 17,
-        "alpha=128 red over black should give r≈15, got {}", px.r());
+    assert!(
+        px.r() >= 13 && px.r() <= 17,
+        "alpha=128 red over black should give r≈15, got {}",
+        px.r()
+    );
     assert_eq!(px.g(), 0, "no green channel expected");
     assert_eq!(px.b(), 0, "no blue channel expected");
 }
@@ -444,7 +458,11 @@ fn test_zbuffered_triangle_opaque_writes_z() {
 
     embedded_3dgfx::draw::draw_zbuffered(prim, &mut fb, &mut zbuffer, 16);
     // z-buffer at (0,0) should have been written (no longer u32::MAX)
-    assert_ne!(zbuffer[0], u32::MAX, "z-buffer must be updated after opaque triangle");
+    assert_ne!(
+        zbuffer[0],
+        u32::MAX,
+        "z-buffer must be updated after opaque triangle"
+    );
     assert_eq!(fb.pixel_at(0, 0), Rgb565::CSS_BLUE, "pixel must be blue");
 }
 
@@ -456,12 +474,20 @@ fn test_zbuffered_occlusion() {
     let mut zbuffer = std::vec![u32::MAX; 16 * 16];
 
     let near_prim = DrawPrimitive::ColoredTriangleWithDepth {
-        points: [Point2::new(0i32, 0i32), Point2::new(15i32, 0i32), Point2::new(0i32, 15i32)],
+        points: [
+            Point2::new(0i32, 0i32),
+            Point2::new(15i32, 0i32),
+            Point2::new(0i32, 15i32),
+        ],
         depths: [0.2, 0.2, 0.2],
         color: Rgb565::CSS_BLUE,
     };
     let far_prim = DrawPrimitive::ColoredTriangleWithDepth {
-        points: [Point2::new(0i32, 0i32), Point2::new(15i32, 0i32), Point2::new(0i32, 15i32)],
+        points: [
+            Point2::new(0i32, 0i32),
+            Point2::new(15i32, 0i32),
+            Point2::new(0i32, 15i32),
+        ],
         depths: [0.9, 0.9, 0.9],
         color: Rgb565::CSS_RED,
     };
@@ -470,7 +496,11 @@ fn test_zbuffered_occlusion() {
     embedded_3dgfx::draw::draw_zbuffered(far_prim, &mut fb, &mut zbuffer, 16);
 
     // Blue (near) must win — red is behind it
-    assert_eq!(fb.pixel_at(0, 0), Rgb565::CSS_BLUE, "near blue must occlude far red");
+    assert_eq!(
+        fb.pixel_at(0, 0),
+        Rgb565::CSS_BLUE,
+        "near blue must occlude far red"
+    );
 }
 
 #[test]
@@ -486,9 +516,18 @@ fn test_alpha_blend_chain_over_background() {
     let step2 = fast_blend_rgb565(step1, white, 128);
 
     // step2 should be lighter than step1
-    assert!(step2.r() >= step1.r(), "each blend step increases brightness (R)");
-    assert!(step2.g() >= step1.g(), "each blend step increases brightness (G)");
-    assert!(step2.b() >= step1.b(), "each blend step increases brightness (B)");
+    assert!(
+        step2.r() >= step1.r(),
+        "each blend step increases brightness (R)"
+    );
+    assert!(
+        step2.g() >= step1.g(),
+        "each blend step increases brightness (G)"
+    );
+    assert!(
+        step2.b() >= step1.b(),
+        "each blend step increases brightness (B)"
+    );
 
     // step2 should still be darker than pure white
     assert!(step2.r() < 31, "not yet at pure white after 2 blends");
@@ -511,8 +550,16 @@ fn test_reverse_color_rgb565() {
     use embedded_3dgfx::draw::reverse_color_rgb565;
     let black = Rgb565::new(0, 0, 0);
     let white = Rgb565::new(31, 63, 31);
-    assert_eq!(reverse_color_rgb565(black), white, "inverting black gives white");
-    assert_eq!(reverse_color_rgb565(white), black, "inverting white gives black");
+    assert_eq!(
+        reverse_color_rgb565(black),
+        white,
+        "inverting black gives white"
+    );
+    assert_eq!(
+        reverse_color_rgb565(white),
+        black,
+        "inverting white gives black"
+    );
 
     let red = Rgb565::new(31, 0, 0);
     let cyan = Rgb565::new(0, 63, 31);
@@ -524,16 +571,20 @@ fn test_reverse_color_rgba8888() {
     use embedded_3dgfx::draw::reverse_color_rgba8888;
     let color = [255, 0, 100, 128];
     let inverted = reverse_color_rgba8888(color);
-    assert_eq!(inverted, [0, 255, 155, 128], "alpha is preserved, RGB is inverted");
+    assert_eq!(
+        inverted,
+        [0, 255, 155, 128],
+        "alpha is preserved, RGB is inverted"
+    );
 }
 
 #[test]
 fn test_2xssaa_texture_sampling() {
     static RAW: [Rgb565; 4] = [
-        Rgb565::new(31, 0, 0),  // Red
-        Rgb565::new(0, 63, 0),  // Green
-        Rgb565::new(0, 0, 31),  // Blue
-        Rgb565::new(31, 63, 31),// White
+        Rgb565::new(31, 0, 0),   // Red
+        Rgb565::new(0, 63, 0),   // Green
+        Rgb565::new(0, 0, 31),   // Blue
+        Rgb565::new(31, 63, 31), // White
     ];
     let tex = Texture::new(&RAW, 2, 2);
     // Center sampling with 2xSSAA (sub-pixel averaging)
@@ -543,4 +594,3 @@ fn test_2xssaa_texture_sampling() {
     assert!(ssaa_color.g() >= 30 && ssaa_color.g() <= 32);
     assert!(ssaa_color.b() >= 14 && ssaa_color.b() <= 16);
 }
-

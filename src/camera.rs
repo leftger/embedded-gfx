@@ -211,6 +211,10 @@ mod tests {
         // R * R^T must equal Identity for orthogonal rotation matrix
         let identity = nalgebra::Matrix3::identity();
         let diff = (I - identity).norm();
-        assert!(diff < 1e-4, "View matrix rotation is not orthogonal: diff = {}", diff);
+        assert!(
+            diff < 1e-4,
+            "View matrix rotation is not orthogonal: diff = {}",
+            diff
+        );
     }
 }

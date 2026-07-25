@@ -27,7 +27,6 @@ const MAX_ROW_WIDTH: usize = 100;
 
 use core::fmt::Debug;
 use embedded_graphics_core::draw_target::DrawTarget;
-#[cfg(feature = "aa")]
 use embedded_graphics_core::pixelcolor::Rgb565;
 use embedded_graphics_core::pixelcolor::RgbColor;
 use embedded_graphics_core::prelude::Point;
@@ -118,7 +117,6 @@ pub fn reverse_color_rgb565(c: Rgb565) -> Rgb565 {
 pub fn reverse_color_rgba8888(rgba: [u8; 4]) -> [u8; 4] {
     [255 - rgba[0], 255 - rgba[1], 255 - rgba[2], rgba[3]]
 }
-
 
 /// Component-wise blend in 8-bit fixed-point coverage.
 /// `coverage_q8` ∈ [0, 256]; 256 = full triangle color, 0 = full background.
@@ -996,8 +994,12 @@ where
 /// Z-buffered drawing with 2xSSAA (Super-Sampling Anti-Aliasing) sub-pixel edge anti-aliasing.
 #[cfg(feature = "aa")]
 #[inline]
-pub fn draw_zbuffered_2xssaa<D>(primitive: DrawPrimitive, fb: &mut D, zbuffer: &mut [u32], width: usize)
-where
+pub fn draw_zbuffered_2xssaa<D>(
+    primitive: DrawPrimitive,
+    fb: &mut D,
+    zbuffer: &mut [u32],
+    width: usize,
+) where
     D: DrawTarget<Color = Rgb565> + ReadPixel,
     <D as DrawTarget>::Error: Debug,
 {
@@ -1024,10 +1026,18 @@ where
 
             let scr_w = width as i32;
             let scr_h = (zbuffer.len() / width) as i32;
-            if p1.x < 0 && p2.x < 0 && p3.x < 0 { return; }
-            if p1.x >= scr_w && p2.x >= scr_w && p3.x >= scr_w { return; }
-            if p1.y < 0 && p2.y < 0 && p3.y < 0 { return; }
-            if p1.y >= scr_h && p2.y >= scr_h && p3.y >= scr_h { return; }
+            if p1.x < 0 && p2.x < 0 && p3.x < 0 {
+                return;
+            }
+            if p1.x >= scr_w && p2.x >= scr_w && p3.x >= scr_w {
+                return;
+            }
+            if p1.y < 0 && p2.y < 0 && p3.y < 0 {
+                return;
+            }
+            if p1.y >= scr_h && p2.y >= scr_h && p3.y >= scr_h {
+                return;
+            }
 
             fill_triangle_zbuffered_2xssaa(p1, p2, p3, z1, z2, z3, color, fb, zbuffer, width);
         }
@@ -1064,9 +1074,13 @@ fn fill_triangle_zbuffered_2xssaa<D>(
     let z3_int = (z3 * 65536.0) as u32;
 
     if p2_eg.y == p3_eg.y {
-        fill_bottom_flat_2xssaa(p1_eg, p2_eg, p3_eg, z1_int, z2_int, z3_int, color, fb, zbuffer, width);
+        fill_bottom_flat_2xssaa(
+            p1_eg, p2_eg, p3_eg, z1_int, z2_int, z3_int, color, fb, zbuffer, width,
+        );
     } else if p1_eg.y == p2_eg.y {
-        fill_top_flat_2xssaa(p1_eg, p2_eg, p3_eg, z1_int, z2_int, z3_int, color, fb, zbuffer, width);
+        fill_top_flat_2xssaa(
+            p1_eg, p2_eg, p3_eg, z1_int, z2_int, z3_int, color, fb, zbuffer, width,
+        );
     } else {
         let t = (p2_eg.y - p1_eg.y) as f32 / (p3_eg.y - p1_eg.y) as f32;
         let p4 = Point::new(
@@ -1074,8 +1088,12 @@ fn fill_triangle_zbuffered_2xssaa<D>(
             p2_eg.y,
         );
         let z4_int = (z1_int as i64 + (t * (z3_int as i64 - z1_int as i64) as f32) as i64) as u32;
-        fill_bottom_flat_2xssaa(p1_eg, p2_eg, p4, z1_int, z2_int, z4_int, color, fb, zbuffer, width);
-        fill_top_flat_2xssaa(p2_eg, p4, p3_eg, z2_int, z4_int, z3_int, color, fb, zbuffer, width);
+        fill_bottom_flat_2xssaa(
+            p1_eg, p2_eg, p4, z1_int, z2_int, z4_int, color, fb, zbuffer, width,
+        );
+        fill_top_flat_2xssaa(
+            p2_eg, p4, p3_eg, z2_int, z4_int, z3_int, color, fb, zbuffer, width,
+        );
     }
 }
 
@@ -1097,7 +1115,9 @@ fn fill_bottom_flat_2xssaa<D>(
     <D as DrawTarget>::Error: Debug,
 {
     let height = p2.y - p1.y;
-    if height == 0 { return; }
+    if height == 0 {
+        return;
+    }
     let invslope1 = ((p2.x - p1.x) << 16) / height;
     let invslope2 = ((p3.x - p1.x) << 16) / height;
 
@@ -1109,7 +1129,9 @@ fn fill_bottom_flat_2xssaa<D>(
         let z_left = (z1 as i64 + ((z2 as i64 - z1 as i64) * dy as i64 / height as i64)) as u32;
         let z_right = (z1 as i64 + ((z3 as i64 - z1 as i64) * dy as i64 / height as i64)) as u32;
 
-        ssaa2x_scanline(curx1, curx2, scanline_y, z_left, z_right, color, fb, zbuffer, width);
+        ssaa2x_scanline(
+            curx1, curx2, scanline_y, z_left, z_right, color, fb, zbuffer, width,
+        );
 
         curx1 += invslope1;
         curx2 += invslope2;
@@ -1134,7 +1156,9 @@ fn fill_top_flat_2xssaa<D>(
     <D as DrawTarget>::Error: Debug,
 {
     let height = p3.y - p1.y;
-    if height == 0 { return; }
+    if height == 0 {
+        return;
+    }
     let invslope1 = ((p3.x - p1.x) << 16) / height;
     let invslope2 = ((p3.x - p2.x) << 16) / height;
 
@@ -1146,7 +1170,9 @@ fn fill_top_flat_2xssaa<D>(
         let z_left = (z1 as i64 + ((z3 as i64 - z1 as i64) * dy as i64 / height as i64)) as u32;
         let z_right = (z2 as i64 + ((z3 as i64 - z2 as i64) * dy as i64 / height as i64)) as u32;
 
-        ssaa2x_scanline(curx1, curx2, scanline_y, z_left, z_right, color, fb, zbuffer, width);
+        ssaa2x_scanline(
+            curx1, curx2, scanline_y, z_left, z_right, color, fb, zbuffer, width,
+        );
 
         curx1 -= invslope1;
         curx2 -= invslope2;
@@ -2123,10 +2149,18 @@ pub fn draw_zbuffered_with_effects<
 
             let scr_w = width as i32;
             let scr_h = (zbuffer.len() / width) as i32;
-            if p1.x < 0 && p2.x < 0 && p3.x < 0 { return; }
-            if p1.x >= scr_w && p2.x >= scr_w && p3.x >= scr_w { return; }
-            if p1.y < 0 && p2.y < 0 && p3.y < 0 { return; }
-            if p1.y >= scr_h && p2.y >= scr_h && p3.y >= scr_h { return; }
+            if p1.x < 0 && p2.x < 0 && p3.x < 0 {
+                return;
+            }
+            if p1.x >= scr_w && p2.x >= scr_w && p3.x >= scr_w {
+                return;
+            }
+            if p1.y < 0 && p2.y < 0 && p3.y < 0 {
+                return;
+            }
+            if p1.y >= scr_h && p2.y >= scr_h && p3.y >= scr_h {
+                return;
+            }
 
             fill_triangle_zbuffered_translucent(
                 p1, p2, p3, z1, z2, z3, color, alpha, fb, zbuffer, width,
@@ -4307,9 +4341,7 @@ fn draw_scanline_zbuffered_textured<
 }
 
 #[inline(always)]
-fn fill_triangle_zbuffered_translucent<
-    D: DrawTarget<Color = Rgb565>,
->(
+fn fill_triangle_zbuffered_translucent<D: DrawTarget<Color = Rgb565>>(
     p1: nalgebra::Point2<i32>,
     p2: nalgebra::Point2<i32>,
     p3: nalgebra::Point2<i32>,
@@ -4333,9 +4365,13 @@ fn fill_triangle_zbuffered_translucent<
     let z3_int = (z3 * 65536.0) as u32;
 
     if p2_eg.y == p3_eg.y {
-        fill_bottom_flat_translucent(p1_eg, p2_eg, p3_eg, z1_int, z2_int, z3_int, color, alpha, fb, zbuffer, width);
+        fill_bottom_flat_translucent(
+            p1_eg, p2_eg, p3_eg, z1_int, z2_int, z3_int, color, alpha, fb, zbuffer, width,
+        );
     } else if p1_eg.y == p2_eg.y {
-        fill_top_flat_translucent(p1_eg, p2_eg, p3_eg, z1_int, z2_int, z3_int, color, alpha, fb, zbuffer, width);
+        fill_top_flat_translucent(
+            p1_eg, p2_eg, p3_eg, z1_int, z2_int, z3_int, color, alpha, fb, zbuffer, width,
+        );
     } else {
         let t = (p2_eg.y - p1_eg.y) as f32 / (p3_eg.y - p1_eg.y) as f32;
         let p4 = Point::new(
@@ -4343,15 +4379,17 @@ fn fill_triangle_zbuffered_translucent<
             p2_eg.y,
         );
         let z4_int = (z1_int as i64 + (t * (z3_int as i64 - z1_int as i64) as f32) as i64) as u32;
-        fill_bottom_flat_translucent(p1_eg, p2_eg, p4, z1_int, z2_int, z4_int, color, alpha, fb, zbuffer, width);
-        fill_top_flat_translucent(p2_eg, p4, p3_eg, z2_int, z4_int, z3_int, color, alpha, fb, zbuffer, width);
+        fill_bottom_flat_translucent(
+            p1_eg, p2_eg, p4, z1_int, z2_int, z4_int, color, alpha, fb, zbuffer, width,
+        );
+        fill_top_flat_translucent(
+            p2_eg, p4, p3_eg, z2_int, z4_int, z3_int, color, alpha, fb, zbuffer, width,
+        );
     }
 }
 
 #[inline(always)]
-fn fill_bottom_flat_translucent<
-    D: DrawTarget<Color = Rgb565>,
->(
+fn fill_bottom_flat_translucent<D: DrawTarget<Color = Rgb565>>(
     p1: Point,
     p2: Point,
     p3: Point,
@@ -4367,7 +4405,9 @@ fn fill_bottom_flat_translucent<
     <D as DrawTarget>::Error: Debug,
 {
     let height = p2.y - p1.y;
-    if height == 0 { return; }
+    if height == 0 {
+        return;
+    }
     let invslope1 = ((p2.x - p1.x) << 16) / height;
     let invslope2 = ((p3.x - p1.x) << 16) / height;
 
@@ -4387,9 +4427,13 @@ fn fill_bottom_flat_translucent<
 
         let span = right_x - left_x;
         for x in left_x..=right_x {
-            if x < 0 || scanline_y < 0 || x >= width as i32 { continue; }
+            if x < 0 || scanline_y < 0 || x >= width as i32 {
+                continue;
+            }
             let idx = (scanline_y as usize) * width + (x as usize);
-            if idx >= zbuffer.len() { continue; }
+            if idx >= zbuffer.len() {
+                continue;
+            }
 
             let z = if span > 0 {
                 let t = (x - left_x) as f32 / span as f32;
@@ -4401,7 +4445,10 @@ fn fill_bottom_flat_translucent<
             if z < zbuffer[idx] {
                 zbuffer[idx] = z;
                 let draw_color = fast_blend_rgb565(Rgb565::BLACK, color, alpha);
-                let _ = fb.draw_iter([embedded_graphics_core::Pixel(Point::new(x, scanline_y), draw_color)]);
+                let _ = fb.draw_iter([embedded_graphics_core::Pixel(
+                    Point::new(x, scanline_y),
+                    draw_color,
+                )]);
             }
         }
 
@@ -4411,9 +4458,7 @@ fn fill_bottom_flat_translucent<
 }
 
 #[inline(always)]
-fn fill_top_flat_translucent<
-    D: DrawTarget<Color = Rgb565>,
->(
+fn fill_top_flat_translucent<D: DrawTarget<Color = Rgb565>>(
     p1: Point,
     p2: Point,
     p3: Point,
@@ -4429,7 +4474,9 @@ fn fill_top_flat_translucent<
     <D as DrawTarget>::Error: Debug,
 {
     let height = p3.y - p1.y;
-    if height == 0 { return; }
+    if height == 0 {
+        return;
+    }
     let invslope1 = ((p3.x - p1.x) << 16) / height;
     let invslope2 = ((p3.x - p2.x) << 16) / height;
 
@@ -4449,9 +4496,13 @@ fn fill_top_flat_translucent<
 
         let span = right_x - left_x;
         for x in left_x..=right_x {
-            if x < 0 || scanline_y < 0 || x >= width as i32 { continue; }
+            if x < 0 || scanline_y < 0 || x >= width as i32 {
+                continue;
+            }
             let idx = (scanline_y as usize) * width + (x as usize);
-            if idx >= zbuffer.len() { continue; }
+            if idx >= zbuffer.len() {
+                continue;
+            }
 
             let z = if span > 0 {
                 let t = (x - left_x) as f32 / span as f32;
@@ -4463,7 +4514,10 @@ fn fill_top_flat_translucent<
             if z < zbuffer[idx] {
                 zbuffer[idx] = z;
                 let draw_color = fast_blend_rgb565(Rgb565::BLACK, color, alpha);
-                let _ = fb.draw_iter([embedded_graphics_core::Pixel(Point::new(x, scanline_y), draw_color)]);
+                let _ = fb.draw_iter([embedded_graphics_core::Pixel(
+                    Point::new(x, scanline_y),
+                    draw_color,
+                )]);
             }
         }
 
@@ -4706,7 +4760,10 @@ mod tests {
             assert!(
                 diff <= 2,
                 "Z interpolation error at x={}: actual={}, expected={}, diff={}",
-                x, actual_z, expected_z, diff
+                x,
+                actual_z,
+                expected_z,
+                diff
             );
         }
     }
@@ -4719,16 +4776,32 @@ mod tests {
 
         // Draw a far scanline at z = 50000
         draw_scanline_zbuffered(
-            10, 20, 2, 50000, 50000,
+            10,
+            20,
+            2,
+            50000,
+            50000,
             Rgb565::CSS_RED,
-            &mut fb, &mut zbuffer, width, None, None,
+            &mut fb,
+            &mut zbuffer,
+            width,
+            None,
+            None,
         );
 
         // Draw a closer scanline at z = 20000 over the same span
         draw_scanline_zbuffered(
-            10, 20, 2, 20000, 20000,
+            10,
+            20,
+            2,
+            20000,
+            20000,
             Rgb565::CSS_GREEN,
-            &mut fb, &mut zbuffer, width, None, None,
+            &mut fb,
+            &mut zbuffer,
+            width,
+            None,
+            None,
         );
 
         // All Z values should now be 20000
@@ -4739,9 +4812,17 @@ mod tests {
 
         // Draw a farther scanline at z = 80000 over the same span (should be culled)
         draw_scanline_zbuffered(
-            10, 20, 2, 80000, 80000,
+            10,
+            20,
+            2,
+            80000,
+            80000,
             Rgb565::CSS_BLUE,
-            &mut fb, &mut zbuffer, width, None, None,
+            &mut fb,
+            &mut zbuffer,
+            width,
+            None,
+            None,
         );
 
         // Z values must remain 20000 (not overwritten by 80000)
@@ -4759,17 +4840,24 @@ mod tests {
 
         // Create a 2x2 static texture with distinct colors
         static TEX_DATA: [Rgb565; 4] = [
-            Rgb565::CSS_RED, Rgb565::CSS_GREEN,
-            Rgb565::CSS_BLUE, Rgb565::CSS_YELLOW,
+            Rgb565::CSS_RED,
+            Rgb565::CSS_GREEN,
+            Rgb565::CSS_BLUE,
+            Rgb565::CSS_YELLOW,
         ];
         let texture = crate::texture::Texture::new(&TEX_DATA, 2, 2);
 
         // Draw a 64-pixel scanline across multiple 16-pixel sub-spans (x=10..73)
         draw_scanline_zbuffered_textured(
-            10, 73, 4,
-            1000, 1000,
-            1.0, 1.0,
-            [0.0, 0.0], [1.0, 1.0],
+            10,
+            73,
+            4,
+            1000,
+            1000,
+            1.0,
+            1.0,
+            [0.0, 0.0],
+            [1.0, 1.0],
             &texture,
             &mut fb,
             &mut zbuffer,
@@ -4817,4 +4905,3 @@ mod tests {
         assert_eq!(out, Rgb565::CSS_RED);
     }
 }
-

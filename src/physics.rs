@@ -3727,14 +3727,14 @@ mod tests {
             )
             .unwrap();
 
-        let initial_momentum = world.body(id1).unwrap().velocity * 2.0
-            + world.body(id2).unwrap().velocity * 2.0;
+        let initial_momentum =
+            world.body(id1).unwrap().velocity * 2.0 + world.body(id2).unwrap().velocity * 2.0;
 
         // Step physics to resolve collision impulse
         world.step::<4>(0.016);
 
-        let final_momentum = world.body(id1).unwrap().velocity * 2.0
-            + world.body(id2).unwrap().velocity * 2.0;
+        let final_momentum =
+            world.body(id1).unwrap().velocity * 2.0 + world.body(id2).unwrap().velocity * 2.0;
 
         // Total momentum is conserved within impulse + Baumgarte penetration resolution bounds
         let diff = (final_momentum - initial_momentum).norm();

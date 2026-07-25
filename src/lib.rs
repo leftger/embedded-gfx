@@ -70,26 +70,47 @@ pub use bridge::{
     AsEgPoint, AsNalgebraPoint, draw_to, eg_to_nalgebra, nalgebra_to_eg, render_drawable_to_buffer,
 };
 pub use character::CharacterController;
+#[cfg(feature = "aa")]
+pub use draw::draw_zbuffered_2xssaa;
 pub use draw::{
-    DitherConfig, FogConfig, fast_blend_rgb565, fast_blend_rgba8888,
-    fast_blend_rgba8888_to_rgb565, reverse_color_rgb565, reverse_color_rgba8888,
-    draw_zbuffered_2xssaa,
+    DitherConfig, FogConfig, fast_blend_rgb565, fast_blend_rgba8888, fast_blend_rgba8888_to_rgb565,
+    reverse_color_rgb565, reverse_color_rgba8888,
 };
 pub use fixed_math::{
+    FP_ONE,
     // Type alias and constants
-    Q16, Q16_MAX, Q16_MIN, FP_ONE,
-    // Conversions
-    to_q16, from_q16, from_i16_q16, to_i16_q16, q31_to_q16, q16_to_q31,
-    // Arithmetic
-    mul_q16, mul_n_q16, mul_f_q16, div_q16, div_n_q16, div_f_q16,
-    // Saturating arithmetic
-    qadd_q16, qsub_q16, abs_q16,
-    // Helpers
-    lerp_q16, angle_to_q16, recip_q16,
+    Q16,
+    Q16_MAX,
+    Q16_MIN,
     // Scanline z/uv accelerator
     ScanlineInterp,
+    abs_q16,
+    angle_to_q16,
+    div_f_q16,
+    div_fp,
+    div_n_q16,
+    div_q16,
+    from_fp,
+    from_i16_q16,
+    from_q16,
+    // Helpers
+    lerp_q16,
+    mul_f_q16,
+    mul_fp,
+    mul_n_q16,
+    // Arithmetic
+    mul_q16,
+    q16_to_q31,
+    q31_to_q16,
+    // Saturating arithmetic
+    qadd_q16,
+    qsub_q16,
+    recip_q16,
     // Legacy shims kept for backward compat
-    to_fp, from_fp, mul_fp, div_fp,
+    to_fp,
+    to_i16_q16,
+    // Conversions
+    to_q16,
 };
 pub use input::InputState;
 pub use lights::{PointLight, PointLightSet};
@@ -870,8 +891,7 @@ impl K3dengine {
             let render_mode = self.resolve_render_mode(&mesh.render_mode);
             match render_mode {
                 RenderMode::Points => {
-                    let screen_space_points = (0..geometry.vertices.len())
-                        .filter_map(&mut get_pt);
+                    let screen_space_points = (0..geometry.vertices.len()).filter_map(&mut get_pt);
 
                     if geometry.colors.len() == geometry.vertices.len() {
                         for (point, color) in screen_space_points.zip(geometry.colors) {

@@ -112,12 +112,7 @@ impl Billboard {
     ///
     /// Returns [bottom-left, bottom-right, top-right, top-left] in 16.16 fixed point.
     pub fn default_uv_q16() -> [[u32; 2]; 4] {
-        [
-            [0, 0],
-            [65536, 0],
-            [65536, 65536],
-            [0, 65536],
-        ]
+        [[0, 0], [65536, 0], [65536, 65536], [0, 65536]]
     }
 
     /// Get quad UV coordinates in Q16.16 fixed-point format.

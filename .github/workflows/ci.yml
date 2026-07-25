@@ -1,0 +1,228 @@
+# Shared embedded-* library CI plus embedded-3dgfx-specific budget and guard jobs.
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  CARGO_BUILD_JOBS: "1"
+  MSRV: "1.88"
+  NO_STD_TARGET: thumbv7em-none-eabihf
+  NO_STD_CARGO_ARGS: "--no-default-features --features row_width_240"
+  CLIPPY_ARGS: "--lib --all-features"
+  DOCS_ARGS: "--lib --no-deps --all-features"
+  CHECK_ARGS: "--lib --all-features"
+  CI_UNIT_TEST_ARGS: "--lib"
+  CI_INTEGRATION_TEST_ARGS: "-- --test-threads=1"
+  CI_INTEGRATION_CHECK: "true"
+  CI_INTEGRATION_CHECK_CMD: "cargo build --examples"
+  TELEMETRY_MAX_RECORD_DRAW_COMMANDS: "3"
+  TELEMETRY_MAX_EXECUTE_COMMANDS_TOTAL: "4"
+  TELEMETRY_MAX_EXECUTE_DRAW_COMMANDS: "3"
+  TELEMETRY_STRESS_MAX_RECORD_DRAW_COMMANDS: "24"
+  TELEMETRY_STRESS_MAX_EXECUTE_COMMANDS_TOTAL: "25"
+  TELEMETRY_STRESS_MAX_EXECUTE_DRAW_COMMANDS: "24"
+  TELEMETRY_FAILSOFT_MAX_RECORD_DRAW_COMMANDS: "1"
+  TELEMETRY_FAILSOFT_MAX_EXECUTE_COMMANDS_TOTAL: "2"
+  TELEMETRY_FAILSOFT_MAX_EXECUTE_DRAW_COMMANDS: "1"
+  TELEMETRY_FAILSOFT_EXPECTED_BUDGET_KIND: "MeshesPerFrame"
+
+jobs:
+  fmt:
+    name: Formatting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all -- --check
+
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: |
+          if [ -n "${{ env.CI_HOST_TARGET }}" ]; then
+            cargo check ${{ env.CHECK_ARGS }} --target ${{ env.CI_HOST_TARGET }}
+          else
+            cargo check ${{ env.CHECK_ARGS }}
+          fi
+
+  check-no-std:
+    name: Check (no_std)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ env.NO_STD_TARGET }}
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --lib ${{ env.NO_STD_CARGO_ARGS }} --target ${{ env.NO_STD_TARGET }}
+
+  msrv:
+    name: MSRV check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.MSRV }}
+      - uses: Swatinem/rust-cache@v2
+      - run: |
+          if [ -n "${{ env.CI_HOST_TARGET }}" ]; then
+            cargo check ${{ env.CHECK_ARGS }} --target ${{ env.CI_HOST_TARGET }}
+          else
+            cargo check ${{ env.CHECK_ARGS }}
+          fi
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy ${{ env.CLIPPY_ARGS }} -- -W clippy::all
+      - run: rustup target add ${{ env.NO_STD_TARGET }}
+      - run: cargo clippy --lib ${{ env.NO_STD_CARGO_ARGS }} --target ${{ env.NO_STD_TARGET }} -- -W clippy::all
+
+  no-alloc-frame-path:
+    name: No-Alloc Frame Path Guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 .github/scripts/check_no_alloc_frame_path.py
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install SDL2
+        run: sudo apt-get update && sudo apt-get install -y libsdl2-dev
+      - name: Unit and integration tests
+        run: bash .github/scripts/ci_test.sh
+      - name: Telemetry budget guard
+        run: cargo test --test integration_tests test_ci_telemetry_snapshot_ -- --nocapture 2>&1 | .github/scripts/check_telemetry_budget.py
+
+  embedded-budget:
+    name: Embedded Budget (${{ matrix.row_width_feature }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        row_width_feature:
+          - row_width_96
+          - row_width_160
+          - row_width_240
+          - row_width_320
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: no_std-style library check
+        run: cargo check --lib --no-default-features --features ${{ matrix.row_width_feature }}
+      - name: no_std-style clippy
+        run: cargo clippy --lib --no-default-features --features ${{ matrix.row_width_feature }} -- -D warnings
+      - name: Constrained telemetry budget guard
+        run: cargo test --test integration_tests test_ci_telemetry_snapshot_ --no-default-features --features ${{ matrix.row_width_feature }} -- --nocapture 2>&1 | .github/scripts/check_telemetry_budget.py
+
+  profile-budget:
+    name: Profile Budget (${{ matrix.caps_profile }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        caps_profile:
+          - m3
+          - m4
+          - m33
+          - m55
+    env:
+      EMBEDDED_3DGFX_CAPS: ${{ matrix.caps_profile }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Profile telemetry budget guard
+        run: cargo test --test integration_tests test_ci_telemetry_snapshot_ -- --nocapture 2>&1 | .github/scripts/check_telemetry_budget.py
+
+  m55-perf-budget:
+    name: M55 Perf Budget
+    runs-on: ubuntu-latest
+    env:
+      EMBEDDED_3DGFX_CAPS: m55
+      TELEMETRY_MAX_RECORD_DRAW_COMMANDS: "4"
+      TELEMETRY_MAX_EXECUTE_COMMANDS_TOTAL: "5"
+      TELEMETRY_MAX_EXECUTE_DRAW_COMMANDS: "4"
+      TELEMETRY_STRESS_MAX_RECORD_DRAW_COMMANDS: "24"
+      TELEMETRY_STRESS_MAX_EXECUTE_COMMANDS_TOTAL: "25"
+      TELEMETRY_STRESS_MAX_EXECUTE_DRAW_COMMANDS: "24"
+      TELEMETRY_FAILSOFT_MAX_RECORD_DRAW_COMMANDS: "1"
+      TELEMETRY_FAILSOFT_MAX_EXECUTE_COMMANDS_TOTAL: "2"
+      TELEMETRY_FAILSOFT_MAX_EXECUTE_DRAW_COMMANDS: "1"
+      TELEMETRY_FAILSOFT_EXPECTED_BUDGET_KIND: "MeshesPerFrame"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: M55 perf telemetry budget guard
+        run: cargo test --test integration_tests test_ci_telemetry_snapshot_ -- --nocapture 2>&1 | .github/scripts/check_telemetry_budget.py
+
+  docs:
+    name: Docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo doc ${{ env.DOCS_ARGS }}
+
+  asset-budget:
+    name: Asset Budget Report
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 .github/scripts/asset_budget_report.py
+
+  publish-dry-run:
+    name: Publish dry-run
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo publish --dry-run
+
+  audit:
+    name: Security audit
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      contents: read
+      checks: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: rustsec/audit-check@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}

@@ -179,4 +179,46 @@ mod tests {
             (sin1 - sin3).abs()
         );
     }
+
+    #[test]
+    fn test_pythagorean_identity() {
+        let angles = [0.0, 0.5, 1.0, PI / 4.0, PI / 3.0, 2.0, 3.14];
+        for &a in &angles {
+            let s = fast_sin(a);
+            let c = fast_cos(a);
+            let pyth = s * s + c * c;
+            assert!(
+                (pyth - 1.0).abs() < 0.01,
+                "Pythagorean identity failed at angle {}: sin^2 + cos^2 = {}",
+                a,
+                pyth
+            );
+        }
+    }
+
+    #[test]
+    fn test_trig_symmetry() {
+        let angles = [0.1, 0.785, 1.5, 2.3];
+        for &a in &angles {
+            let sin_pos = fast_sin(a);
+            let sin_neg = fast_sin(-a);
+            assert!(
+                (sin_pos + sin_neg).abs() < 0.01,
+                "Sin odd symmetry failed at {}: sin(a)={}, sin(-a)={}",
+                a,
+                sin_pos,
+                sin_neg
+            );
+
+            let cos_pos = fast_cos(a);
+            let cos_neg = fast_cos(-a);
+            assert!(
+                (cos_pos - cos_neg).abs() < 0.01,
+                "Cos even symmetry failed at {}: cos(a)={}, cos(-a)={}",
+                a,
+                cos_pos,
+                cos_neg
+            );
+        }
+    }
 }

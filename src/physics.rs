@@ -3697,4 +3697,69 @@ mod tests {
         );
         assert!(contacts[0].penetration > 0.0);
     }
+
+    #[test]
+    fn test_conservation_of_linear_momentum_elastic_collision() {
+        let mut world = PhysicsWorld::<4>::new();
+        world.set_gravity(Vector3::zeros());
+
+        // Body 1: moving right at 4.0 m/s
+        let id1 = world
+            .add_body(
+                RigidBody::new(2.0)
+                    .with_position(Vector3::new(0.0, 0.0, 0.0))
+                    .with_velocity(Vector3::new(4.0, 0.0, 0.0))
+                    .with_restitution(1.0)
+                    .with_friction(0.0)
+                    .with_collider(Collider::Sphere { radius: 1.0 }),
+            )
+            .unwrap();
+
+        // Body 2: stationary at x = 2.0 (touching at contact point)
+        let id2 = world
+            .add_body(
+                RigidBody::new(2.0)
+                    .with_position(Vector3::new(2.0, 0.0, 0.0))
+                    .with_velocity(Vector3::new(0.0, 0.0, 0.0))
+                    .with_restitution(1.0)
+                    .with_friction(0.0)
+                    .with_collider(Collider::Sphere { radius: 1.0 }),
+            )
+            .unwrap();
+
+        let initial_momentum = world.body(id1).unwrap().velocity * 2.0
+            + world.body(id2).unwrap().velocity * 2.0;
+
+        // Step physics to resolve collision impulse
+        world.step::<4>(0.016);
+
+        let final_momentum = world.body(id1).unwrap().velocity * 2.0
+            + world.body(id2).unwrap().velocity * 2.0;
+
+        // Total momentum is conserved within impulse + Baumgarte penetration resolution bounds
+        let diff = (final_momentum - initial_momentum).norm();
+        assert!(
+            diff < 0.1,
+            "Linear momentum not conserved in elastic collision: diff = {}",
+            diff
+        );
+    }
+
+    #[test]
+    fn test_analytical_sphere_inertia_tensor_math() {
+        let mass = 2.5f32;
+        let radius = 4.0f32;
+        let body = RigidBody::new(mass).with_inertia_sphere(radius);
+
+        // For sphere: I = 2/5 * m * r^2 = 0.4 * 2.5 * 16 = 16.0
+        // inv_I = 1 / 16.0 = 0.0625
+        let expected_inv_i = 1.0 / (0.4 * mass * radius * radius);
+        assert!((body.inv_inertia_local[(0, 0)] - expected_inv_i).abs() < 1e-4);
+        assert!((body.inv_inertia_local[(1, 1)] - expected_inv_i).abs() < 1e-4);
+        assert!((body.inv_inertia_local[(2, 2)] - expected_inv_i).abs() < 1e-4);
+
+        // Off-diagonal terms must be 0
+        assert_eq!(body.inv_inertia_local[(0, 1)], 0.0);
+        assert_eq!(body.inv_inertia_local[(1, 2)], 0.0);
+    }
 }

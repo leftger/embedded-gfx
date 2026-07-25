@@ -211,4 +211,23 @@ mod tests {
         assert_eq!(tint.g(), 63);
         assert_eq!(tint.b(), 31);
     }
+
+    #[test]
+    fn test_point_light_analytical_falloff_math() {
+        let radius = 10.0f32;
+        let light = PointLight::new(Point3::new(0.0, 0.0, 0.0), Rgb565::new(31, 63, 31), radius)
+            .with_intensity(1.0);
+
+        // At d = 0.5 * radius (5.0 units away), d^2 / R^2 = 0.25 => factor = 0.75
+        let pos_half = Point3::new(5.0, 0.0, 0.0);
+        let tint = light.contribution_at(pos_half);
+
+        let expected_r = (31.0 * 0.75) as u8; // 23
+        let expected_g = (63.0 * 0.75) as u8; // 47
+        let expected_b = (31.0 * 0.75) as u8; // 23
+
+        assert_eq!(tint.r(), expected_r);
+        assert_eq!(tint.g(), expected_g);
+        assert_eq!(tint.b(), expected_b);
+    }
 }

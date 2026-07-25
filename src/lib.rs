@@ -614,7 +614,11 @@ impl K3dengine {
         world_normal: &Vector3<f32>,
     ) -> bool {
         let v0 = vertices[face[0]];
-        let v0_world = model_matrix.transform_point(&Point3::new(v0[0], v0[1], v0[2]));
+        let v0_world = if model_matrix == Matrix4::identity() {
+            Point3::new(v0[0], v0[1], v0[2])
+        } else {
+            model_matrix.transform_point(&Point3::new(v0[0], v0[1], v0[2]))
+        };
         (self.camera.position - v0_world).dot(world_normal) < 0.0
     }
 
@@ -797,13 +801,51 @@ impl K3dengine {
 
             let transform_matrix = self.camera.vp_matrix * mesh.model_matrix;
 
+            let mut v_cache_plain: [Option<Option<Point3<i32>>>; 256] = [None; 256];
+            let mut v_cache_w: [Option<Option<(Point3<i32>, f32)>>; 256] = [None; 256];
+
+            let mut get_pt = |idx: usize| -> Option<Point3<i32>> {
+                if idx < 256 {
+                    if let Some(cached) = v_cache_plain[idx] {
+                        return cached;
+                    }
+                    let p = self.transform_point(&geometry.vertices[idx], transform_matrix);
+                    v_cache_plain[idx] = Some(p);
+                    p
+                } else {
+                    self.transform_point(&geometry.vertices[idx], transform_matrix)
+                }
+            };
+
+            let mut get_pt_w = |idx: usize| -> Option<(Point3<i32>, f32)> {
+                if idx < 256 {
+                    if let Some(cached) = v_cache_w[idx] {
+                        return cached;
+                    }
+                    let p = self.transform_point_with_w(&geometry.vertices[idx], transform_matrix);
+                    v_cache_w[idx] = Some(p);
+                    p
+                } else {
+                    self.transform_point_with_w(&geometry.vertices[idx], transform_matrix)
+                }
+            };
+
+            let mut tf_face = |face: &[usize; 3]| -> Option<[Point3<i32>; 3]> {
+                Some([get_pt(face[0])?, get_pt(face[1])?, get_pt(face[2])?])
+            };
+
+            let mut tf_face_w = |face: &[usize; 3]| -> Option<([Point3<i32>; 3], [f32; 3])> {
+                let (p0, w0) = get_pt_w(face[0])?;
+                let (p1, w1) = get_pt_w(face[1])?;
+                let (p2, w2) = get_pt_w(face[2])?;
+                Some(([p0, p1, p2], [w0, w1, w2]))
+            };
+
             let render_mode = self.resolve_render_mode(&mesh.render_mode);
             match render_mode {
                 RenderMode::Points => {
-                    let screen_space_points = geometry
-                        .vertices
-                        .iter()
-                        .filter_map(|v| self.transform_point(v, transform_matrix));
+                    let screen_space_points = (0..geometry.vertices.len())
+                        .filter_map(&mut get_pt);
 
                     if geometry.colors.len() == geometry.vertices.len() {
                         for (point, color) in screen_space_points.zip(geometry.colors) {
@@ -818,9 +860,7 @@ impl K3dengine {
 
                 RenderMode::Lines if !geometry.lines.is_empty() => {
                     for line in geometry.lines {
-                        if let Some([p1, p2]) =
-                            self.transform_points(line, geometry.vertices, transform_matrix)
-                        {
+                        if let (Some(p1), Some(p2)) = (get_pt(line[0]), get_pt(line[1])) {
                             callback(DrawPrimitive::Line([p1.xy(), p2.xy()], mesh.color));
                         }
                     }
@@ -828,9 +868,7 @@ impl K3dengine {
 
                 RenderMode::Lines if !geometry.faces.is_empty() => {
                     for face in geometry.faces {
-                        if let Some([p1, p2, p3]) =
-                            self.transform_points(face, geometry.vertices, transform_matrix)
-                        {
+                        if let Some([p1, p2, p3]) = tf_face(face) {
                             callback(DrawPrimitive::Line([p1.xy(), p2.xy()], mesh.color));
                             callback(DrawPrimitive::Line([p2.xy(), p3.xy()], mesh.color));
                             callback(DrawPrimitive::Line([p3.xy(), p1.xy()], mesh.color));
@@ -861,9 +899,7 @@ impl K3dengine {
                             continue;
                         }
 
-                        if let Some([p1, p2, p3]) =
-                            self.transform_points(face, geometry.vertices, transform_matrix)
-                        {
+                        if let Some([p1, p2, p3]) = tf_face(face) {
                             let intensity = transformed_normal.dot(&adjusted_dir).max(0.0);
                             let final_color = color_as_float * intensity + ambient_color;
                             let final_color = Vector3::new(
@@ -915,9 +951,7 @@ impl K3dengine {
                             continue;
                         }
 
-                        if let Some([p1, p2, p3]) =
-                            self.transform_points(face, geometry.vertices, transform_matrix)
-                        {
+                        if let Some([p1, p2, p3]) = tf_face(face) {
                             let vertex_colors: [Rgb565; 3] = core::array::from_fn(|k| {
                                 let vn = if !geometry.vertex_normals.is_empty() {
                                     let vn_arr = geometry.vertex_normals[face[k]];
@@ -991,9 +1025,7 @@ impl K3dengine {
                             continue;
                         }
 
-                        if let Some([p1, p2, p3]) =
-                            self.transform_points(face, geometry.vertices, transform_matrix)
-                        {
+                        if let Some([p1, p2, p3]) = tf_face(face) {
                             // Calculate face center in world space for view direction
                             let v0 = geometry.vertices[face[0]];
                             let v1 = geometry.vertices[face[1]];
@@ -1240,11 +1272,7 @@ impl K3dengine {
                     // whole, same as `GouraudLightDir`/`BlinnPhong`.
                     if geometry.normals.is_empty() {
                         for face in geometry.faces.iter() {
-                            if let Some((points, ws)) = self.transform_points_with_w(
-                                face,
-                                geometry.vertices,
-                                transform_matrix,
-                            ) {
+                            if let Some((points, ws)) = tf_face_w(face) {
                                 callback(DrawPrimitive::TexturedTriangleWithDepth {
                                     points: [points[0].xy(), points[1].xy(), points[2].xy()],
                                     depths: [
@@ -1274,11 +1302,7 @@ impl K3dengine {
                             ) {
                                 continue;
                             }
-                            if let Some((points, ws)) = self.transform_points_with_w(
-                                face,
-                                geometry.vertices,
-                                transform_matrix,
-                            ) {
+                            if let Some((points, ws)) = tf_face_w(face) {
                                 callback(DrawPrimitive::TexturedTriangleWithDepth {
                                     points: [points[0].xy(), points[1].xy(), points[2].xy()],
                                     depths: [

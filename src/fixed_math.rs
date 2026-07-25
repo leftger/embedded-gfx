@@ -52,4 +52,47 @@ mod tests {
         let quot = from_fp(div_fp(to_fp(3.0), to_fp(2.0)).unwrap());
         assert!((quot - 1.5).abs() < 0.001);
     }
+
+    #[test]
+    fn fixed_algebraic_identities() {
+        let val = to_fp(123.456);
+        let one = to_fp(1.0);
+        let zero = to_fp(0.0);
+
+        // Multiplication identities
+        assert_eq!(mul_fp(val, one), val);
+        assert_eq!(mul_fp(val, zero), zero);
+
+        // Division identities
+        assert_eq!(div_fp(val, one), Some(val));
+        assert_eq!(div_fp(val, val), Some(one));
+        assert_eq!(div_fp(val, zero), None);
+    }
+
+    #[test]
+    fn fixed_signed_arithmetic_correctness() {
+        let pos = to_fp(4.25);
+        let neg = to_fp(-2.5);
+
+        // Positive * Negative = Negative
+        let prod1 = from_fp(mul_fp(pos, neg));
+        assert!((prod1 - (-10.625)).abs() < 0.001);
+
+        // Negative * Negative = Positive
+        let prod2 = from_fp(mul_fp(neg, neg));
+        assert!((prod2 - 6.25).abs() < 0.001);
+
+        // Signed division
+        let quot1 = from_fp(div_fp(pos, neg).unwrap());
+        assert!((quot1 - (-1.7)).abs() < 0.001);
+    }
+
+    #[test]
+    fn fixed_quantization_resolution_bound() {
+        let lsb = 1.0 / (FP_ONE as f32);
+        let val = 100.12345;
+        let fp = to_fp(val);
+        let reconstructed = from_fp(fp);
+        assert!((reconstructed - val).abs() <= lsb);
+    }
 }

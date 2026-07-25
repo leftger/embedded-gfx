@@ -2524,37 +2524,63 @@ fn draw_scanline_lm<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rg
     <D as DrawTarget>::Error: core::fmt::Debug,
 {
     use embedded_graphics_core::pixelcolor::RgbColor;
-    let start = x1.min(x2);
-    let end = x1.max(x2);
-    let span = end - start;
-    for x in start..=end {
-        if should_skip_stipple(x, y, stipple_mode) {
-            continue;
-        }
-        if x < 0 || y < 0 || x >= width as i32 {
-            continue;
-        }
-        let zbuf_idx = y as usize * width + x as usize;
-        if zbuf_idx >= zbuffer.len() {
-            continue;
-        }
-        let t = if span > 0 {
-            (x - start) as f32 / span as f32
+    use embedded_graphics_core::prelude::Point;
+
+    if y < 0 {
+        return;
+    }
+    let height = zbuffer.len() / width;
+    if y as usize >= height {
+        return;
+    }
+
+    let (left_x, right_x, z_left, z_right, w_left, w_right, uv_left, uv_right, luv_left, luv_right) =
+        if x1 <= x2 {
+            (x1, x2, z1, z2, w1, w2, uv1, uv2, luv1, luv2)
         } else {
-            0.0
+            (x2, x1, z2, z1, w2, w1, uv2, uv1, luv2, luv1)
         };
-        let z =
-            (z1 as i64 + (z2 as i64 - z1 as i64) * (x - start) as i64 / span.max(1) as i64) as u32;
+
+    let start_x = left_x.max(0);
+    let end_x = right_x.min(width as i32 - 1);
+    if start_x > end_x {
+        return;
+    }
+
+    let span = right_x - left_x;
+    let inv_span = if span > 0 { 1.0 / span as f32 } else { 0.0 };
+    let z_step = if span > 0 {
+        (((z_right as i64 - z_left as i64) << 16) / span as i64) as i32
+    } else {
+        0
+    };
+
+    let left_clip = start_x - left_x;
+    let mut z_curr = ((z_left as i64) << 16) + (left_clip as i64 * z_step as i64);
+    let mut zbuf_idx = y as usize * width + start_x as usize;
+
+    for x in start_x..=end_x {
+        if should_skip_stipple(x, y, stipple_mode) {
+            z_curr += z_step as i64;
+            zbuf_idx += 1;
+            continue;
+        }
+
+        let z = (z_curr >> 16) as u32;
+        z_curr += z_step as i64;
+
         if z >= zbuffer[zbuf_idx].saturating_add(DEPTH_EPSILON) {
+            zbuf_idx += 1;
             continue;
         }
         zbuffer[zbuf_idx] = z;
 
-        let [su, sv] = interpolate_uv(t, w1, w2, uv1, uv2, texture_mapping);
+        let t = (x - left_x) as f32 * inv_span;
+        let [su, sv] = interpolate_uv(t, w_left, w_right, uv_left, uv_right, texture_mapping);
         let surf_c = surf.sample(su, sv);
 
         let lit_c = if let Some(lm_tex) = lm {
-            let [lu, lv] = interpolate_uv(t, w1, w2, luv1, luv2, texture_mapping);
+            let [lu, lv] = interpolate_uv(t, w_left, w_right, luv_left, luv_right, texture_mapping);
             let lm_c = lm_tex.sample(lu, lv);
             let r = ((surf_c.r() as u32 * lm_c.r() as u32) / 31).min(31) as u8;
             let g = ((surf_c.g() as u32 * lm_c.g() as u32) / 63).min(63) as u8;
@@ -2564,35 +2590,35 @@ fn draw_scanline_lm<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rg
             surf_c
         };
 
-        let lit_c = embedded_graphics_core::pixelcolor::Rgb565::new(
-            ((lit_c.r() as u16 * brightness as u16) / 255).min(31) as u8,
-            ((lit_c.g() as u16 * brightness as u16) / 255).min(63) as u8,
-            ((lit_c.b() as u16 * brightness as u16) / 255).min(31) as u8,
-        );
+        let lit_c = if brightness < 255 {
+            let scale = brightness as u32;
+            let r = ((lit_c.r() as u32 * scale) / 255) as u8;
+            let g = ((lit_c.g() as u32 * scale) / 255) as u8;
+            let b = ((lit_c.b() as u32 * scale) / 255) as u8;
+            embedded_graphics_core::pixelcolor::Rgb565::new(r, g, b)
+        } else {
+            lit_c
+        };
 
-        // Additive dynamic-light tint (saturating per-channel add)
         let tinted_c = embedded_graphics_core::pixelcolor::Rgb565::new(
             (lit_c.r() as u16 + dynamic_tint.r() as u16).min(31) as u8,
             (lit_c.g() as u16 + dynamic_tint.g() as u16).min(63) as u8,
             (lit_c.b() as u16 + dynamic_tint.b() as u16).min(31) as u8,
         );
 
-        // Depth-based fog
         let mut final_c = if let Some(fog) = fog_config {
             fog.apply(tinted_c, z)
         } else {
             tinted_c
         };
+
         if let Some(tint) = screen_tint {
             final_c = tint.apply(final_c);
         }
         final_c = palette_mode.apply(final_c);
 
-        fb.draw_iter([embedded_graphics_core::Pixel(
-            embedded_graphics_core::prelude::Point::new(x, y),
-            final_c,
-        )])
-        .unwrap();
+        fb.draw_iter([embedded_graphics_core::Pixel(Point::new(x, y), final_c)])
+            .unwrap();
     }
 }
 
@@ -3333,41 +3359,48 @@ fn draw_scanline_zbuffered_gouraud<
 ) where
     <D as DrawTarget>::Error: Debug,
 {
-    let start = x1.min(x2);
-    let end = x1.max(x2);
-    let span_width = end - start;
+    if y < 0 {
+        return;
+    }
+    let height = zbuffer.len() / width;
+    if y as usize >= height {
+        return;
+    }
 
-    for x in start..=end {
-        if x < 0 || y < 0 || x >= width as i32 {
-            continue;
-        }
+    let (left_x, right_x, z_left, z_right, c_left, c_right) = if x1 <= x2 {
+        (x1, x2, z1, z2, color1, color2)
+    } else {
+        (x2, x1, z2, z1, color2, color1)
+    };
 
-        let zbuffer_idx = y as usize * width + x as usize;
-        if zbuffer_idx >= zbuffer.len() {
-            continue;
-        }
+    let start_x = left_x.max(0);
+    let end_x = right_x.min(width as i32 - 1);
+    if start_x > end_x {
+        return;
+    }
 
-        // Interpolate Z value
-        let t = if span_width > 0 {
-            (x - start) as f32 / span_width as f32
-        } else {
-            0.0
-        };
-        let z = if span_width > 0 {
-            (z1 as i64 + ((z2 as i64 - z1 as i64) * (x - start) as i64 / span_width as i64)) as u32
-        } else {
-            z1
-        };
+    let span = right_x - left_x;
+    let inv_span = if span > 0 { 1.0 / span as f32 } else { 0.0 };
+    let z_step = if span > 0 {
+        (((z_right as i64 - z_left as i64) << 16) / span as i64) as i32
+    } else {
+        0
+    };
 
-        // Z-test with epsilon to prevent Z-fighting on nearly coplanar faces
-        // We make the test slightly more permissive by allowing pixels within epsilon range
-        if z < zbuffer[zbuffer_idx].saturating_add(DEPTH_EPSILON) {
-            zbuffer[zbuffer_idx] = z;
+    let left_clip = start_x - left_x;
+    let mut z_curr = ((z_left as i64) << 16) + (left_clip as i64 * z_step as i64);
+    let mut zbuf_idx = y as usize * width + start_x as usize;
 
-            // Interpolate color
-            let mut final_color = interpolate_color(color1, color2, t);
+    for x in start_x..=end_x {
+        let z = (z_curr >> 16) as u32;
+        z_curr += z_step as i64;
 
-            // Apply effects in order: fog first, then dithering
+        if z < zbuffer[zbuf_idx].saturating_add(DEPTH_EPSILON) {
+            zbuffer[zbuf_idx] = z;
+
+            let t = (x - left_x) as f32 * inv_span;
+            let mut final_color = interpolate_color(c_left, c_right, t);
+
             if let Some(fog) = fog_config {
                 final_color = fog.apply(final_color, z);
             }
@@ -3379,6 +3412,7 @@ fn draw_scanline_zbuffered_gouraud<
             fb.draw_iter([embedded_graphics_core::Pixel(Point::new(x, y), final_color)])
                 .unwrap();
         }
+        zbuf_idx += 1;
     }
 }
 
@@ -3398,38 +3432,44 @@ fn draw_scanline_zbuffered<D: DrawTarget<Color = embedded_graphics_core::pixelco
 ) where
     <D as DrawTarget>::Error: Debug,
 {
-    let start = x1.min(x2);
-    let end = x1.max(x2);
+    if y < 0 {
+        return;
+    }
+    let height = zbuffer.len() / width;
+    if y as usize >= height {
+        return;
+    }
 
-    for x in start..=end {
-        if x < 0 || y < 0 || x >= width as i32 {
-            continue;
-        }
+    let (left_x, right_x, z_left, z_right) = if x1 <= x2 {
+        (x1, x2, z1, z2)
+    } else {
+        (x2, x1, z2, z1)
+    };
 
-        let zbuffer_idx = y as usize * width + x as usize;
-        if zbuffer_idx >= zbuffer.len() {
-            continue;
-        }
+    let start_x = left_x.max(0);
+    let end_x = right_x.min(width as i32 - 1);
+    if start_x > end_x {
+        return;
+    }
 
-        // Integer interpolation for Z (fixed-point 16.16 format)
-        // This avoids floating-point in the inner loop
-        let span = end - start;
-        let z = if span == 0 {
-            z1
-        } else {
-            // Linear interpolation using integer math
-            let t_num = (x - start) as i64;
-            let t_den = span as i64;
-            let z_diff = z2 as i64 - z1 as i64;
-            (z1 as i64 + (t_num * z_diff / t_den)) as u32
-        };
+    let span = right_x - left_x;
+    let z_step = if span > 0 {
+        (((z_right as i64 - z_left as i64) << 16) / span as i64) as i32
+    } else {
+        0
+    };
 
-        // Z-buffer test with epsilon to prevent Z-fighting (closer = smaller depth value)
-        // We make the test slightly more permissive by allowing pixels within epsilon range
-        if z < zbuffer[zbuffer_idx].saturating_add(DEPTH_EPSILON) {
-            zbuffer[zbuffer_idx] = z;
+    let left_clip = start_x - left_x;
+    let mut z_curr = ((z_left as i64) << 16) + (left_clip as i64 * z_step as i64);
+    let mut zbuf_idx = y as usize * width + start_x as usize;
 
-            // Apply effects in order: fog first, then dithering
+    for x in start_x..=end_x {
+        let z = (z_curr >> 16) as u32;
+        z_curr += z_step as i64;
+
+        if z < zbuffer[zbuf_idx].saturating_add(DEPTH_EPSILON) {
+            zbuffer[zbuf_idx] = z;
+
             let mut final_color = color;
 
             if let Some(fog) = fog_config {
@@ -3443,6 +3483,7 @@ fn draw_scanline_zbuffered<D: DrawTarget<Color = embedded_graphics_core::pixelco
             fb.draw_iter([embedded_graphics_core::Pixel(Point::new(x, y), final_color)])
                 .unwrap();
         }
+        zbuf_idx += 1;
     }
 }
 
@@ -3827,61 +3868,106 @@ fn draw_scanline_zbuffered_textured<
 ) where
     <D as DrawTarget>::Error: Debug,
 {
-    let start = x1.min(x2);
-    let end = x1.max(x2);
-    let span_width = end - start;
+    if y < 0 {
+        return;
+    }
+    let height = zbuffer.len() / width;
+    if y as usize >= height {
+        return;
+    }
 
-    for x in start..=end {
-        if should_skip_stipple(x, y, stipple_mode) {
-            continue;
-        }
-        if x < 0 || y < 0 || x >= width as i32 {
-            continue;
-        }
+    let (left_x, right_x, z_left, z_right, w_left, w_right, uv_left, uv_right) = if x1 <= x2 {
+        (x1, x2, z1, z2, w1, w2, uv1, uv2)
+    } else {
+        (x2, x1, z2, z1, w2, w1, uv2, uv1)
+    };
 
-        let zbuffer_idx = y as usize * width + x as usize;
-        if zbuffer_idx >= zbuffer.len() {
-            continue;
-        }
+    let start_x = left_x.max(0);
+    let end_x = right_x.min(width as i32 - 1);
+    if start_x > end_x {
+        return;
+    }
 
-        // Interpolate Z value
-        let t = if span_width > 0 {
-            (x - start) as f32 / span_width as f32
+    let span = right_x - left_x;
+    let inv_span = if span > 0 { 1.0 / span as f32 } else { 0.0 };
+    let z_step = if span > 0 {
+        (((z_right as i64 - z_left as i64) << 16) / span as i64) as i32
+    } else {
+        0
+    };
+
+    let left_clip = start_x - left_x;
+    let mut z_curr = ((z_left as i64) << 16) + (left_clip as i64 * z_step as i64);
+    let mut zbuf_idx = y as usize * width + start_x as usize;
+
+    // Sub-Span Perspective Texture Interpolation:
+    // Evaluates exact perspective UV division at 16-pixel boundaries and steps linearly within spans.
+    const SUB_SPAN_SIZE: i32 = 16;
+
+    let mut span_x = start_x;
+    while span_x <= end_x {
+        let next_span_x = (span_x + SUB_SPAN_SIZE).min(end_x + 1);
+        let span_len = next_span_x - span_x;
+
+        let t_start = (span_x - left_x) as f32 * inv_span;
+        let t_end = (next_span_x - 1 - left_x) as f32 * inv_span;
+
+        let [u_start, v_start] =
+            interpolate_uv(t_start, w_left, w_right, uv_left, uv_right, texture_mapping);
+        let [u_end, v_end] =
+            interpolate_uv(t_end, w_left, w_right, uv_left, uv_right, texture_mapping);
+
+        let inv_sub = if span_len > 1 {
+            1.0 / (span_len - 1) as f32
         } else {
             0.0
         };
-        let z = if span_width > 0 {
-            (z1 as i64 + ((z2 as i64 - z1 as i64) * (x - start) as i64 / span_width as i64)) as u32
-        } else {
-            z1
-        };
+        let du = (u_end - u_start) * inv_sub;
+        let dv = (v_end - v_start) * inv_sub;
 
-        // Z-test with epsilon to prevent Z-fighting on nearly coplanar faces
-        // We make the test slightly more permissive by allowing pixels within epsilon range
-        if z < zbuffer[zbuffer_idx].saturating_add(DEPTH_EPSILON) {
-            zbuffer[zbuffer_idx] = z;
+        let mut curr_u = u_start;
+        let mut curr_v = v_start;
 
-            let [u, v] = interpolate_uv(t, w1, w2, uv1, uv2, texture_mapping);
-
-            // Sample texture
-            let mut final_color = texture.sample(u, v);
-
-            // Apply effects in order: fog first, then dithering
-            if let Some(fog) = fog_config {
-                final_color = fog.apply(final_color, z);
+        for x in span_x..next_span_x {
+            if should_skip_stipple(x, y, stipple_mode) {
+                z_curr += z_step as i64;
+                zbuf_idx += 1;
+                curr_u += du;
+                curr_v += dv;
+                continue;
             }
 
-            if let Some(dither) = dither_config {
-                final_color = dither.apply(final_color, x, y);
-            }
-            if let Some(tint) = screen_tint {
-                final_color = tint.apply(final_color);
-            }
-            final_color = palette_mode.apply(final_color);
+            let z = (z_curr >> 16) as u32;
+            z_curr += z_step as i64;
 
-            fb.draw_iter([embedded_graphics_core::Pixel(Point::new(x, y), final_color)])
-                .unwrap();
+            if z < zbuffer[zbuf_idx].saturating_add(DEPTH_EPSILON) {
+                zbuffer[zbuf_idx] = z;
+
+                // Sample texture using sub-span interpolated UVs
+                let mut final_color = texture.sample(curr_u, curr_v);
+
+                // Apply effects in order: fog first, then dithering
+                if let Some(fog) = fog_config {
+                    final_color = fog.apply(final_color, z);
+                }
+
+                if let Some(dither) = dither_config {
+                    final_color = dither.apply(final_color, x, y);
+                }
+                if let Some(tint) = screen_tint {
+                    final_color = tint.apply(final_color);
+                }
+                final_color = palette_mode.apply(final_color);
+
+                fb.draw_iter([embedded_graphics_core::Pixel(Point::new(x, y), final_color)])
+                    .unwrap();
+            }
+            zbuf_idx += 1;
+            curr_u += du;
+            curr_v += dv;
         }
+
+        span_x = next_span_x;
     }
 }
 
@@ -4080,5 +4166,126 @@ mod tests {
         // Should have pixels from both primitives
         assert!(fb.pixel_count() > 11); // 1 point + at least 10 from line
         assert!(fb.contains_pixel(5, 5));
+    }
+
+    #[test]
+    fn test_scanline_z_linear_interpolation_correctness() {
+        let width = 100;
+        let mut zbuffer = std::vec![u32::MAX; width * 10];
+        let mut fb = MockFramebuffer::new();
+
+        let x1 = 10;
+        let x2 = 90;
+        let y = 5;
+        let z1 = 10000u32;
+        let z2 = 90000u32;
+
+        draw_scanline_zbuffered(
+            x1,
+            x2,
+            y,
+            z1,
+            z2,
+            Rgb565::CSS_BLUE,
+            &mut fb,
+            &mut zbuffer,
+            width,
+            None,
+            None,
+        );
+
+        // Verify that Z buffer contains linearly interpolated values across x=10..=90
+        let span = (x2 - x1) as f64;
+        for x in x1..=x2 {
+            let idx = y as usize * width + x as usize;
+            let actual_z = zbuffer[idx];
+            let expected_z = (z1 as f64 + (x - x1) as f64 * (z2 - z1) as f64 / span) as u32;
+
+            let diff = (actual_z as i64 - expected_z as i64).abs();
+            assert!(
+                diff <= 2,
+                "Z interpolation error at x={}: actual={}, expected={}, diff={}",
+                x, actual_z, expected_z, diff
+            );
+        }
+    }
+
+    #[test]
+    fn test_zbuffer_depth_occlusion_correctness() {
+        let width = 50;
+        let mut zbuffer = std::vec![u32::MAX; width * 5];
+        let mut fb = MockFramebuffer::new();
+
+        // Draw a far scanline at z = 50000
+        draw_scanline_zbuffered(
+            10, 20, 2, 50000, 50000,
+            Rgb565::CSS_RED,
+            &mut fb, &mut zbuffer, width, None, None,
+        );
+
+        // Draw a closer scanline at z = 20000 over the same span
+        draw_scanline_zbuffered(
+            10, 20, 2, 20000, 20000,
+            Rgb565::CSS_GREEN,
+            &mut fb, &mut zbuffer, width, None, None,
+        );
+
+        // All Z values should now be 20000
+        for x in 10..=20 {
+            let idx = 2 * width + x;
+            assert_eq!(zbuffer[idx], 20000);
+        }
+
+        // Draw a farther scanline at z = 80000 over the same span (should be culled)
+        draw_scanline_zbuffered(
+            10, 20, 2, 80000, 80000,
+            Rgb565::CSS_BLUE,
+            &mut fb, &mut zbuffer, width, None, None,
+        );
+
+        // Z values must remain 20000 (not overwritten by 80000)
+        for x in 10..=20 {
+            let idx = 2 * width + x;
+            assert_eq!(zbuffer[idx], 20000);
+        }
+    }
+
+    #[test]
+    fn test_sub_span_textured_scanline_correctness() {
+        let width = 100;
+        let mut zbuffer = std::vec![u32::MAX; width * 10];
+        let mut fb = MockFramebuffer::new();
+
+        // Create a 2x2 static texture with distinct colors
+        static TEX_DATA: [Rgb565; 4] = [
+            Rgb565::CSS_RED, Rgb565::CSS_GREEN,
+            Rgb565::CSS_BLUE, Rgb565::CSS_YELLOW,
+        ];
+        let texture = crate::texture::Texture::new(&TEX_DATA, 2, 2);
+
+        // Draw a 64-pixel scanline across multiple 16-pixel sub-spans (x=10..73)
+        draw_scanline_zbuffered_textured(
+            10, 73, 4,
+            1000, 1000,
+            1.0, 1.0,
+            [0.0, 0.0], [1.0, 1.0],
+            &texture,
+            &mut fb,
+            &mut zbuffer,
+            width,
+            None,
+            None,
+            TextureMapping::Affine,
+            StippleMode::Off,
+            None,
+            PaletteMode::Off,
+        );
+
+        // Every pixel from x=10 to 73 must be rendered and zbuffer updated
+        for x in 10..=73 {
+            let idx = 4 * width + x as usize;
+            assert_eq!(zbuffer[idx], 1000);
+        }
+        assert!(fb.pixel_count() >= 64);
     }
 }

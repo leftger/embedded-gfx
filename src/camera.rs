@@ -170,4 +170,36 @@ mod tests {
         camera.set_fovy(core::f32::consts::PI / 4.0);
         assert_ne!(camera.vp_matrix, after_pos);
     }
+
+    #[test]
+    fn test_camera_projection_target_center() {
+        let mut camera = Camera::new(1.0); // 1:1 aspect ratio
+        camera.set_position(Point3::new(0.0, 0.0, 5.0));
+        camera.set_target(Point3::new(0.0, 0.0, 0.0));
+
+        // Target point (0, 0, 0) transformed by VP matrix
+        let p_target = nalgebra::Vector4::new(0.0, 0.0, 0.0, 1.0);
+        let clip = camera.vp_matrix * p_target;
+
+        // In homogeneous clip space, x and y must be 0.0 (centered on screen)
+        assert!(clip.x.abs() < 1e-4);
+        assert!(clip.y.abs() < 1e-4);
+        assert!(clip.w > 0.0); // Point is in front of camera
+    }
+
+    #[test]
+    fn test_camera_view_matrix_orthogonality() {
+        let mut camera = Camera::new(16.0 / 9.0);
+        camera.set_position(Point3::new(3.0, 4.0, 5.0));
+        camera.set_target(Point3::new(0.0, 1.0, 0.0));
+
+        // Extract upper-left 3x3 rotation matrix R from view matrix
+        let R = camera.view_matrix.fixed_view::<3, 3>(0, 0);
+        let I = R * R.transpose();
+
+        // R * R^T must equal Identity for orthogonal rotation matrix
+        let identity = nalgebra::Matrix3::identity();
+        let diff = (I - identity).norm();
+        assert!(diff < 1e-4, "View matrix rotation is not orthogonal: diff = {}", diff);
+    }
 }

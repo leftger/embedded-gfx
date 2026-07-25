@@ -167,6 +167,7 @@ dependencies = [
 [[package]]
 name = "embedded-dsp"
 version = "0.1.0"
+source = "git+https://github.com/leftger/embedded-dsp#8730eda093318c6dd49028173cd093d0d2d25fde"
 dependencies = [
  "libm",
 ]

@@ -67,7 +67,7 @@ nalgebra = { version = "0.34", default-features = false, features = [ "libm" ] }
 line_drawing = "1.0"
 heapless = "0.9"
 embassy-time = { version = "0.5", default-features = false, optional = true }
-embedded-dsp = { path = "../embedded-dsp", optional = true }
+embedded-dsp = { git = "https://github.com/leftger/embedded-dsp", optional = true }
 
 [lib]
 name = "embedded_3dgfx"

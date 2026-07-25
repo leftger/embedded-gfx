@@ -215,6 +215,13 @@ pub fn div_fp(a: i32, b: i32) -> Option<i32> {
 /// # Usage
 /// ```rust,no_run
 /// # use embedded_3dgfx::fixed_math::ScanlineInterp;
+/// # let left_z = 0u32;
+/// # let right_z = 0u32;
+/// # let left_u = 0u32;
+/// # let right_u = 0u32;
+/// # let left_v = 0u32;
+/// # let right_v = 0u32;
+/// # let span_pixels = 0i32;
 /// let mut interp = ScanlineInterp::new(
 ///     left_z,  right_z,   // u32 depth values (Q16.16)
 ///     left_u,  right_u,   // u32 U texture coords (Q16.16)
@@ -229,10 +236,6 @@ pub fn div_fp(a: i32, b: i32) -> Option<i32> {
 ///     // ... depth test, texture sample, write pixel ...
 ///     interp.step();
 /// }
-/// # let left_z = 0u32; let right_z = 0u32;
-/// # let left_u = 0u32; let right_u = 0u32;
-/// # let left_v = 0u32; let right_v = 0u32;
-/// # let span_pixels = 0i32;
 /// ```
 #[derive(Debug, Clone, Copy)]
 pub struct ScanlineInterp {

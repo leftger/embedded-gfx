@@ -9,6 +9,13 @@ A `no_std` 3D graphics and physics engine for embedded systems, optimized for re
 
 > This is a fork of [embedded-gfx](https://github.com/Kezii/embedded-gfx) by [Kezii](https://github.com/Kezii). This fork adds texture mapping, fog/dithering effects, DMA rendering, Z-buffer improvements, anti-aliasing, a complete physics engine, and Quake-style environmental effects.
 
+## What's new in 0.4.0
+
+- **Breaking:** `fixed_math.rs` and `lut.rs` were removed. Q16.16 fixed-point arithmetic and the sin/cos lookup table now live in [`embedded-dsp`](https://crates.io/crates/embedded-dsp)'s `fixed-point`/`lut` modules (identical algorithms, ported verbatim, now shared with `embedded-gui` instead of duplicated).
+  - `Q16`, `to_q16`, `from_q16`, `ScanlineInterp`, and friends are now only exported when the `fixed-transform` feature is enabled (previously unconditional). `fixed-transform` now implies `dsp`.
+  - The legacy `to_fp`/`from_fp`/`mul_fp`/`div_fp` aliases are gone — use the canonical `to_q16`/`from_q16`/`mul_q16`/`div_q16` names instead.
+  - No rendering behavior change — verified bit-identical output against the prior implementation.
+
 ## What's new in 0.3.0
 
 - **Perspective-correct textures** — clip-space W is propagated through the rasterizer; UV coordinates are now divided by W per pixel, eliminating the affine swim on non-axis-aligned surfaces
@@ -24,7 +31,6 @@ A `no_std` 3D graphics and physics engine for embedded systems, optimized for re
 - **Runtime depth fog** — `K3dengine::set_fog(FogConfig)` enables per-pixel linear depth fog applied during rasterization across both mesh and BSP paths.
 - **Dynamic point lights** — `K3dengine::add_point_light(PointLight)` registers runtime point lights with squared-distance falloff that are composited as an additive RGB565 tint on top of baked/directional lighting at face granularity.
 - **BSP room-strip builder (std)** — `bsp::builder::build_room_strip` converts high-level room specs into valid BSP lumps for quick tooling/tests/examples.
-- **Shared fixed-point/LUT math via embedded-dsp** — `fixed_math.rs` and `lut.rs` were removed in favor of `embedded-dsp`'s `fixed-point`/`lut` modules (identical algorithms, now shared with `embedded-gui` instead of duplicated). `fixed-transform` now implies the `dsp` feature. No behavior change — verified bit-identical rendering output against the prior implementation.
 
 ## Features
 
@@ -116,13 +122,13 @@ cargo run --example screenshots --features std
 ```toml
 [dependencies]
 # Embedded (no_std)
-embedded-3dgfx = { version = "0.3", default-features = false }
+embedded-3dgfx = { version = "0.4", default-features = false }
 
 # With physics
-embedded-3dgfx = { version = "0.3", features = ["physics"] }
+embedded-3dgfx = { version = "0.4", features = ["physics"] }
 
 # Desktop / simulator with all features
-embedded-3dgfx = { version = "0.3", features = ["std", "physics"] }
+embedded-3dgfx = { version = "0.4", features = ["std", "physics"] }
 ```
 
 ## Basic Example

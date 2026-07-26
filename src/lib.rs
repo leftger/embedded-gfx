@@ -28,12 +28,10 @@ pub mod config;
 pub mod display_backend;
 pub mod draw;
 pub mod error;
-pub mod fixed_math;
 pub mod hardware_profile;
 pub mod hud;
 pub mod input;
 pub mod lights;
-pub mod lut;
 pub mod mesh;
 #[cfg(feature = "std")]
 pub mod painters;
@@ -76,41 +74,14 @@ pub use draw::{
     DitherConfig, FogConfig, fast_blend_rgb565, fast_blend_rgba8888, fast_blend_rgba8888_to_rgb565,
     reverse_color_rgb565, reverse_color_rgba8888,
 };
-pub use fixed_math::{
-    FP_ONE,
-    // Type alias and constants
-    Q16,
-    Q16_MAX,
-    Q16_MIN,
-    // Scanline z/uv accelerator
-    ScanlineInterp,
-    abs_q16,
-    angle_to_q16,
-    div_f_q16,
-    div_fp,
-    div_n_q16,
-    div_q16,
-    from_fp,
-    from_i16_q16,
-    from_q16,
-    // Helpers
-    lerp_q16,
-    mul_f_q16,
-    mul_fp,
-    mul_n_q16,
-    // Arithmetic
-    mul_q16,
-    q16_to_q31,
-    q31_to_q16,
-    // Saturating arithmetic
-    qadd_q16,
-    qsub_q16,
-    recip_q16,
-    // Legacy shims kept for backward compat
-    to_fp,
-    to_i16_q16,
-    // Conversions
-    to_q16,
+// Q16.16 fixed-point math now lives in embedded-dsp (shared with
+// embedded-gui) instead of a bespoke copy in this crate. Only available
+// when the "fixed-transform" feature (which requires "dsp") is enabled.
+#[cfg(feature = "fixed-transform")]
+pub use embedded_dsp::fixed_point::{
+    FP_ONE, Q16, Q16_MAX, Q16_MIN, ScanlineInterp, abs_q16, angle_to_q16, div_f_q16, div_n_q16,
+    div_q16, from_i16_q16, from_q16, lerp_q16, mul_f_q16, mul_n_q16, mul_q16, q16_to_q31,
+    q31_to_q16, qadd_q16, qsub_q16, recip_q16, to_i16_q16, to_q16,
 };
 pub use input::InputState;
 pub use lights::{PointLight, PointLightSet};
@@ -546,7 +517,19 @@ impl K3dengine {
         point: &[f32; 3],
         model_matrix: Matrix4<f32>,
     ) -> Option<Point3<i32>> {
-        use crate::fixed_math::{div_fp, from_fp, to_fp};
+        use embedded_dsp::fixed_point::{Q16, from_q16, to_q16};
+
+        // Q16.16 division that returns `None` on a zero divisor, matching
+        // the early-return-via-`?` control flow below (`div_q16` itself
+        // just returns 0 on divide-by-zero).
+        #[inline(always)]
+        fn div_checked(a: Q16, b: Q16) -> Option<Q16> {
+            if b == 0 {
+                None
+            } else {
+                Some(embedded_dsp::fixed_point::div_q16(a, b))
+            }
+        }
 
         let point = nalgebra::Vector4::new(point[0], point[1], point[2], 1.0);
         let point = model_matrix * point;
@@ -562,12 +545,12 @@ impl K3dengine {
             return None;
         }
 
-        let x_fp = div_fp(to_fp(point.x), to_fp(point.w))?;
-        let y_fp = div_fp(to_fp(point.y), to_fp(point.w))?;
-        let z_ndc = from_fp(div_fp(to_fp(point.z), to_fp(point.w))?);
+        let x_fp = div_checked(to_q16(point.x), to_q16(point.w))?;
+        let y_fp = div_checked(to_q16(point.y), to_q16(point.w))?;
+        let z_ndc = from_q16(div_checked(to_q16(point.z), to_q16(point.w))?);
 
-        let x = ((1.0 + from_fp(x_fp)) * 0.5 * self.width as f32) as i32;
-        let y = ((1.0 - from_fp(y_fp)) * 0.5 * self.height as f32) as i32;
+        let x = ((1.0 + from_q16(x_fp)) * 0.5 * self.width as f32) as i32;
+        let y = ((1.0 - from_q16(y_fp)) * 0.5 * self.height as f32) as i32;
 
         if x < 0 || x >= self.width as i32 || y < 0 || y >= self.height as i32 {
             return None;

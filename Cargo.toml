@@ -49,8 +49,10 @@ aa-coverage = ["aa"]
 desktop-unbounded = []
 # Enable triple-buffered swapchain APIs.
 triple-buffering = []
-# Use fixed-point screen-space projection path.
-fixed-transform = []
+# Use fixed-point screen-space projection path. Q16.16 arithmetic now
+# lives in embedded-dsp's "fixed-point" feature (shared with embedded-gui),
+# rather than a bespoke copy in this crate.
+fixed-transform = ["dsp", "embedded-dsp/fixed-point"]
 # Enable DWT cycle-counter profiling hooks.
 dwt-profiler = []
 # Enable RTT trace sink markers (board-specific integration required).
@@ -67,7 +69,7 @@ nalgebra = { version = "0.34", default-features = false, features = [ "libm" ] }
 line_drawing = "1.0"
 heapless = "0.9"
 embassy-time = { version = "0.5", default-features = false, optional = true }
-embedded-dsp = { version = "0.1.0", optional = true }
+embedded-dsp = { version = "0.2.0", path = "../embedded-dsp", optional = true }
 
 [lib]
 name = "embedded_3dgfx"

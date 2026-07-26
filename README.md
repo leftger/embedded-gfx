@@ -24,6 +24,7 @@ A `no_std` 3D graphics and physics engine for embedded systems, optimized for re
 - **Runtime depth fog** — `K3dengine::set_fog(FogConfig)` enables per-pixel linear depth fog applied during rasterization across both mesh and BSP paths.
 - **Dynamic point lights** — `K3dengine::add_point_light(PointLight)` registers runtime point lights with squared-distance falloff that are composited as an additive RGB565 tint on top of baked/directional lighting at face granularity.
 - **BSP room-strip builder (std)** — `bsp::builder::build_room_strip` converts high-level room specs into valid BSP lumps for quick tooling/tests/examples.
+- **Shared fixed-point/LUT math via embedded-dsp** — `fixed_math.rs` and `lut.rs` were removed in favor of `embedded-dsp`'s `fixed-point`/`lut` modules (identical algorithms, now shared with `embedded-gui` instead of duplicated). `fixed-transform` now implies the `dsp` feature. No behavior change — verified bit-identical rendering output against the prior implementation.
 
 ## Features
 
@@ -419,7 +420,8 @@ PhysicsWorld::<16, 8>::new()  // 16 bodies, 8 constraints (const generics, no he
 | `row_width_160` | — | Optimize row buffers for 160 px wide displays |
 | `row_width_240` | — | Optimize row buffers for 240 px wide displays (default) |
 | `row_width_320` | — | Optimize row buffers for 320 px wide displays |
-| `fixed-transform` | off | Fixed-point screen-space projection path |
+| `dsp` | off | Pulls in [`embedded-dsp`](https://crates.io/crates/embedded-dsp) for shared numerics (currently: quaternion normalization in `skeleton.rs`) |
+| `fixed-transform` | off | Fixed-point screen-space projection path. Implies `dsp` — Q16.16 arithmetic lives in `embedded-dsp`'s `fixed-point` feature (shared with `embedded-gui`) rather than a copy in this crate |
 | `dwt-profiler` | off | DWT cycle-counter profiling hooks |
 | `triple-buffering` | off | Triple-buffered swapchain APIs |
 
@@ -494,9 +496,11 @@ src/
   command_buffer.rs   # Fixed-capacity command buffer
   particles.rs        # No-alloc billboard particle system
   lights.rs           # Dynamic point lights, PointLight, PointLightSet
+  sector_lights.rs    # Doom-style per-sector brightness scaling
   config.rs           # ProfileCaps, QualityTier, DegradationPolicy
   error.rs            # RenderError, BudgetKind
   physics.rs          # Rigid body dynamics (feature: physics)
+  character.rs        # Character controller
   skeleton.rs         # Skeletal animation, linear blend skinning
   softbody.rs         # Mass-spring soft body physics (feature: physics)
   texture.rs          # Texture management, RGB565
@@ -507,21 +511,24 @@ src/
   swapchain.rs        # DMA double/triple buffering
   display_backend.rs  # Display abstraction layer
   bridge.rs           # embedded-graphics bridge
+  input.rs            # Input event handling
   painters.rs         # Painter's algorithm (std only)
+  retro.rs            # Retro rendering presets (Doom/PSX-style)
   hud.rs              # HUD overlay elements
   scene_format.rs     # Serialized scene chunk format
   scene_stream.rs     # Cooperative chunk streaming
   hardware_profile.rs # Target hardware profile definitions
   perfcounter.rs      # FPS/timing measurements
-  fixed_math.rs       # Fixed-point math helpers
   telemetry.rs        # Record/execute telemetry types
   tilebin.rs          # Tile-bin stats and config
-  lut.rs              # Precomputed lookup tables
+  bsp/                # BSP tree builder, PVS, and traversal (Doom-style levels)
 
 load_stl/             # STL file embedding macro
 examples/             # 31 interactive demos
-tests/                # 255 unit tests
+tests/                # 320 library unit tests + integration/regression suites (~400 total)
 ```
+
+Q16.16 fixed-point math (`fixed-transform` feature) and the sin/cos lookup table formerly in this crate's own `fixed_math.rs`/`lut.rs` now live in [`embedded-dsp`](https://crates.io/crates/embedded-dsp), shared with `embedded-gui`; see the `dsp`/`fixed-transform` rows in [Feature Flags](#feature-flags).
 
 ## Testing
 

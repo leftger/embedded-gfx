@@ -42,7 +42,7 @@ static CHECKER: [Rgb565; 64] = {
     while i < 64 {
         let x = i % 8;
         let y = i / 8;
-        data[i] = if (x + y) % 2 == 0 {
+        data[i] = if (x + y).is_multiple_of(2) {
             Rgb565::new(4, 10, 4)
         } else {
             Rgb565::new(12, 24, 10)
@@ -58,7 +58,7 @@ static CEIL: [Rgb565; 64] = {
     while i < 64 {
         let x = i % 8;
         let y = i / 8;
-        data[i] = if (x + y) % 2 == 0 {
+        data[i] = if (x + y).is_multiple_of(2) {
             Rgb565::new(8, 8, 16)
         } else {
             Rgb565::new(3, 4, 10)

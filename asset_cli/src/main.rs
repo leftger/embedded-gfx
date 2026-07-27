@@ -820,6 +820,7 @@ struct WadSeg {
 }
 
 #[derive(Debug, Clone, Copy)]
+#[allow(dead_code)]
 struct WadSsector {
     seg_count: u16,
     first_seg: u16,
@@ -1190,6 +1191,7 @@ fn triangulate_polygon_ear_clip(points: &[[f32; 2]]) -> Vec<[usize; 3]> {
     tris
 }
 
+#[allow(dead_code)]
 fn build_subsector_loop(seg_slice: &[WadSeg]) -> Vec<u16> {
     if seg_slice.is_empty() {
         return Vec::new();

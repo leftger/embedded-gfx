@@ -1227,10 +1227,9 @@ fn test_record_budget_decimation_fallback_rejects_zero_stride() {
     let _ = mesh;
     // This test no longer applies in the same way; just verify record works
     let mut cmd = CommandBuffer::<64>::new();
-    let err = engine
+    engine
         .record(std::iter::once(&mesh), &mut cmd, None)
         .unwrap_or(());
-    let _ = err;
 }
 
 #[test]

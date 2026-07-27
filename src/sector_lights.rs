@@ -144,8 +144,8 @@ mod tests {
         for t in [0.0, 0.1, 0.5, 1.0, 2.0, 4.0] {
             let g = light_level_u8_at(&glow, t);
             let a = light_level_u8_at(&alt, t);
-            assert!(g <= 255);
-            assert!(a <= 255);
+            assert!(g >= 47);
+            assert!(a >= 95);
         }
     }
 }

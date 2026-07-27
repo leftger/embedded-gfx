@@ -73,8 +73,8 @@ pub use character::CharacterController;
 #[cfg(feature = "aa")]
 pub use draw::draw_zbuffered_2xssaa;
 pub use draw::{
-    DitherConfig, FogConfig, fast_blend_rgb565, fast_blend_rgba8888, fast_blend_rgba8888_to_rgb565,
-    reverse_color_rgb565, reverse_color_rgba8888,
+    DitherConfig, FogConfig, fast_blend_rgb565, fast_blend_rgba8888,
+    fast_blend_rgba8888_to_rgb565, reverse_color_rgb565, reverse_color_rgba8888,
 };
 pub use fixed_math::{
     FP_ONE,
@@ -450,7 +450,7 @@ impl K3dengine {
                 | (MaterialProfile::Unlit, RenderMode::GouraudLightDir(_))
                 | (MaterialProfile::Unlit, RenderMode::SolidLightDir(_)) => RenderMode::Solid,
                 (MaterialProfile::Lambert, RenderMode::BlinnPhong { light_dir, .. }) => {
-                    RenderMode::SolidLightDir(light_dir.clone())
+                    RenderMode::SolidLightDir(*light_dir)
                 }
                 _ => mode.clone(),
             },
@@ -459,7 +459,7 @@ impl K3dengine {
                 | (MaterialProfile::Unlit, RenderMode::GouraudLightDir(_))
                 | (MaterialProfile::Unlit, RenderMode::SolidLightDir(_)) => RenderMode::Solid,
                 (MaterialProfile::Lambert, RenderMode::BlinnPhong { light_dir, .. }) => {
-                    RenderMode::SolidLightDir(light_dir.clone())
+                    RenderMode::SolidLightDir(*light_dir)
                 }
                 _ => mode.clone(),
             },
@@ -1443,7 +1443,7 @@ impl K3dengine {
                 }
 
                 if let Some(texture_id) = geometry.texture_id
-                    && !used_texture_ids.iter().any(|id| *id == texture_id)
+                    && !used_texture_ids.contains(&texture_id)
                 {
                     let attempted = used_texture_ids.len() + 1;
                     if attempted > caps.max_textures {
@@ -1834,7 +1834,7 @@ pub fn mesh_ray_cast(
         let inv_det = 1.0 / det;
         let s = ray_origin - v0;
         let bary_u = inv_det * s.dot(&h);
-        if bary_u < 0.0 || bary_u > 1.0 {
+        if !(0.0..=1.0).contains(&bary_u) {
             continue;
         }
 

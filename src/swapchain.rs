@@ -222,7 +222,7 @@ where
     /// Returns `true` if no DMA transfer is running (or the hardware has
     /// signalled completion), so `try_present` would succeed.
     pub fn is_ready(&self) -> bool {
-        self.front.as_ref().map_or(true, |s| s.is_ready())
+        self.front.as_ref().is_none_or(|s| s.is_ready())
     }
 
     /// Total number of frames presented since construction (or the last

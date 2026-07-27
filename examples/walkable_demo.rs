@@ -376,11 +376,9 @@ fn main() {
                         player_pos.z -= fwd_x * speed;
                     }
 
-                    Keycode::Space => {
-                        if on_ground {
-                            v_vel = 5.5;
-                            on_ground = false;
-                        }
+                    Keycode::Space if on_ground => {
+                        v_vel = 5.5;
+                        on_ground = false;
                     }
 
                     _ => {}

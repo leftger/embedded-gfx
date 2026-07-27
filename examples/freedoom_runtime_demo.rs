@@ -40,7 +40,7 @@ static CHECKER: [Rgb565; 64] = {
     while i < 64 {
         let x = i % 8;
         let y = i / 8;
-        data[i] = if (x + y) % 2 == 0 {
+        data[i] = if (x + y).is_multiple_of(2) {
             Rgb565::new(10, 20, 10)
         } else {
             Rgb565::new(5, 10, 5)

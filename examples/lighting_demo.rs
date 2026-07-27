@@ -150,7 +150,7 @@ fn main() {
     println!("  SPACE       - Toggle auto-rotation");
     println!("  Arrow Keys  - Adjust light direction");
     println!("  ESC         - Exit");
-    println!("");
+    println!();
     println!("IMPORTANT: Watch how different faces have different brightness!");
     println!("           This shows the directional lighting at work.");
 
@@ -268,7 +268,7 @@ fn main() {
             let rad = (angle as f32).to_radians();
             let px = (indicator_x as f32 + rad.cos() * indicator_radius) as i32;
             let py = (indicator_y as f32 + rad.sin() * indicator_radius) as i32;
-            if px >= 0 && px < 800 && py >= 0 && py < 600 {
+            if (0..800).contains(&px) && (0..600).contains(&py) {
                 display
                     .draw_iter(std::iter::once(Pixel(
                         Point::new(px, py),

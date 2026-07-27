@@ -276,31 +276,31 @@ fn main() {
                     engine.camera.vp_matrix * cube.model_matrix,
                 ) {
                     // Get UV coordinates if available
-                    if let Some(texture_id) = geometry.texture_id {
-                        if !geometry.uvs.is_empty() {
-                            let uvs = [
-                                geometry.uvs[face[0]],
-                                geometry.uvs[face[1]],
-                                geometry.uvs[face[2]],
-                            ];
+                    if let Some(texture_id) = geometry.texture_id
+                        && !geometry.uvs.is_empty()
+                    {
+                        let uvs = [
+                            geometry.uvs[face[0]],
+                            geometry.uvs[face[1]],
+                            geometry.uvs[face[2]],
+                        ];
 
-                            use embedded_3dgfx::DrawPrimitive;
-                            draw_zbuffered_with_textures(
-                                DrawPrimitive::TexturedTriangleWithDepth {
-                                    points: [p1.xy(), p2.xy(), p3.xy()],
-                                    depths: [p1.z as f32, p2.z as f32, p3.z as f32],
-                                    ws: [1.0, 1.0, 1.0],
-                                    uvs,
-                                    texture_id,
-                                },
-                                &mut display,
-                                &mut zbuffer,
-                                800,
-                                &texture_manager,
-                                None,
-                                None,
-                            );
-                        }
+                        use embedded_3dgfx::DrawPrimitive;
+                        draw_zbuffered_with_textures(
+                            DrawPrimitive::TexturedTriangleWithDepth {
+                                points: [p1.xy(), p2.xy(), p3.xy()],
+                                depths: [p1.z as f32, p2.z as f32, p3.z as f32],
+                                ws: [1.0, 1.0, 1.0],
+                                uvs,
+                                texture_id,
+                            },
+                            &mut display,
+                            &mut zbuffer,
+                            800,
+                            &texture_manager,
+                            None,
+                            None,
+                        );
                     }
                 }
             }

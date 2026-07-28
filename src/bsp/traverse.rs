@@ -183,7 +183,7 @@ pub fn project_to_screen(
     let ndc_x = clip.x / clip.w;
     let ndc_y = clip.y / clip.w;
     let ndc_z = clip.z / clip.w;
-    if ndc_z < -1.0 || ndc_z > 1.0 {
+    if !(-1.0..=1.0).contains(&ndc_z) {
         return None;
     }
     let sx = ((1.0 + ndc_x) * 0.5 * width as f32) as i32;

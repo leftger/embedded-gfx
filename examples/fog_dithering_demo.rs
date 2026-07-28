@@ -107,7 +107,7 @@ fn main() {
     // Create multiple cubes at different depths
     let mut cubes: Vec<K3dMesh> = Vec::new();
     for i in 0..7 {
-        let mut cube = K3dMesh::new(cube_geom.clone());
+        let mut cube = K3dMesh::new(cube_geom);
         let x = ((i % 3) as f32 - 1.0) * 3.0;
         let y = ((i / 3) as f32 - 1.0) * 3.0;
         let z = -i as f32 * 4.0;
@@ -176,7 +176,7 @@ fn main() {
                         println!("Dither intensity: {}", dither_intensity);
                     }
                     Keycode::RightBracket => {
-                        dither_intensity = dither_intensity.saturating_add(8).min(255);
+                        dither_intensity = dither_intensity.saturating_add(8);
                         println!("Dither intensity: {}", dither_intensity);
                     }
                     _ => {}

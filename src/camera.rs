@@ -199,6 +199,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(non_snake_case)]
     fn test_camera_view_matrix_orthogonality() {
         let mut camera = Camera::new(16.0 / 9.0);
         camera.set_position(Point3::new(3.0, 4.0, 5.0));

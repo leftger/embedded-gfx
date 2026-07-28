@@ -181,7 +181,6 @@ mod tests {
     extern crate std;
 
     use super::*;
-    use embedded_graphics_core::pixelcolor::WebColors;
 
     #[test]
     fn test_ease_out_cubic_endpoints() {

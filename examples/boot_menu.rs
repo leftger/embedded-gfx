@@ -249,7 +249,7 @@ fn render_scene(
                 height: H as usize,
             };
             engine
-                .execute::<_, 1024>(display, &mut frame, &commands, None)
+                .execute::<_, 1024>(display, &mut frame, commands, None)
                 .unwrap();
             render_textured_billboard(
                 engine,

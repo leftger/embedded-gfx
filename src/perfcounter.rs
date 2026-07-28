@@ -117,14 +117,14 @@ impl PerformanceCounter {
                 cycles_now,
             );
             hardware_profile::emit_trace(sample);
-            let _ = write!(
+            let _ = writeln!(
                 self.text,
-                "{}: {}us ({} cyc)\n",
+                "{}: {}us ({} cyc)",
                 label, duration, sample.cycles
             );
             self.dwt_last_measurement_cycles = cycles_now;
         } else {
-            let _ = write!(self.text, "{}: {}us\n", label, duration);
+            let _ = writeln!(self.text, "{}: {}us", label, duration);
         }
         self.last_measurement_time_us = now;
     }
@@ -141,7 +141,7 @@ impl PerformanceCounter {
             0
         };
         if self.only_fps {
-            let _ = write!(self.text, "fps: {}\n", fps);
+            let _ = writeln!(self.text, "fps: {}", fps);
             self.old_text = self.text.clone();
             return;
         }

@@ -29,7 +29,7 @@ pub struct CoverageBuffer<'a> {
 impl<'a> CoverageBuffer<'a> {
     /// Returns the number of bytes needed for `width × height` pixels.
     pub const fn bytes_for(width: usize, height: usize) -> usize {
-        (width * height + 7) / 8
+        (width * height).div_ceil(8)
     }
 
     /// Create from a caller-owned byte slice.

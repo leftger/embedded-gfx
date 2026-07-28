@@ -715,7 +715,7 @@ fn capture_fog_dither() {
 
     let cubes: Vec<K3dMesh> = (0..7)
         .map(|i| {
-            let mut c = K3dMesh::new(base_geom.clone());
+            let mut c = K3dMesh::new(base_geom);
             let x = (i % 3) as f32 * 3.0 - 3.0;
             let y = (i / 3) as f32 * 3.0 - 1.5;
             let z = -(i as f32) * 4.0;
@@ -910,7 +910,7 @@ fn capture_texture() {
         while i < 64 {
             let x = i % 8;
             let y = i / 8;
-            d[i] = if (x + y) % 2 == 0 {
+            d[i] = if (x + y).is_multiple_of(2) {
                 Rgb565::new(0, 0, 0)
             } else {
                 Rgb565::new(31, 63, 31)
@@ -925,7 +925,7 @@ fn capture_texture() {
         while i < 256 {
             let x = i % 16;
             let y = i / 16;
-            if y % 4 == 0 || (y % 8 < 4 && x == 7) || (y % 8 >= 4 && x == 15) {
+            if y.is_multiple_of(4) || (y % 8 < 4 && x == 7) || (y % 8 >= 4 && x == 15) {
                 d[i] = Rgb565::new(12, 12, 12);
             }
             i += 1;
@@ -1019,27 +1019,25 @@ fn capture_texture() {
                 face,
                 geom.vertices,
                 engine.camera.vp_matrix * mesh.model_matrix,
-            ) {
-                if let Some(tid) = geom.texture_id {
-                    if !geom.uvs.is_empty() {
-                        let uvs = [geom.uvs[face[0]], geom.uvs[face[1]], geom.uvs[face[2]]];
-                        draw_zbuffered_with_textures(
-                            DrawPrimitive::TexturedTriangleWithDepth {
-                                points: [p1.xy(), p2.xy(), p3.xy()],
-                                depths: [p1.z as f32, p2.z as f32, p3.z as f32],
-                                ws: [1.0, 1.0, 1.0],
-                                uvs,
-                                texture_id: tid,
-                            },
-                            &mut display,
-                            &mut zbuffer,
-                            800,
-                            &tex_mgr,
-                            None,
-                            None,
-                        );
-                    }
-                }
+            ) && let Some(tid) = geom.texture_id
+                && !geom.uvs.is_empty()
+            {
+                let uvs = [geom.uvs[face[0]], geom.uvs[face[1]], geom.uvs[face[2]]];
+                draw_zbuffered_with_textures(
+                    DrawPrimitive::TexturedTriangleWithDepth {
+                        points: [p1.xy(), p2.xy(), p3.xy()],
+                        depths: [p1.z as f32, p2.z as f32, p3.z as f32],
+                        ws: [1.0, 1.0, 1.0],
+                        uvs,
+                        texture_id: tid,
+                    },
+                    &mut display,
+                    &mut zbuffer,
+                    800,
+                    &tex_mgr,
+                    None,
+                    None,
+                );
             }
         }
     }
@@ -1199,7 +1197,7 @@ fn capture_bsp_builder() {
         while i < 64 {
             let x = i % 8;
             let y = i / 8;
-            data[i] = if (x + y) % 2 == 0 {
+            data[i] = if (x + y).is_multiple_of(2) {
                 Rgb565::new(8, 14, 8)
             } else {
                 Rgb565::new(10, 18, 10)
@@ -1214,7 +1212,7 @@ fn capture_bsp_builder() {
         while i < 64 {
             let x = i % 8;
             let y = i / 8;
-            data[i] = if (x + y) % 2 == 0 {
+            data[i] = if (x + y).is_multiple_of(2) {
                 Rgb565::new(8, 8, 14)
             } else {
                 Rgb565::new(6, 7, 12)
@@ -1979,7 +1977,7 @@ fn capture_point_lights() {
         .map(|i| {
             let x = (i % 3) as f32 * 3.2 - 3.2;
             let y = (i / 3) as f32 * 2.8 - 2.8;
-            let mut m = K3dMesh::new(base_geom.clone());
+            let mut m = K3dMesh::new(base_geom);
             m.set_render_mode(RenderMode::SolidLightDir(light_dir));
             m.set_color(Rgb565::new(7, 14, 9));
             m.set_position(x, y, 0.0);
@@ -2152,7 +2150,7 @@ fn gif_point_lights() {
         .map(|i| {
             let x = (i % 3) as f32 * 2.6 - 2.6;
             let y = (i / 3) as f32 * 2.4 - 2.4;
-            let mut m = K3dMesh::new(base_geom.clone());
+            let mut m = K3dMesh::new(base_geom);
             m.set_render_mode(RenderMode::SolidLightDir(light_dir));
             m.set_color(Rgb565::new(7, 14, 9));
             m.set_position(x, y, 0.0);

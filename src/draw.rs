@@ -663,9 +663,7 @@ pub fn draw<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
         }
         DrawPrimitive::ColoredTriangle(mut vertices, color) => {
             // sort vertices by y using sort_unstable_by
-            vertices
-                .as_mut_slice()
-                .sort_unstable_by(|a, b| a.y.cmp(&b.y));
+            vertices.as_mut_slice().sort_unstable_by_key(|a| a.y);
 
             let [p1, p2, p3] = [
                 Point::new(vertices[0].x, vertices[0].y),

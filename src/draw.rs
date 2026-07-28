@@ -2997,7 +2997,7 @@ fn draw_scanline_lm<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rg
 ///
 /// Only writes pixels that have not yet been covered this frame.  Correct
 /// when triangles arrive in strict front-to-back order (guaranteed by the BSP
-/// walk in [`walk_front_to_back`]).
+/// walk in [`walk_front_to_back`](crate::bsp::traverse::walk_front_to_back)).
 pub fn draw_bsp_coverage<
     D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>,
     const N: usize,

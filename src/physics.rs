@@ -137,7 +137,7 @@ impl RigidBody {
     /// Create a new dynamic rigid body with the given mass (in kg).
     ///
     /// The body starts with a default point-mass inertia tensor (identity scaled
-    /// by mass). Use [`with_inertia_sphere`] or [`with_inertia_box`] after
+    /// by mass). Use [`Self::with_inertia_sphere`] or [`Self::with_inertia_box`] after
     /// attaching a collider for physically accurate rotation.
     ///
     /// # Panics

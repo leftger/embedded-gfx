@@ -73,7 +73,7 @@ where
 /// Draw a [`DrawPrimitive`] to any [`DrawTarget`], converting pixel colors from
 /// `Rgb565` (the 3D engine's internal format) to the target's native color type.
 ///
-/// Use the plain [`draw`](crate::draw::draw) function directly when your
+/// Use the plain [`draw`] function directly when your
 /// framebuffer already uses `Rgb565` — it has zero conversion overhead.
 ///
 /// # Example

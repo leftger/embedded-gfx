@@ -1,7 +1,7 @@
 //! BSP content builder helpers (std-only authoring path).
 //!
 //! This module provides a small, deterministic pipeline helper for generating
-//! valid [`BspWorld`](crate::bsp::data::BspWorld) data from high-level room
+//! valid [`BspWorld`] data from high-level room
 //! descriptions. It is intended for offline/tooling and examples, not hot-path
 //! runtime generation on constrained devices.
 

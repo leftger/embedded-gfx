@@ -28,22 +28,22 @@ pub const fn to_zdepth(z: u32) -> ZDepth {
     }
 }
 
+#[cfg(feature = "dma2d")]
+unsafe extern "Rust" {
+    fn dma2d_clear_zbuffer_u16(ptr: *mut u16, len: usize, value: u16);
+    fn dma2d_clear_zbuffer_u32(ptr: *mut u32, len: usize, value: u32);
+}
+
 #[inline(always)]
 pub fn clear_zbuffer(zbuffer: &mut [ZDepth], value: ZDepth) {
     #[cfg(feature = "dma2d")]
     {
         #[cfg(feature = "depth-u16")]
         unsafe {
-            unsafe extern "Rust" {
-                fn dma2d_clear_zbuffer_u16(ptr: *mut u16, len: usize, value: u16);
-            }
             dma2d_clear_zbuffer_u16(zbuffer.as_mut_ptr(), zbuffer.len(), value);
         }
         #[cfg(not(feature = "depth-u16"))]
         unsafe {
-            unsafe extern "Rust" {
-                fn dma2d_clear_zbuffer_u32(ptr: *mut u32, len: usize, value: u32);
-            }
             dma2d_clear_zbuffer_u32(zbuffer.as_mut_ptr(), zbuffer.len(), value);
         }
     }

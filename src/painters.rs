@@ -238,7 +238,7 @@ impl K3dengine {
         }
 
         // Sort triangles by depth (back-to-front = largest depth first)
-        triangles[0..count].sort_by(|a, b| {
+        triangles[0..count].sort_unstable_by(|a, b| {
             b.avg_depth
                 .partial_cmp(&a.avg_depth)
                 .unwrap_or(Ordering::Equal)

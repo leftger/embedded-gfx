@@ -8,7 +8,7 @@ use crate::{
 #[derive(Debug, Clone)]
 pub enum RenderCommand {
     ClearColor(embedded_graphics_core::pixelcolor::Rgb565),
-    ClearDepth(u32),
+    ClearDepth(crate::ZDepth),
     Draw(DrawPrimitive),
 }
 

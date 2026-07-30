@@ -1,6 +1,58 @@
 #![no_std]
 #[cfg(feature = "std")]
 extern crate std;
+
+#[cfg(feature = "depth-u16")]
+pub type ZDepth = u16;
+#[cfg(feature = "depth-u16")]
+pub const Z_MAX_VALUE: ZDepth = u16::MAX;
+#[cfg(feature = "depth-u16")]
+pub const DEPTH_EPSILON: ZDepth = 1;
+
+#[cfg(not(feature = "depth-u16"))]
+pub type ZDepth = u32;
+#[cfg(not(feature = "depth-u16"))]
+pub const Z_MAX_VALUE: ZDepth = u32::MAX;
+#[cfg(not(feature = "depth-u16"))]
+pub const DEPTH_EPSILON: ZDepth = 128;
+
+#[inline(always)]
+pub const fn to_zdepth(z: u32) -> ZDepth {
+    #[cfg(feature = "depth-u16")]
+    {
+        (z >> 16) as u16
+    }
+    #[cfg(not(feature = "depth-u16"))]
+    {
+        z
+    }
+}
+
+#[inline(always)]
+pub fn clear_zbuffer(zbuffer: &mut [ZDepth], value: ZDepth) {
+    #[cfg(feature = "dma2d")]
+    {
+        #[cfg(feature = "depth-u16")]
+        unsafe {
+            unsafe extern "Rust" {
+                fn dma2d_clear_zbuffer_u16(ptr: *mut u16, len: usize, value: u16);
+            }
+            dma2d_clear_zbuffer_u16(zbuffer.as_mut_ptr(), zbuffer.len(), value);
+        }
+        #[cfg(not(feature = "depth-u16"))]
+        unsafe {
+            unsafe extern "Rust" {
+                fn dma2d_clear_zbuffer_u32(ptr: *mut u32, len: usize, value: u32);
+            }
+            dma2d_clear_zbuffer_u32(zbuffer.as_mut_ptr(), zbuffer.len(), value);
+        }
+    }
+    #[cfg(not(feature = "dma2d"))]
+    {
+        zbuffer.fill(value);
+    }
+}
+
 use camera::Camera;
 use embedded_graphics_core::pixelcolor::Rgb565;
 use embedded_graphics_core::pixelcolor::RgbColor;
@@ -33,7 +85,6 @@ pub mod hud;
 pub mod input;
 pub mod lights;
 pub mod mesh;
-#[cfg(feature = "std")]
 pub mod painters;
 pub mod particles;
 #[cfg(feature = "perfcounter")]
@@ -444,26 +495,72 @@ impl K3dengine {
         // Get mesh position in world space
         let mesh_pos = mesh.get_position();
 
-        // Compute distance from camera to mesh center
-        let to_mesh = mesh_pos - self.camera.position;
-        let distance = to_mesh.norm(); // Uses libm sqrt via nalgebra
-
         // Get squared bounding radius and compute radius
-        // This is only called once per mesh, not in the inner loop
         let radius_sq = mesh.compute_bounding_radius_sq();
-        let radius = radius_sq.sqrt(); // Uses libm sqrt (one call per mesh is acceptable)
+        let radius = radius_sq.sqrt();
 
-        // Far plane culling: mesh sphere is entirely beyond far plane
-        if distance - radius > self.camera.far {
-            return true;
+        // Extract frustum planes from view-projection matrix (Gribb-Hartmann method)
+        let m = self.camera.vp_matrix;
+
+        let planes = [
+            // Left: row3 + row0
+            [
+                m[(3, 0)] + m[(0, 0)],
+                m[(3, 1)] + m[(0, 1)],
+                m[(3, 2)] + m[(0, 2)],
+                m[(3, 3)] + m[(0, 3)],
+            ],
+            // Right: row3 - row0
+            [
+                m[(3, 0)] - m[(0, 0)],
+                m[(3, 1)] - m[(0, 1)],
+                m[(3, 2)] - m[(0, 2)],
+                m[(3, 3)] - m[(0, 3)],
+            ],
+            // Bottom: row3 + row1
+            [
+                m[(3, 0)] + m[(1, 0)],
+                m[(3, 1)] + m[(1, 1)],
+                m[(3, 2)] + m[(1, 2)],
+                m[(3, 3)] + m[(1, 3)],
+            ],
+            // Top: row3 - row1
+            [
+                m[(3, 0)] - m[(1, 0)],
+                m[(3, 1)] - m[(1, 1)],
+                m[(3, 2)] - m[(1, 2)],
+                m[(3, 3)] - m[(1, 3)],
+            ],
+            // Near: row3 + row2
+            [
+                m[(3, 0)] + m[(2, 0)],
+                m[(3, 1)] + m[(2, 1)],
+                m[(3, 2)] + m[(2, 2)],
+                m[(3, 3)] + m[(2, 3)],
+            ],
+            // Far: row3 - row2
+            [
+                m[(3, 0)] - m[(2, 0)],
+                m[(3, 1)] - m[(2, 1)],
+                m[(3, 2)] - m[(2, 2)],
+                m[(3, 3)] - m[(2, 3)],
+            ],
+        ];
+
+        for plane in &planes {
+            let a = plane[0];
+            let b = plane[1];
+            let c = plane[2];
+            let d = plane[3];
+            let len = (a * a + b * b + c * c).sqrt();
+            if len > 0.0 {
+                let dist = (a * mesh_pos.x + b * mesh_pos.y + c * mesh_pos.z + d) / len;
+                if dist < -radius {
+                    return true; // Completely outside this plane
+                }
+            }
         }
 
-        // Near plane culling: mesh sphere is entirely before near plane
-        if distance + radius < self.camera.near {
-            return true;
-        }
-
-        // Passed culling tests - render the mesh
         false
     }
 
@@ -831,40 +928,46 @@ impl K3dengine {
 
             let transform_matrix = self.camera.vp_matrix * mesh.model_matrix;
 
-            let mut v_cache_plain: [Option<Option<Point3<i32>>>; 256] = [None; 256];
-            let mut v_cache_w: [Option<Option<(Point3<i32>, f32)>>; 256] = [None; 256];
+            let render_mode = self.resolve_render_mode(&mesh.render_mode);
+            let is_textured = matches!(render_mode, RenderMode::Textured);
+
+            let mut v_cache_plain: [Option<Point3<i32>>; 256] = [None; 256];
+            let mut v_cache_w: [Option<(Point3<i32>, f32)>; 256] = [None; 256];
+
+            let cache_limit = geometry.vertices.len().min(256);
+            if is_textured {
+                for i in 0..cache_limit {
+                    v_cache_w[i] =
+                        self.transform_point_with_w(&geometry.vertices[i], transform_matrix);
+                }
+            } else {
+                for i in 0..cache_limit {
+                    v_cache_plain[i] =
+                        self.transform_point(&geometry.vertices[i], transform_matrix);
+                }
+            }
 
             let mut get_pt = |idx: usize| -> Option<Point3<i32>> {
                 if idx < 256 {
-                    if let Some(cached) = v_cache_plain[idx] {
-                        return cached;
-                    }
-                    let p = self.transform_point(&geometry.vertices[idx], transform_matrix);
-                    v_cache_plain[idx] = Some(p);
-                    p
+                    v_cache_plain[idx]
                 } else {
                     self.transform_point(&geometry.vertices[idx], transform_matrix)
                 }
             };
 
-            let mut get_pt_w = |idx: usize| -> Option<(Point3<i32>, f32)> {
+            let get_pt_w = |idx: usize| -> Option<(Point3<i32>, f32)> {
                 if idx < 256 {
-                    if let Some(cached) = v_cache_w[idx] {
-                        return cached;
-                    }
-                    let p = self.transform_point_with_w(&geometry.vertices[idx], transform_matrix);
-                    v_cache_w[idx] = Some(p);
-                    p
+                    v_cache_w[idx]
                 } else {
                     self.transform_point_with_w(&geometry.vertices[idx], transform_matrix)
                 }
             };
 
-            let mut tf_face = |face: &[usize; 3]| -> Option<[Point3<i32>; 3]> {
+            let tf_face = |face: &[usize; 3]| -> Option<[Point3<i32>; 3]> {
                 Some([get_pt(face[0])?, get_pt(face[1])?, get_pt(face[2])?])
             };
 
-            let mut tf_face_w = |face: &[usize; 3]| -> Option<([Point3<i32>; 3], [f32; 3])> {
+            let tf_face_w = |face: &[usize; 3]| -> Option<([Point3<i32>; 3], [f32; 3])> {
                 let (p0, w0) = get_pt_w(face[0])?;
                 let (p1, w1) = get_pt_w(face[1])?;
                 let (p2, w2) = get_pt_w(face[2])?;
@@ -1380,7 +1483,7 @@ impl K3dengine {
         use crate::error::{BudgetKind, RenderError};
 
         commands.clear();
-        commands.push(RenderCommand::ClearDepth(u32::MAX))?;
+        commands.push(RenderCommand::ClearDepth(crate::Z_MAX_VALUE))?;
         if let Some(caps) = self.caps {
             caps.validate_framebuffer(self.width as usize, self.height as usize)?;
         }
@@ -1869,8 +1972,51 @@ pub fn mesh_ray_cast(
 }
 
 #[cfg(test)]
+#[cfg(feature = "dma2d")]
+#[unsafe(no_mangle)]
+extern "Rust" fn dma2d_clear_zbuffer_u16(ptr: *mut u16, len: usize, value: u16) {
+    let slice = unsafe { core::slice::from_raw_parts_mut(ptr, len) };
+    slice.fill(value);
+}
+
+#[cfg(test)]
+#[cfg(feature = "dma2d")]
+#[unsafe(no_mangle)]
+extern "Rust" fn dma2d_clear_zbuffer_u32(ptr: *mut u32, len: usize, value: u32) {
+    let slice = unsafe { core::slice::from_raw_parts_mut(ptr, len) };
+    slice.fill(value);
+}
+
+#[cfg(test)]
 mod tests {
     extern crate std;
+
+    #[cfg(feature = "depth-u16")]
+    pub type ZDepth = u16;
+    #[cfg(feature = "depth-u16")]
+    pub const Z_MAX_VALUE: ZDepth = u16::MAX;
+    #[cfg(feature = "depth-u16")]
+    pub const DEPTH_EPSILON: ZDepth = 1;
+
+    #[cfg(not(feature = "depth-u16"))]
+    pub type ZDepth = u32;
+    #[cfg(not(feature = "depth-u16"))]
+    pub const Z_MAX_VALUE: ZDepth = u32::MAX;
+    #[cfg(not(feature = "depth-u16"))]
+    pub const DEPTH_EPSILON: ZDepth = 128;
+
+    #[inline(always)]
+    pub const fn to_zdepth(z: u32) -> ZDepth {
+        #[cfg(feature = "depth-u16")]
+        {
+            (z >> 16) as u16
+        }
+        #[cfg(not(feature = "depth-u16"))]
+        {
+            z
+        }
+    }
+
     use super::*;
 
     #[test]

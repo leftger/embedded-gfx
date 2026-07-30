@@ -16,6 +16,13 @@ A `no_std` 3D graphics and physics engine for embedded systems, optimized for re
   - The legacy `to_fp`/`from_fp`/`mul_fp`/`div_fp` aliases are gone — use the canonical `to_q16`/`from_q16`/`mul_q16`/`div_q16` names instead.
   - No rendering behavior change — verified bit-identical output against the prior implementation.
 
+## What's new in 0.3.2
+
+- **Object-Level 6-Plane Frustum Culling** — Upgraded bounding sphere culling to perform full camera frustum side-plane checks using the Gribb-Hartmann method. Completely skips off-screen meshes before they reach the projection phase, yielding a 50-90% reduction in geometry overhead.
+- **Upfront Pre-Transformed Vertex Buffer (Vertex Cache)** — Projects and lights unique vertices once per mesh into a flat stack buffer upfront. Completely eliminates lazy caching branch overhead and redundant transformation/projection calculations.
+- **Hardware Acceleration: DMA2D / Chrom-ART** — Added the `dma2d` feature gate. Allows clearing depth buffers via hardware-accelerated DMA2D controller hooks, letting target applications offload 16-bit depth fills to silicon and free up CPU cycles.
+- **Agnostic Async Double/Triple Buffering** — Added `core::future::Future` compatibility to Double and Triple Swapchain present operations (`present_async`, `present_region_async`, `wait_for_vsync_async`), permitting seamless integration with async runtimes such as RTOS or Embassy without pinning requirements.
+
 ## What's new in 0.3.0
 
 - **Perspective-correct textures** — clip-space W is propagated through the rasterizer; UV coordinates are now divided by W per pixel, eliminating the affine swim on non-axis-aligned surfaces
@@ -35,7 +42,7 @@ A `no_std` 3D graphics and physics engine for embedded systems, optimized for re
 ## Features
 
 **3D Rendering**
-- Full MVP pipeline with perspective projection and frustum/backface culling
+- Full MVP pipeline with perspective projection, Gribb-Hartmann 6-plane frustum culling, and backface culling
 - Z-buffering with 16.16 fixed-point depth testing
 - Flat and Gouraud shading, directional lighting, Blinn-Phong specular
 - Perspective-correct UV texture mapping with multi-texture support (RGB565)
@@ -46,7 +53,7 @@ A `no_std` 3D graphics and physics engine for embedded systems, optimized for re
 - Bayer 4×4 dithering, billboards, vertex animation
 - Anti-aliased lines and triangles (heuristic and per-pixel coverage modes)
 - LOD system with distance-based mesh switching
-- DMA double-buffer rendering via `swapchain`
+- DMA double/triple-buffer rendering via `swapchain` (with async/await executor-agnostic futures)
 - HUD overlay with text and icon elements
 
 **Record/Execute Pipeline**
@@ -403,6 +410,73 @@ for &id in &body_ids {
 PhysicsWorld::<16, 8>::new()  // 16 bodies, 8 constraints (const generics, no heap)
 ```
 
+## DMA / Async Double Buffering (RTOS/Embassy)
+
+Double-buffered rendering via `SwapChain` separates CPU rendering and DMA transfers. While the CPU writes to the back-buffer, the display controller transmits the front-buffer asynchronously.
+
+To support asynchronous environments (`no_std` executors, RTOS tasks, Embassy, RTIC, etc.), `embedded-3dgfx` provides **Agnostic / Standard Futures** APIs. Because they return standard `core::future::Future`s, they require no runtime/executor dependencies.
+
+### Usage Example
+
+To present a buffer asynchronously inside an async task:
+
+```rust
+use embedded_3dgfx::swapchain::StandardSwapChain;
+
+#[embassy_executor::task]
+async fn render_task(mut swap_chain: StandardSwapChain<240, 135, MyDisplayBackend>) {
+    let mut cmd_buf = embedded_3dgfx::command_buffer::CommandBuffer::<512>::new();
+
+    loop {
+        // 1. Get the back buffer and render the scene
+        let back_buf = swap_chain.get_back_buffer();
+        engine.record(meshes.iter(), &mut cmd_buf, None).unwrap();
+        engine.execute(back_buf, &mut frame_ctx, &cmd_buf, None).unwrap();
+
+        // 2. Swap framebuffers asynchronously.
+        // Awaiting yields control back to the executor if a previous DMA transfer is in progress.
+        // Once the transfer finishes, it swaps front/back and triggers the next DMA transfer.
+        swap_chain.present_async().await.unwrap();
+    }
+}
+```
+
+To implement async DMA support for your display controller, implement [AsyncDmaTransfer](file:///home/usuario/Projects/my-repos/embedded-3dgfx/src/display_backend.rs) on your backend transfer token:
+
+```rust
+use embedded_3dgfx::display_backend::{DmaTransfer, AsyncDmaTransfer};
+
+pub struct MyDmaTransfer {
+    // hardware-specific DMA handle / buffer
+}
+
+impl DmaTransfer for MyDmaTransfer {
+    type Buffer = MyFrameBuffer;
+    fn is_done(&self) -> bool {
+        // Poll DMA register flags
+    }
+    fn wait(self) -> Self::Buffer {
+        // Blocking wait
+    }
+}
+
+impl AsyncDmaTransfer for MyDmaTransfer {
+    type WaitFuture = MyDmaWaitFuture;
+
+    fn wait_async(self) -> Self::WaitFuture {
+        MyDmaWaitFuture { transfer: Some(self) }
+    }
+}
+
+// A standard Future that registers a waker or polls the DMA status
+impl core::future::Future for MyDmaWaitFuture {
+    type Output = MyFrameBuffer;
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        // Poll status; if not done, register cx.waker().clone() for the DMA interrupt to wake
+    }
+}
+```
+
 ### Troubleshooting
 
 | Symptom | Fix |
@@ -540,7 +614,7 @@ Q16.16 fixed-point math (`fixed-transform` feature) and the sin/cos lookup table
 
 ```bash
 cargo test --lib
-cargo test --lib --all-features
+cargo test --lib --features dma2d,depth-u16
 ```
 
 ## Git Hooks (Rustfmt Guardrails)

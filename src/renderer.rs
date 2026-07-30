@@ -16,7 +16,7 @@ use crate::{
 };
 
 pub struct FrameCtx<'a> {
-    pub zbuffer: &'a mut [u32],
+    pub zbuffer: &'a mut [crate::ZDepth],
     pub width: usize,
     pub height: usize,
 }
@@ -393,7 +393,7 @@ where
                 }
             }
             RenderCommand::ClearDepth(value) => {
-                frame.zbuffer.fill(*value);
+                crate::clear_zbuffer(frame.zbuffer, *value);
             }
             RenderCommand::Draw(primitive) => {
                 let prim = tint_primitive(primitive, screen_tint, palette_mode);
@@ -485,7 +485,7 @@ where
                 }
             }
             RenderCommand::ClearDepth(value) => {
-                frame.zbuffer.fill(*value);
+                crate::clear_zbuffer(frame.zbuffer, *value);
             }
             RenderCommand::Draw(primitive) => {
                 match primitive {
@@ -645,7 +645,7 @@ where
                     }
                 }
             }
-            RenderCommand::ClearDepth(value) => frame.zbuffer.fill(*value),
+            RenderCommand::ClearDepth(value) => crate::clear_zbuffer(frame.zbuffer, *value),
             RenderCommand::Draw(_) => {}
         }
     }

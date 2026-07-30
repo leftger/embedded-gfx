@@ -149,7 +149,7 @@ fn aa_pixel<D>(
     y: i32,
     color: Rgb565,
     z: u32,
-    zbuffer: &mut [u32],
+    zbuffer: &mut [crate::ZDepth],
     width: usize,
     coverage_q8: u32,
 ) where
@@ -163,18 +163,19 @@ fn aa_pixel<D>(
     if idx >= zbuffer.len() {
         return;
     }
-    if z >= zbuffer[idx].saturating_add(DEPTH_EPSILON) {
+    let z_depth = crate::to_zdepth(z);
+    if z_depth >= zbuffer[idx].saturating_add(crate::DEPTH_EPSILON) {
         return;
     }
 
-    let pixel_was_virgin = zbuffer[idx] == u32::MAX;
+    let pixel_was_virgin = zbuffer[idx] == crate::Z_MAX_VALUE;
     let final_color = if coverage_q8 >= 256 || !pixel_was_virgin {
         color
     } else {
         let bg = fb.read_pixel(Point::new(x, y));
         blend_q8(bg, color, coverage_q8)
     };
-    zbuffer[idx] = z;
+    zbuffer[idx] = z_depth;
     fb.draw_iter([embedded_graphics_core::Pixel(Point::new(x, y), final_color)])
         .unwrap();
 }
@@ -194,7 +195,6 @@ fn aa_pixel<D>(
 /// - More Z-fighting? Increase this value (256, 512, etc.)
 /// - Incorrect depth ordering? Decrease this value (64, 32, etc.)
 /// - Adjust camera near/far planes for better depth precision distribution
-const DEPTH_EPSILON: u32 = 128;
 
 /// Configuration for depth-based fog effect
 #[derive(Debug, Clone, Copy)]
@@ -917,7 +917,7 @@ fn draw_horizontal_line_gouraud<D: DrawTarget<Color = embedded_graphics_core::pi
 pub fn draw_zbuffered<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
     primitive: DrawPrimitive,
     fb: &mut D,
-    zbuffer: &mut [u32],
+    zbuffer: &mut [crate::ZDepth],
     width: usize,
 ) where
     <D as DrawTarget>::Error: Debug,
@@ -936,8 +936,12 @@ pub fn draw_zbuffered<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::
 /// Requires `ReadPixel` on the framebuffer for the boundary blends.
 #[cfg(feature = "aa-heuristic")]
 #[inline]
-pub fn draw_zbuffered_aa<D>(primitive: DrawPrimitive, fb: &mut D, zbuffer: &mut [u32], width: usize)
-where
+pub fn draw_zbuffered_aa<D>(
+    primitive: DrawPrimitive,
+    fb: &mut D,
+    zbuffer: &mut [crate::ZDepth],
+    width: usize,
+) where
     D: DrawTarget<Color = Rgb565> + ReadPixel,
     <D as DrawTarget>::Error: Debug,
 {
@@ -995,7 +999,7 @@ where
 pub fn draw_zbuffered_2xssaa<D>(
     primitive: DrawPrimitive,
     fb: &mut D,
-    zbuffer: &mut [u32],
+    zbuffer: &mut [crate::ZDepth],
     width: usize,
 ) where
     D: DrawTarget<Color = Rgb565> + ReadPixel,
@@ -1057,7 +1061,7 @@ fn fill_triangle_zbuffered_2xssaa<D>(
     z3: f32,
     color: Rgb565,
     fb: &mut D,
-    zbuffer: &mut [u32],
+    zbuffer: &mut [crate::ZDepth],
     width: usize,
 ) where
     D: DrawTarget<Color = Rgb565> + ReadPixel,
@@ -1106,7 +1110,7 @@ fn fill_bottom_flat_2xssaa<D>(
     z3: u32,
     color: Rgb565,
     fb: &mut D,
-    zbuffer: &mut [u32],
+    zbuffer: &mut [crate::ZDepth],
     width: usize,
 ) where
     D: DrawTarget<Color = Rgb565> + ReadPixel,
@@ -1147,7 +1151,7 @@ fn fill_top_flat_2xssaa<D>(
     z3: u32,
     color: Rgb565,
     fb: &mut D,
-    zbuffer: &mut [u32],
+    zbuffer: &mut [crate::ZDepth],
     width: usize,
 ) where
     D: DrawTarget<Color = Rgb565> + ReadPixel,
@@ -1187,7 +1191,7 @@ fn ssaa2x_scanline<D>(
     z_right: u32,
     color: Rgb565,
     fb: &mut D,
-    zbuffer: &mut [u32],
+    zbuffer: &mut [crate::ZDepth],
     width: usize,
 ) where
     D: DrawTarget<Color = Rgb565> + ReadPixel,
@@ -1252,7 +1256,7 @@ fn fill_triangle_zbuffered_aa<D>(
     z3: f32,
     color: Rgb565,
     fb: &mut D,
-    zbuffer: &mut [u32],
+    zbuffer: &mut [crate::ZDepth],
     width: usize,
 ) where
     D: DrawTarget<Color = Rgb565> + ReadPixel,
@@ -1301,7 +1305,7 @@ fn fill_bottom_flat_aa<D>(
     z3: u32,
     color: Rgb565,
     fb: &mut D,
-    zbuffer: &mut [u32],
+    zbuffer: &mut [crate::ZDepth],
     width: usize,
 ) where
     D: DrawTarget<Color = Rgb565> + ReadPixel,
@@ -1342,7 +1346,7 @@ fn fill_top_flat_aa<D>(
     z3: u32,
     color: Rgb565,
     fb: &mut D,
-    zbuffer: &mut [u32],
+    zbuffer: &mut [crate::ZDepth],
     width: usize,
 ) where
     D: DrawTarget<Color = Rgb565> + ReadPixel,
@@ -1387,7 +1391,7 @@ fn aa_scanline<D>(
     z_right: u32,
     color: Rgb565,
     fb: &mut D,
-    zbuffer: &mut [u32],
+    zbuffer: &mut [crate::ZDepth],
     width: usize,
 ) where
     D: DrawTarget<Color = Rgb565> + ReadPixel,
@@ -1435,8 +1439,9 @@ fn aa_scanline<D>(
             let t_num = (x - l_int) as i64;
             let t_den = span as i64;
             let z = (z_l as i64 + ((z_r as i64 - z_l as i64) * t_num / t_den)) as u32;
-            if z < zbuffer[idx].saturating_add(DEPTH_EPSILON) {
-                zbuffer[idx] = z;
+            let z_depth = crate::to_zdepth(z);
+            if z_depth < zbuffer[idx].saturating_add(crate::DEPTH_EPSILON) {
+                zbuffer[idx] = z_depth;
                 fb.draw_iter([embedded_graphics_core::Pixel(Point::new(x, y), color)])
                     .unwrap();
             }
@@ -1471,7 +1476,7 @@ fn aa_scanline<D>(
 pub fn draw_zbuffered_aa_coverage<D>(
     primitive: DrawPrimitive,
     fb: &mut D,
-    zbuffer: &mut [u32],
+    zbuffer: &mut [crate::ZDepth],
     coverage: &mut [u8],
     width: usize,
 ) where
@@ -1691,7 +1696,7 @@ fn aa_pixel_cov<D>(
     y: i32,
     color: Rgb565,
     z: u32,
-    zbuffer: &mut [u32],
+    zbuffer: &mut [crate::ZDepth],
     coverage: &mut [u8],
     width: usize,
     coverage_q8: u32,
@@ -1706,7 +1711,8 @@ fn aa_pixel_cov<D>(
     if idx >= zbuffer.len() {
         return;
     }
-    if z >= zbuffer[idx].saturating_add(DEPTH_EPSILON) {
+    let z_depth = crate::to_zdepth(z);
+    if z_depth >= zbuffer[idx].saturating_add(crate::DEPTH_EPSILON) {
         return;
     }
 
@@ -1715,7 +1721,7 @@ fn aa_pixel_cov<D>(
     // Case 1: full coverage — overwrite unconditionally.
     if coverage_q8 >= 256 {
         coverage[idx] = 255;
-        zbuffer[idx] = z;
+        zbuffer[idx] = z_depth;
         fb.draw_iter([embedded_graphics_core::Pixel(p, color)])
             .unwrap();
         return;
@@ -1728,7 +1734,7 @@ fn aa_pixel_cov<D>(
         // bg composite at end of frame fills the unclaimed remainder.
         let claim_255 = (coverage_q8 * 255) >> 8;
         coverage[idx] = claim_255 as u8;
-        zbuffer[idx] = z;
+        zbuffer[idx] = z_depth;
         fb.draw_iter([embedded_graphics_core::Pixel(p, color)])
             .unwrap();
         return;
@@ -1741,7 +1747,7 @@ fn aa_pixel_cov<D>(
         // stays at 255 — no bg composite needed.
         let existing = fb.read_pixel(p);
         let result = blend_q8(existing, color, coverage_q8);
-        zbuffer[idx] = z;
+        zbuffer[idx] = z_depth;
         fb.draw_iter([embedded_graphics_core::Pixel(p, result)])
             .unwrap();
         return;
@@ -1759,7 +1765,7 @@ fn aa_pixel_cov<D>(
     let blend_factor = (claim_255 * 256) / new_total;
     let result = blend_q8(existing, color, blend_factor);
     coverage[idx] = new_total as u8;
-    zbuffer[idx] = z;
+    zbuffer[idx] = z_depth;
     fb.draw_iter([embedded_graphics_core::Pixel(p, result)])
         .unwrap();
 }
@@ -1775,7 +1781,7 @@ fn fill_triangle_zbuffered_aa_cov<D>(
     z3: f32,
     color: Rgb565,
     fb: &mut D,
-    zbuffer: &mut [u32],
+    zbuffer: &mut [crate::ZDepth],
     coverage: &mut [u8],
     width: usize,
 ) where
@@ -1825,7 +1831,7 @@ fn fill_bottom_flat_aa_cov<D>(
     z3: u32,
     color: Rgb565,
     fb: &mut D,
-    zbuffer: &mut [u32],
+    zbuffer: &mut [crate::ZDepth],
     coverage: &mut [u8],
     width: usize,
 ) where
@@ -1867,7 +1873,7 @@ fn fill_top_flat_aa_cov<D>(
     z3: u32,
     color: Rgb565,
     fb: &mut D,
-    zbuffer: &mut [u32],
+    zbuffer: &mut [crate::ZDepth],
     coverage: &mut [u8],
     width: usize,
 ) where
@@ -1908,7 +1914,7 @@ fn aa_scanline_cov<D>(
     z_right: u32,
     color: Rgb565,
     fb: &mut D,
-    zbuffer: &mut [u32],
+    zbuffer: &mut [crate::ZDepth],
     coverage: &mut [u8],
     width: usize,
 ) where
@@ -2062,7 +2068,7 @@ pub fn draw_zbuffered_with_effects<
 >(
     primitive: DrawPrimitive,
     fb: &mut D,
-    zbuffer: &mut [u32],
+    zbuffer: &mut [crate::ZDepth],
     width: usize,
     fog_config: Option<&FogConfig>,
     dither_config: Option<&DitherConfig>,
@@ -2273,7 +2279,7 @@ pub fn draw_zbuffered_with_textures<
 >(
     primitive: DrawPrimitive,
     fb: &mut D,
-    zbuffer: &mut [u32],
+    zbuffer: &mut [crate::ZDepth],
     width: usize,
     texture_manager: &crate::texture::TextureManager<N>,
     fog_config: Option<&FogConfig>,
@@ -2303,7 +2309,7 @@ pub fn draw_zbuffered_with_textures_mapped<
 >(
     primitive: DrawPrimitive,
     fb: &mut D,
-    zbuffer: &mut [u32],
+    zbuffer: &mut [crate::ZDepth],
     width: usize,
     texture_manager: &crate::texture::TextureManager<N>,
     fog_config: Option<&FogConfig>,
@@ -2426,7 +2432,7 @@ pub fn draw_zbuffered_lightmapped<
     fog_config: Option<&FogConfig>,
     texture_manager: &crate::texture::TextureManager<N>,
     fb: &mut D,
-    zbuffer: &mut [u32],
+    zbuffer: &mut [crate::ZDepth],
     width: usize,
 ) where
     <D as DrawTarget>::Error: core::fmt::Debug,
@@ -2469,7 +2475,7 @@ pub fn draw_zbuffered_lightmapped_mapped<
     fog_config: Option<&FogConfig>,
     texture_manager: &crate::texture::TextureManager<N>,
     fb: &mut D,
-    zbuffer: &mut [u32],
+    zbuffer: &mut [crate::ZDepth],
     width: usize,
     texture_mapping: TextureMapping,
     stipple_mode: StippleMode,
@@ -2696,7 +2702,7 @@ fn fill_lm_bottom_flat<D: DrawTarget<Color = embedded_graphics_core::pixelcolor:
     surf: &crate::texture::Texture,
     lm: Option<&crate::texture::Texture>,
     fb: &mut D,
-    zbuffer: &mut [u32],
+    zbuffer: &mut [crate::ZDepth],
     width: usize,
     texture_mapping: TextureMapping,
     stipple_mode: StippleMode,
@@ -2790,7 +2796,7 @@ fn fill_lm_top_flat<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rg
     surf: &crate::texture::Texture,
     lm: Option<&crate::texture::Texture>,
     fb: &mut D,
-    zbuffer: &mut [u32],
+    zbuffer: &mut [crate::ZDepth],
     width: usize,
     texture_mapping: TextureMapping,
     stipple_mode: StippleMode,
@@ -2880,7 +2886,7 @@ fn draw_scanline_lm<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rg
     surf: &crate::texture::Texture,
     lm: Option<&crate::texture::Texture>,
     fb: &mut D,
-    zbuffer: &mut [u32],
+    zbuffer: &mut [crate::ZDepth],
     width: usize,
     texture_mapping: TextureMapping,
     stipple_mode: StippleMode,
@@ -2935,12 +2941,13 @@ fn draw_scanline_lm<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rg
 
         let z = (z_curr >> 16) as u32;
         z_curr += z_step as i64;
+        let z_depth = crate::to_zdepth(z);
 
-        if z >= zbuffer[zbuf_idx].saturating_add(DEPTH_EPSILON) {
+        if z_depth >= zbuffer[zbuf_idx].saturating_add(crate::DEPTH_EPSILON) {
             zbuf_idx += 1;
             continue;
         }
-        zbuffer[zbuf_idx] = z;
+        zbuffer[zbuf_idx] = z_depth;
 
         let t = (x - left_x) as f32 * inv_span;
         let [su, sv] = interpolate_uv(t, w_left, w_right, uv_left, uv_right, texture_mapping);
@@ -3209,7 +3216,7 @@ fn fill_triangle_zbuffered<D: DrawTarget<Color = embedded_graphics_core::pixelco
     z3: f32,
     color: embedded_graphics_core::pixelcolor::Rgb565,
     fb: &mut D,
-    zbuffer: &mut [u32],
+    zbuffer: &mut [crate::ZDepth],
     width: usize,
     fog_config: Option<&FogConfig>,
     dither_config: Option<&DitherConfig>,
@@ -3313,7 +3320,7 @@ fn fill_triangle_zbuffered_gouraud<
     c2: embedded_graphics_core::pixelcolor::Rgb565,
     c3: embedded_graphics_core::pixelcolor::Rgb565,
     fb: &mut D,
-    zbuffer: &mut [u32],
+    zbuffer: &mut [crate::ZDepth],
     width: usize,
     fog_config: Option<&FogConfig>,
     dither_config: Option<&DitherConfig>,
@@ -3422,7 +3429,7 @@ fn fill_bottom_flat_triangle_zbuffered<
     z3: u32,
     color: embedded_graphics_core::pixelcolor::Rgb565,
     fb: &mut D,
-    zbuffer: &mut [u32],
+    zbuffer: &mut [crate::ZDepth],
     width: usize,
     fog_config: Option<&FogConfig>,
     dither_config: Option<&DitherConfig>,
@@ -3496,7 +3503,7 @@ fn fill_top_flat_triangle_zbuffered<
     z3: u32,
     color: embedded_graphics_core::pixelcolor::Rgb565,
     fb: &mut D,
-    zbuffer: &mut [u32],
+    zbuffer: &mut [crate::ZDepth],
     width: usize,
     fog_config: Option<&FogConfig>,
     dither_config: Option<&DitherConfig>,
@@ -3575,7 +3582,7 @@ fn fill_bottom_flat_triangle_zbuffered_gouraud<
     c2: embedded_graphics_core::pixelcolor::Rgb565,
     c3: embedded_graphics_core::pixelcolor::Rgb565,
     fb: &mut D,
-    zbuffer: &mut [u32],
+    zbuffer: &mut [crate::ZDepth],
     width: usize,
     fog_config: Option<&FogConfig>,
     dither_config: Option<&DitherConfig>,
@@ -3648,7 +3655,7 @@ fn fill_top_flat_triangle_zbuffered_gouraud<
     c2: embedded_graphics_core::pixelcolor::Rgb565,
     c3: embedded_graphics_core::pixelcolor::Rgb565,
     fb: &mut D,
-    zbuffer: &mut [u32],
+    zbuffer: &mut [crate::ZDepth],
     width: usize,
     fog_config: Option<&FogConfig>,
     dither_config: Option<&DitherConfig>,
@@ -3719,7 +3726,7 @@ fn draw_scanline_zbuffered_gouraud<
     color1: embedded_graphics_core::pixelcolor::Rgb565,
     color2: embedded_graphics_core::pixelcolor::Rgb565,
     fb: &mut D,
-    zbuffer: &mut [u32],
+    zbuffer: &mut [crate::ZDepth],
     width: usize,
     fog_config: Option<&FogConfig>,
     dither_config: Option<&DitherConfig>,
@@ -3761,9 +3768,10 @@ fn draw_scanline_zbuffered_gouraud<
     for x in start_x..=end_x {
         let z = (z_curr >> 16) as u32;
         z_curr += z_step as i64;
+        let z_depth = crate::to_zdepth(z);
 
-        if z < zbuffer[zbuf_idx].saturating_add(DEPTH_EPSILON) {
-            zbuffer[zbuf_idx] = z;
+        if z_depth < zbuffer[zbuf_idx].saturating_add(crate::DEPTH_EPSILON) {
+            zbuffer[zbuf_idx] = z_depth;
 
             let t = (x - left_x) as f32 * inv_span;
             let mut final_color = interpolate_color(c_left, c_right, t);
@@ -3792,7 +3800,7 @@ fn draw_scanline_zbuffered<D: DrawTarget<Color = embedded_graphics_core::pixelco
     z2: u32,
     color: embedded_graphics_core::pixelcolor::Rgb565,
     fb: &mut D,
-    zbuffer: &mut [u32],
+    zbuffer: &mut [crate::ZDepth],
     width: usize,
     fog_config: Option<&FogConfig>,
     dither_config: Option<&DitherConfig>,
@@ -3833,9 +3841,10 @@ fn draw_scanline_zbuffered<D: DrawTarget<Color = embedded_graphics_core::pixelco
     for x in start_x..=end_x {
         let z = (z_curr >> 16) as u32;
         z_curr += z_step as i64;
+        let z_depth = crate::to_zdepth(z);
 
-        if z < zbuffer[zbuf_idx].saturating_add(DEPTH_EPSILON) {
-            zbuffer[zbuf_idx] = z;
+        if z_depth < zbuffer[zbuf_idx].saturating_add(crate::DEPTH_EPSILON) {
+            zbuffer[zbuf_idx] = z_depth;
 
             let mut final_color = color;
 
@@ -3873,7 +3882,7 @@ fn fill_triangle_zbuffered_textured<
     uv3: [f32; 2],
     texture: &crate::texture::Texture,
     fb: &mut D,
-    zbuffer: &mut [u32],
+    zbuffer: &mut [crate::ZDepth],
     width: usize,
     fog_config: Option<&FogConfig>,
     dither_config: Option<&DitherConfig>,
@@ -4031,7 +4040,7 @@ fn fill_bottom_flat_triangle_zbuffered_textured<
     uv3: [f32; 2],
     texture: &crate::texture::Texture,
     fb: &mut D,
-    zbuffer: &mut [u32],
+    zbuffer: &mut [crate::ZDepth],
     width: usize,
     fog_config: Option<&FogConfig>,
     dither_config: Option<&DitherConfig>,
@@ -4129,7 +4138,7 @@ fn fill_top_flat_triangle_zbuffered_textured<
     uv3: [f32; 2],
     texture: &crate::texture::Texture,
     fb: &mut D,
-    zbuffer: &mut [u32],
+    zbuffer: &mut [crate::ZDepth],
     width: usize,
     fog_config: Option<&FogConfig>,
     dither_config: Option<&DitherConfig>,
@@ -4224,7 +4233,7 @@ fn draw_scanline_zbuffered_textured<
     uv2: [f32; 2],
     texture: &crate::texture::Texture,
     fb: &mut D,
-    zbuffer: &mut [u32],
+    zbuffer: &mut [crate::ZDepth],
     width: usize,
     fog_config: Option<&FogConfig>,
     dither_config: Option<&DitherConfig>,
@@ -4306,9 +4315,10 @@ fn draw_scanline_zbuffered_textured<
 
             let z = (z_curr >> 16) as u32;
             z_curr += z_step as i64;
+            let z_depth = crate::to_zdepth(z);
 
-            if z < zbuffer[zbuf_idx].saturating_add(DEPTH_EPSILON) {
-                zbuffer[zbuf_idx] = z;
+            if z_depth < zbuffer[zbuf_idx].saturating_add(crate::DEPTH_EPSILON) {
+                zbuffer[zbuf_idx] = z_depth;
 
                 // Sample texture using sub-span interpolated UVs
                 let mut final_color = texture.sample(curr_u, curr_v);
@@ -4349,7 +4359,7 @@ fn fill_triangle_zbuffered_translucent<D: DrawTarget<Color = Rgb565>>(
     color: Rgb565,
     alpha: u8,
     fb: &mut D,
-    zbuffer: &mut [u32],
+    zbuffer: &mut [crate::ZDepth],
     width: usize,
 ) where
     <D as DrawTarget>::Error: Debug,
@@ -4397,7 +4407,7 @@ fn fill_bottom_flat_translucent<D: DrawTarget<Color = Rgb565>>(
     color: Rgb565,
     alpha: u8,
     fb: &mut D,
-    zbuffer: &mut [u32],
+    zbuffer: &mut [crate::ZDepth],
     width: usize,
 ) where
     <D as DrawTarget>::Error: Debug,
@@ -4439,9 +4449,10 @@ fn fill_bottom_flat_translucent<D: DrawTarget<Color = Rgb565>>(
             } else {
                 z_l
             };
+            let z_depth = crate::to_zdepth(z);
 
-            if z < zbuffer[idx] {
-                zbuffer[idx] = z;
+            if z_depth < zbuffer[idx] {
+                zbuffer[idx] = z_depth;
                 let draw_color = fast_blend_rgb565(Rgb565::BLACK, color, alpha);
                 let _ = fb.draw_iter([embedded_graphics_core::Pixel(
                     Point::new(x, scanline_y),
@@ -4466,7 +4477,7 @@ fn fill_top_flat_translucent<D: DrawTarget<Color = Rgb565>>(
     color: Rgb565,
     alpha: u8,
     fb: &mut D,
-    zbuffer: &mut [u32],
+    zbuffer: &mut [crate::ZDepth],
     width: usize,
 ) where
     <D as DrawTarget>::Error: Debug,
@@ -4508,9 +4519,10 @@ fn fill_top_flat_translucent<D: DrawTarget<Color = Rgb565>>(
             } else {
                 z_l
             };
+            let z_depth = crate::to_zdepth(z);
 
-            if z < zbuffer[idx] {
-                zbuffer[idx] = z;
+            if z_depth < zbuffer[idx] {
+                zbuffer[idx] = z_depth;
                 let draw_color = fast_blend_rgb565(Rgb565::BLACK, color, alpha);
                 let _ = fb.draw_iter([embedded_graphics_core::Pixel(
                     Point::new(x, scanline_y),
@@ -4724,7 +4736,7 @@ mod tests {
     #[test]
     fn test_scanline_z_linear_interpolation_correctness() {
         let width = 100;
-        let mut zbuffer = std::vec![u32::MAX; width * 10];
+        let mut zbuffer = std::vec![crate::Z_MAX_VALUE; width * 10];
         let mut fb = MockFramebuffer::new();
 
         let x1 = 10;
@@ -4753,14 +4765,15 @@ mod tests {
             let idx = y as usize * width + x as usize;
             let actual_z = zbuffer[idx];
             let expected_z = (z1 as f64 + (x - x1) as f64 * (z2 - z1) as f64 / span) as u32;
+            let expected_z_depth = crate::to_zdepth(expected_z);
 
-            let diff = (actual_z as i64 - expected_z as i64).abs();
+            let diff = (actual_z as i64 - expected_z_depth as i64).abs();
             assert!(
                 diff <= 2,
                 "Z interpolation error at x={}: actual={}, expected={}, diff={}",
                 x,
                 actual_z,
-                expected_z,
+                expected_z_depth,
                 diff
             );
         }
@@ -4769,16 +4782,16 @@ mod tests {
     #[test]
     fn test_zbuffer_depth_occlusion_correctness() {
         let width = 50;
-        let mut zbuffer = std::vec![u32::MAX; width * 5];
+        let mut zbuffer = std::vec![crate::Z_MAX_VALUE; width * 5];
         let mut fb = MockFramebuffer::new();
 
-        // Draw a far scanline at z = 50000
+        // Draw a far scanline at z = 40000<<16
         draw_scanline_zbuffered(
             10,
             20,
             2,
-            50000,
-            50000,
+            40000 << 16,
+            40000 << 16,
             Rgb565::CSS_RED,
             &mut fb,
             &mut zbuffer,
@@ -4787,13 +4800,13 @@ mod tests {
             None,
         );
 
-        // Draw a closer scanline at z = 20000 over the same span
+        // Draw a closer scanline at z = 20000<<16 over the same span
         draw_scanline_zbuffered(
             10,
             20,
             2,
-            20000,
-            20000,
+            20000 << 16,
+            20000 << 16,
             Rgb565::CSS_GREEN,
             &mut fb,
             &mut zbuffer,
@@ -4802,19 +4815,19 @@ mod tests {
             None,
         );
 
-        // All Z values should now be 20000
+        // All Z values should now be 20000<<16 depth
         for x in 10..=20 {
             let idx = 2 * width + x;
-            assert_eq!(zbuffer[idx], 20000);
+            assert_eq!(zbuffer[idx], crate::to_zdepth(20000 << 16));
         }
 
-        // Draw a farther scanline at z = 80000 over the same span (should be culled)
+        // Draw a farther scanline at z = 60000<<16 over the same span (should be culled)
         draw_scanline_zbuffered(
             10,
             20,
             2,
-            80000,
-            80000,
+            60000 << 16,
+            60000 << 16,
             Rgb565::CSS_BLUE,
             &mut fb,
             &mut zbuffer,
@@ -4823,17 +4836,17 @@ mod tests {
             None,
         );
 
-        // Z values must remain 20000 (not overwritten by 80000)
+        // Z values must remain 20000<<16 (not overwritten by 60000<<16)
         for x in 10..=20 {
             let idx = 2 * width + x;
-            assert_eq!(zbuffer[idx], 20000);
+            assert_eq!(zbuffer[idx], crate::to_zdepth(20000 << 16));
         }
     }
 
     #[test]
     fn test_sub_span_textured_scanline_correctness() {
         let width = 100;
-        let mut zbuffer = std::vec![u32::MAX; width * 10];
+        let mut zbuffer = std::vec![crate::Z_MAX_VALUE; width * 10];
         let mut fb = MockFramebuffer::new();
 
         // Create a 2x2 static texture with distinct colors
@@ -4850,8 +4863,8 @@ mod tests {
             10,
             73,
             4,
-            1000,
-            1000,
+            1000 << 16,
+            1000 << 16,
             1.0,
             1.0,
             [0.0, 0.0],
@@ -4871,7 +4884,7 @@ mod tests {
         // Every pixel from x=10 to 73 must be rendered and zbuffer updated
         for x in 10..=73 {
             let idx = 4 * width + x as usize;
-            assert_eq!(zbuffer[idx], 1000);
+            assert_eq!(zbuffer[idx], crate::to_zdepth(1000 << 16));
         }
         assert!(fb.pixel_count() >= 64);
     }

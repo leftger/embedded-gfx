@@ -28,6 +28,7 @@ categories = [
 default = ["row_width_240", "std", "aa-heuristic", "aa-coverage"]
 std = ["perfcounter"]
 physics = []
+dma2d = []
 dsp = ["dep:embedded-dsp"]
 depth-u16 = []
 perfcounter = []

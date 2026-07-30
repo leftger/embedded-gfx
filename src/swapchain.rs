@@ -52,6 +52,16 @@ impl<FB, Xfer: DmaTransfer<Buffer = FB>> FrontState<FB, Xfer> {
     }
 }
 
+impl<FB, Xfer: crate::display_backend::AsyncDmaTransfer<Buffer = FB>> FrontState<FB, Xfer> {
+    /// Recover the framebuffer asynchronously.
+    async fn recover_async(self) -> FB {
+        match self {
+            FrontState::Idle(fb) => fb,
+            FrontState::InFlight(xfer) => xfer.wait_async().await,
+        }
+    }
+}
+
 // ── SwapChain ─────────────────────────────────────────────────────────────────
 
 /// Double-buffered swap chain for tear-free rendering.
@@ -219,6 +229,77 @@ where
         }
     }
 
+    /// Wait for the current DMA transfer to complete asynchronously.
+    pub async fn wait_for_vsync_async(&mut self)
+    where
+        B::Transfer: crate::display_backend::AsyncDmaTransfer<Buffer = FrameBuf<Rgb565, FB>>,
+    {
+        if let Some(state) = self.front.take() {
+            let fb = state.recover_async().await;
+            self.front = Some(FrontState::Idle(fb));
+        }
+    }
+
+    /// Present the back buffer asynchronously.
+    pub async fn present_async(&mut self) -> Result<(), DisplayError>
+    where
+        B::Transfer: crate::display_backend::AsyncDmaTransfer<Buffer = FrameBuf<Rgb565, FB>>,
+    {
+        // 1. Recover the front framebuffer asynchronously (yield if DMA was running).
+        let old_front = if let Some(state) = self.front.take() {
+            state.recover_async().await
+        } else {
+            panic!("SwapChain front buffer missing — double present?");
+        };
+
+        // 2. Swap: old_front becomes the new back, current back becomes the new front.
+        let new_front = core::mem::replace(&mut self.back, old_front);
+
+        // 3. Hand the new front to the backend.
+        match self.backend.start_dma_transfer(new_front) {
+            Ok(transfer) => {
+                self.front = Some(FrontState::InFlight(transfer));
+                self.frame_count += 1;
+                Ok(())
+            }
+            Err(e) => {
+                let recovered_front = core::mem::replace(&mut self.back, e.framebuffer);
+                self.front = Some(FrontState::Idle(recovered_front));
+                Err(e.error)
+            }
+        }
+    }
+
+    /// Present only a sub-region of the back buffer asynchronously.
+    pub async fn present_region_async(&mut self, region: DisplayRegion) -> Result<(), DisplayError>
+    where
+        B::Transfer: crate::display_backend::AsyncDmaTransfer<Buffer = FrameBuf<Rgb565, FB>>,
+    {
+        // 1. Recover the front framebuffer asynchronously (yield if DMA was running).
+        let old_front = if let Some(state) = self.front.take() {
+            state.recover_async().await
+        } else {
+            panic!("SwapChain front buffer missing — double present?");
+        };
+
+        // 2. Swap: old_front becomes the new back, current back becomes the new front.
+        let new_front = core::mem::replace(&mut self.back, old_front);
+
+        // 3. Hand the new front to the backend.
+        match self.backend.start_dma_transfer_region(new_front, region) {
+            Ok(transfer) => {
+                self.front = Some(FrontState::InFlight(transfer));
+                self.frame_count += 1;
+                Ok(())
+            }
+            Err(e) => {
+                let recovered_front = core::mem::replace(&mut self.back, e.framebuffer);
+                self.front = Some(FrontState::Idle(recovered_front));
+                Err(e.error)
+            }
+        }
+    }
+
     /// Returns `true` if no DMA transfer is running (or the hardware has
     /// signalled completion), so `try_present` would succeed.
     pub fn is_ready(&self) -> bool {
@@ -361,6 +442,38 @@ where
         self.present_impl(|backend, fb| backend.start_dma_transfer(fb))
     }
 
+    /// Present the render buffer asynchronously.
+    pub async fn present_async(&mut self) -> Result<(), DisplayError>
+    where
+        B::Transfer: crate::display_backend::AsyncDmaTransfer<Buffer = FrameBuf<Rgb565, FB>>,
+    {
+        // 1. Recover the display buffer asynchronously (yield if DMA was running).
+        let old_display = if let Some(state) = self.display.take() {
+            state.recover_async().await
+        } else {
+            panic!("TripleSwapChain display buffer missing");
+        };
+
+        // 2. render → new display, old_display → render slot temporarily.
+        let rendered = core::mem::replace(&mut self.render, old_display);
+
+        // 3. Start DMA on the freshly rendered frame.
+        match self.backend.start_dma_transfer(rendered) {
+            Ok(transfer) => {
+                self.display = Some(FrontState::InFlight(transfer));
+                // 4. ready ↔ render: CPU gets the old ready buffer to render into.
+                core::mem::swap(&mut self.ready, &mut self.render);
+                self.frame_count += 1;
+                Ok(())
+            }
+            Err(e) => {
+                let old_display = core::mem::replace(&mut self.render, e.framebuffer);
+                self.display = Some(FrontState::Idle(old_display));
+                Err(e.error)
+            }
+        }
+    }
+
     /// Non-blocking triple-buffer present.
     ///
     /// Returns [`DisplayError::Busy`] if the previous display transfer has
@@ -444,6 +557,32 @@ mod tests {
         }
         fn wait(mut self) -> FrameBuf<Rgb565, FB> {
             self.framebuffer.take().unwrap()
+        }
+    }
+
+    impl<FB: DMACapableFrameBufferBackend<Color = Rgb565>> core::future::Future
+        for TrackingTransfer<FB>
+    {
+        type Output = FrameBuf<Rgb565, FB>;
+        fn poll(
+            self: core::pin::Pin<&mut Self>,
+            _cx: &mut core::task::Context<'_>,
+        ) -> core::task::Poll<Self::Output> {
+            core::task::Poll::Ready(
+                unsafe { self.get_unchecked_mut() }
+                    .framebuffer
+                    .take()
+                    .unwrap(),
+            )
+        }
+    }
+
+    impl<FB: DMACapableFrameBufferBackend<Color = Rgb565>> crate::display_backend::AsyncDmaTransfer
+        for TrackingTransfer<FB>
+    {
+        type WaitFuture = Self;
+        fn wait_async(self) -> Self::WaitFuture {
+            self
         }
     }
 

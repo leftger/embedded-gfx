@@ -357,7 +357,7 @@ impl K3dengine {
         telemetry: Option<&mut BspTelemetry>,
     ) -> Result<(), RenderError> {
         commands.clear();
-        commands.push(RenderCommand::ClearDepth(u32::MAX))?;
+        commands.push(RenderCommand::ClearDepth(crate::Z_MAX_VALUE))?;
         scratch.mark_new_frame();
 
         let cam = [
@@ -484,7 +484,7 @@ impl K3dengine {
 
         for cmd in commands.iter() {
             match cmd {
-                RenderCommand::ClearDepth(v) => frame.zbuffer.fill(*v),
+                RenderCommand::ClearDepth(v) => crate::clear_zbuffer(frame.zbuffer, *v),
                 RenderCommand::ClearColor(color) => {
                     let w = frame.width as i32;
                     let h = frame.height as i32;
@@ -592,7 +592,7 @@ impl K3dengine {
         use crate::draw::draw_zbuffered_lightmapped_mapped;
 
         frame.validate()?;
-        frame.zbuffer.fill(u32::MAX);
+        crate::clear_zbuffer(frame.zbuffer, crate::Z_MAX_VALUE);
         scratch.mark_new_frame();
 
         let cam = [

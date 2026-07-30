@@ -16,14 +16,11 @@
 //! Note: This module is only available when building with std (examples, tests)
 //! as it requires Vec for dynamic triangle collection.
 
-extern crate std;
-
 use crate::mesh::{K3dMesh, RenderMode};
 use crate::{DrawPrimitive, K3dengine};
 use core::cmp::Ordering;
 use embedded_graphics_core::pixelcolor::{Rgb565, RgbColor};
 use nalgebra::{Vector3, Vector4};
-use std::vec::Vec;
 
 /// A triangle with its average depth for sorting
 #[derive(Debug, Clone)]
@@ -33,12 +30,23 @@ pub struct DepthSortedTriangle {
 }
 
 impl DepthSortedTriangle {
+    pub const DUMMY: Self = Self {
+        primitive: DrawPrimitive::ColoredPoint(nalgebra::Point2::new(0, 0), Rgb565::BLACK),
+        avg_depth: 0.0,
+    };
+
     /// Create a new depth-sorted triangle
     pub fn new(primitive: DrawPrimitive, avg_depth: f32) -> Self {
         Self {
             primitive,
             avg_depth,
         }
+    }
+}
+
+impl Default for DepthSortedTriangle {
+    fn default() -> Self {
+        Self::DUMMY
     }
 }
 
@@ -58,14 +66,14 @@ impl K3dengine {
     pub fn render_painters_algorithm<'a, MS, F>(
         &self,
         meshes: MS,
-        triangles: &mut Vec<DepthSortedTriangle>,
+        triangles: &mut [DepthSortedTriangle],
         mut callback: F,
     ) -> usize
     where
         MS: IntoIterator<Item = &'a K3dMesh<'a>>,
         F: FnMut(DrawPrimitive),
     {
-        triangles.clear();
+        let mut count = 0;
 
         // Collect all triangles with their depths
         for mesh in meshes {
@@ -213,10 +221,13 @@ impl K3dengine {
                                 color,
                             } = prim
                             {
-                                triangles.push(DepthSortedTriangle::new(
-                                    DrawPrimitive::ColoredTriangle(points, color),
-                                    face_sort_depth,
-                                ));
+                                if count < triangles.len() {
+                                    triangles[count] = DepthSortedTriangle::new(
+                                        DrawPrimitive::ColoredTriangle(points, color),
+                                        face_sort_depth,
+                                    );
+                                    count += 1;
+                                }
                             }
                         });
                     }
@@ -227,15 +238,14 @@ impl K3dengine {
         }
 
         // Sort triangles by depth (back-to-front = largest depth first)
-        triangles.sort_by(|a, b| {
+        triangles[0..count].sort_by(|a, b| {
             b.avg_depth
                 .partial_cmp(&a.avg_depth)
                 .unwrap_or(Ordering::Equal)
         });
 
         // Render sorted triangles
-        let count = triangles.len();
-        for triangle in triangles.iter() {
+        for triangle in triangles[0..count].iter() {
             callback(triangle.primitive.clone());
         }
 
@@ -292,7 +302,7 @@ impl K3dengine {
 
 #[cfg(test)]
 mod tests {
-    extern crate std;
+
     use super::*;
     use embedded_graphics_core::pixelcolor::Rgb565;
     use nalgebra::Point3;
@@ -362,14 +372,13 @@ mod tests {
         mesh.set_render_mode(crate::mesh::RenderMode::Solid);
         mesh.set_color(Rgb565::new(31, 0, 0));
 
-        let mut triangles = std::vec::Vec::new();
+        let mut triangles = std::vec![DepthSortedTriangle::DUMMY; 256];
         let count =
             engine.render_painters_algorithm(std::iter::once(&mesh), &mut triangles, |_| {});
 
         // Regression guard: painter mode must clip partially off-screen faces
         // instead of dropping them entirely.
         assert!(count > 0);
-        assert_eq!(count, triangles.len());
     }
 
     #[test]
@@ -398,11 +407,15 @@ mod tests {
         mesh.set_render_mode(crate::mesh::RenderMode::Solid);
         mesh.set_color(Rgb565::new(0, 63, 0));
 
-        let mut triangles = std::vec::Vec::new();
+        let mut triangles = std::vec![DepthSortedTriangle::DUMMY; 256];
         let count =
             engine.render_painters_algorithm(std::iter::once(&mesh), &mut triangles, |_| {});
         assert!(count > 0);
         let first = triangles[0].avg_depth;
-        assert!(triangles.iter().all(|t| (t.avg_depth - first).abs() < 1e-5));
+        assert!(
+            triangles[0..count]
+                .iter()
+                .all(|t| (t.avg_depth - first).abs() < 1e-5)
+        );
     }
 }

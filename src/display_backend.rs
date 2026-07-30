@@ -96,6 +96,18 @@ pub trait DmaTransfer {
     fn wait(self) -> Self::Buffer;
 }
 
+/// An asynchronous DMA transfer that can be awaited as a future.
+///
+/// This allows integration with async executors (e.g. Embassy, RTOS task executors)
+/// without blocking the CPU while the DMA transfer is in progress.
+pub trait AsyncDmaTransfer: DmaTransfer {
+    /// The future type returned by `wait_async`.
+    type WaitFuture: core::future::Future<Output = Self::Buffer>;
+
+    /// Return a future that resolves to the framebuffer once the DMA transfer completes.
+    fn wait_async(self) -> Self::WaitFuture;
+}
+
 /// Platform-agnostic display backend trait.
 ///
 /// Implementations handle the hardware-specific details of transferring a
@@ -146,6 +158,14 @@ where
     ) -> Result<Self::Transfer, TransferError<FB>> {
         self.start_dma_transfer(framebuffer)
     }
+
+    /// Optional: Clear the depth buffer using hardware acceleration (e.g. DMA2D / Chrom-ART).
+    /// Returns `true` if the hardware successfully cleared the depth buffer,
+    /// or `false` to let the engine fall back to CPU slice filling.
+    #[cfg(feature = "dma2d")]
+    fn hardware_clear_depth(&mut self, _zbuffer: &mut [crate::ZDepth]) -> bool {
+        false
+    }
 }
 
 // ── SimulatorBackend ──────────────────────────────────────────────────────────
@@ -175,6 +195,35 @@ where
         self.framebuffer
             .take()
             .expect("CompletedTransfer polled after completion")
+    }
+}
+
+impl<FB> core::future::Future for CompletedTransfer<FB>
+where
+    FB: DMACapableFrameBufferBackend<Color = Rgb565>,
+{
+    type Output = FrameBuf<Rgb565, FB>;
+
+    fn poll(
+        self: core::pin::Pin<&mut Self>,
+        _cx: &mut core::task::Context<'_>,
+    ) -> core::task::Poll<Self::Output> {
+        let buf = unsafe { self.get_unchecked_mut() }
+            .framebuffer
+            .take()
+            .expect("CompletedTransfer polled after completion");
+        core::task::Poll::Ready(buf)
+    }
+}
+
+impl<FB> AsyncDmaTransfer for CompletedTransfer<FB>
+where
+    FB: DMACapableFrameBufferBackend<Color = Rgb565>,
+{
+    type WaitFuture = Self;
+
+    fn wait_async(self) -> Self::WaitFuture {
+        self
     }
 }
 
@@ -251,6 +300,28 @@ mod tests {
         }
         fn wait(mut self) -> FrameBuf<Rgb565, FB> {
             self.framebuffer.take().unwrap()
+        }
+    }
+
+    impl<FB: DMACapableFrameBufferBackend<Color = Rgb565>> core::future::Future for RegionTransfer<FB> {
+        type Output = FrameBuf<Rgb565, FB>;
+        fn poll(
+            self: core::pin::Pin<&mut Self>,
+            _cx: &mut core::task::Context<'_>,
+        ) -> core::task::Poll<Self::Output> {
+            core::task::Poll::Ready(
+                unsafe { self.get_unchecked_mut() }
+                    .framebuffer
+                    .take()
+                    .unwrap(),
+            )
+        }
+    }
+
+    impl<FB: DMACapableFrameBufferBackend<Color = Rgb565>> AsyncDmaTransfer for RegionTransfer<FB> {
+        type WaitFuture = Self;
+        fn wait_async(self) -> Self::WaitFuture {
+            self
         }
     }
 

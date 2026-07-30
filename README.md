@@ -504,8 +504,24 @@ impl core::future::Future for MyDmaWaitFuture {
 | `fixed-transform` | off | Fixed-point screen-space projection path. Implies `dsp` — Q16.16 arithmetic lives in `embedded-dsp`'s `fixed-point` feature (shared with `embedded-gui`) rather than a copy in this crate |
 | `dwt-profiler` | off | DWT cycle-counter profiling hooks |
 | `triple-buffering` | off | Triple-buffered swapchain APIs |
+| `embassy` | off | [`EmbassyWaitTransfer`](src/embassy.rs) + [`FrameClock`](src/embassy.rs) (requires `embassy-time`) |
 
 `row_width_*` flags are mutually exclusive. `aa` is an internal flag enabled automatically by either AA feature.
+
+## Async present (Embassy, RTIC, bare-metal)
+
+Rendering (`execute`, triangle rasterization) stays **synchronous** for single-core throughput. Async applies to **DMA present/wait** only, overlapping CPU render with display scan-out.
+
+| API | Use when |
+|-----|----------|
+| `try_present()` | RTIC tasks, fixed frame budget (cheapest) |
+| `present()` | Simple blocking bring-up |
+| `present_async().await` | Embassy / any async executor |
+
+Core types (no Embassy required): `CompletionSlot`, `WaitTransfer`, `SwapChain`.  
+Enable `embassy` for `EmbassyWaitTransfer` using `embassy-sync` wakers plus `FrameClock`.
+
+See `embedded-gui` for GUI dirty-region present helpers (`try_present_dirty`, `present_dirty_async`).
 
 ## Caps and Telemetry
 

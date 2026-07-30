@@ -479,7 +479,7 @@ where
     /// Returns [`DisplayError::Busy`] if the previous display transfer has
     /// not finished yet.
     pub fn try_present(&mut self) -> Result<(), DisplayError> {
-        let ready = self.display.as_ref().map_or(true, |s| s.is_ready());
+        let ready = self.display.as_ref().is_none_or(|s| s.is_ready());
         if !ready {
             return Err(DisplayError::Busy);
         }

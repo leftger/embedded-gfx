@@ -76,9 +76,12 @@ pub mod bsp;
 pub mod camera;
 pub mod character;
 pub mod command_buffer;
+pub mod completion;
 pub mod config;
 pub mod display_backend;
 pub mod draw;
+#[cfg(feature = "embassy")]
+pub mod embassy;
 pub mod error;
 pub mod hardware_profile;
 pub mod hud;
@@ -119,12 +122,22 @@ pub use bridge::{
     AsEgPoint, AsNalgebraPoint, draw_to, eg_to_nalgebra, nalgebra_to_eg, render_drawable_to_buffer,
 };
 pub use character::CharacterController;
+pub use completion::{CompletionSlot, WaitTransfer, WaitTransferFuture};
+pub use display_backend::{
+    AsyncDmaTransfer, DisplayBackend, DisplayError, DisplayRegion, DmaTransfer, SimulatorBackend,
+    TransferError,
+};
 #[cfg(feature = "aa")]
 pub use draw::draw_zbuffered_2xssaa;
 pub use draw::{
     DitherConfig, FogConfig, fast_blend_rgb565, fast_blend_rgba8888, fast_blend_rgba8888_to_rgb565,
     reverse_color_rgb565, reverse_color_rgba8888,
 };
+#[cfg(feature = "embassy")]
+pub use embassy::{EmbassyWaitTransfer, EmbassyWaitTransferFuture, FrameClock};
+pub use swapchain::{StandardSwapChain, SwapChain};
+#[cfg(feature = "triple-buffering")]
+pub use swapchain::{StandardTripleSwapChain, TripleSwapChain};
 // Q16.16 fixed-point math now lives in embedded-dsp (shared with
 // embedded-gui) instead of a bespoke copy in this crate. Only available
 // when the "fixed-transform" feature (which requires "dsp") is enabled.

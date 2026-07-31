@@ -953,7 +953,10 @@ impl K3dengine {
             let transform_matrix = self.camera.vp_matrix * mesh.model_matrix;
 
             let render_mode = self.resolve_render_mode(&mesh.render_mode);
-            let is_textured = matches!(render_mode, RenderMode::Textured | RenderMode::TexturedGouraud(_) | RenderMode::MatCap);
+            let is_textured = matches!(
+                render_mode,
+                RenderMode::Textured | RenderMode::TexturedGouraud(_) | RenderMode::MatCap
+            );
 
             let mut v_cache_plain: [Option<Point3<i32>>; 256] = [None; 256];
             let mut v_cache_w: [Option<(Point3<i32>, f32)>; 256] = [None; 256];
@@ -1002,7 +1005,7 @@ impl K3dengine {
                 if mesh.outline_width > 0.0 {
                     let has_vertex_normals = !geometry.vertex_normals.is_empty();
                     let has_face_normals = !geometry.normals.is_empty();
-                    
+
                     for (face_idx, face) in geometry.faces.iter().enumerate() {
                         let face_normal = if has_face_normals {
                             Vector3::new(
@@ -1245,8 +1248,9 @@ impl K3dengine {
 
                         if let Some([p1, p2, p3]) = tf_face(face) {
                             let raw_intensity = transformed_normal.dot(&adjusted_dir).max(0.0);
-                            let intensity = ((raw_intensity * bands_f).round() / bands_f).clamp(0.0, 1.0);
-                            
+                            let intensity =
+                                ((raw_intensity * bands_f).round() / bands_f).clamp(0.0, 1.0);
+
                             let final_color = color_as_float * intensity + ambient_color;
                             let final_color = Vector3::new(
                                 final_color.x.clamp(0.0, 1.0),
@@ -1648,8 +1652,11 @@ impl K3dengine {
                             }
                         }
                     } else {
-                        for (face, face_normal) in geometry.faces.iter().zip(geometry.normals.iter()) {
-                            let fn_vec = Vector3::new(face_normal[0], face_normal[1], face_normal[2]);
+                        for (face, face_normal) in
+                            geometry.faces.iter().zip(geometry.normals.iter())
+                        {
+                            let fn_vec =
+                                Vector3::new(face_normal[0], face_normal[1], face_normal[2]);
                             let transformed_fn = mesh.model_matrix.transform_vector(&fn_vec);
 
                             if self.is_backface(
@@ -1680,9 +1687,9 @@ impl K3dengine {
                                     );
                                     if !self.point_lights.is_empty() {
                                         let vpos = geometry.vertices[face[k]];
-                                        let wp = mesh
-                                            .model_matrix
-                                            .transform_point(&Point3::new(vpos[0], vpos[1], vpos[2]));
+                                        let wp = mesh.model_matrix.transform_point(&Point3::new(
+                                            vpos[0], vpos[1], vpos[2],
+                                        ));
                                         vc = Self::add_tint(vc, self.light_tint_at(wp));
                                     }
                                     vc
@@ -1720,9 +1727,15 @@ impl K3dengine {
 
                     let mv = self.camera.view_matrix * mesh.model_matrix;
                     let normal_matrix = nalgebra::Matrix3::new(
-                        mv[(0, 0)], mv[(0, 1)], mv[(0, 2)],
-                        mv[(1, 0)], mv[(1, 1)], mv[(1, 2)],
-                        mv[(2, 0)], mv[(2, 1)], mv[(2, 2)],
+                        mv[(0, 0)],
+                        mv[(0, 1)],
+                        mv[(0, 2)],
+                        mv[(1, 0)],
+                        mv[(1, 1)],
+                        mv[(1, 2)],
+                        mv[(2, 0)],
+                        mv[(2, 1)],
+                        mv[(2, 2)],
                     );
 
                     for (face_idx, face) in geometry.faces.iter().enumerate() {
@@ -1858,7 +1871,7 @@ impl K3dengine {
                         depths: [c_pt.z as f32, p1.z as f32, p2.z as f32],
                         color,
                         alpha: opacity,
-                    }
+                    },
                 ))?;
             }
         }

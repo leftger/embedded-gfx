@@ -138,9 +138,7 @@ impl Texture {
     #[inline(always)]
     pub fn lookup_pixel(&self, tex_x: u32, tex_y: u32) -> Rgb565 {
         match self.format {
-            TextureFormat::Rgb565 => {
-                self.data[(tex_y * self.width + tex_x) as usize]
-            }
+            TextureFormat::Rgb565 => self.data[(tex_y * self.width + tex_x) as usize],
             TextureFormat::Palettized8 => {
                 let idx = self.indices[(tex_y * self.width + tex_x) as usize] as usize;
                 if idx < self.palette.len() {

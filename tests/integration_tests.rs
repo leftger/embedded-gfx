@@ -2149,10 +2149,7 @@ fn test_matcap_record_and_execute_with_textures() {
         [-0.5, 0.5, -5.0],
     ];
     let faces = [[0, 1, 2], [0, 2, 3]];
-    let normals = [
-        [0.0, 0.0, 1.0],
-        [0.0, 0.0, 1.0],
-    ];
+    let normals = [[0.0, 0.0, 1.0], [0.0, 0.0, 1.0]];
     let vertex_normals = [
         [0.0, 0.0, 1.0],
         [0.0, 0.0, 1.0],
@@ -2201,10 +2198,7 @@ fn test_matcap_record_and_execute_with_textures() {
         .execute_with_textures(&mut fb, &mut frame, &cmd, &tex_mgr, None)
         .unwrap();
 
-    assert!(
-        fb.pixel_count() > 50,
-        "MatCap quad should rasterize pixels"
-    );
+    assert!(fb.pixel_count() > 50, "MatCap quad should rasterize pixels");
 }
 
 #[test]
@@ -2248,22 +2242,14 @@ fn test_textured_gouraud_rendering() {
         [-0.5, 0.5, -5.0],
     ];
     let faces = [[0, 1, 2], [0, 2, 3]];
-    let normals = [
-        [0.0, 0.0, 1.0],
-        [0.0, 0.0, 1.0],
-    ];
+    let normals = [[0.0, 0.0, 1.0], [0.0, 0.0, 1.0]];
     let vertex_normals = [
         [0.0, 0.0, 1.0],
         [0.0, 0.0, 1.0],
         [0.0, 0.0, 1.0],
         [0.0, 0.0, 1.0],
     ];
-    let uvs = [
-        [0.0, 0.0],
-        [1.0, 0.0],
-        [1.0, 1.0],
-        [0.0, 1.0],
-    ];
+    let uvs = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
 
     static TEX_DATA: [Rgb565; 4] = [
         Rgb565::CSS_RED,
@@ -2375,10 +2361,7 @@ fn test_toon_shading_and_outline_rendering() {
         [-0.5, 0.5, -5.0],
     ];
     let faces = [[0, 1, 2], [0, 2, 3]];
-    let normals = [
-        [0.0, 0.0, 1.0],
-        [0.0, 0.0, 1.0],
-    ];
+    let normals = [[0.0, 0.0, 1.0], [0.0, 0.0, 1.0]];
     let geometry = Geometry {
         vertices: &vertices,
         faces: &faces,

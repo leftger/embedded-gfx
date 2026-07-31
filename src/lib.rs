@@ -1821,9 +1821,6 @@ impl K3dengine {
         color: Rgb565,
         commands: &mut crate::command_buffer::CommandBuffer<MAX>,
     ) -> Result<(), crate::error::RenderError> {
-        #[cfg(not(feature = "std"))]
-        use micromath::F32Ext as _;
-
         let pos = mesh.get_position();
         let height = pos.y - floor_y;
         if height < 0.0 || height >= max_fade_distance {
@@ -1847,8 +1844,8 @@ impl K3dengine {
         let mut outer_proj: [Option<(Point3<i32>, f32)>; 8] = [None; 8];
         for i in 0..8 {
             let angle = (i as f32) * (core::f32::consts::PI / 4.0);
-            let px = pos.x + radius * angle.cos();
-            let pz = pos.z + radius * angle.sin();
+            let px = pos.x + radius * micromath::F32Ext::cos(angle);
+            let pz = pos.z + radius * micromath::F32Ext::sin(angle);
             outer_proj[i] = self.transform_point_with_w(&[px, y_pos, pz], self.camera.vp_matrix);
         }
 

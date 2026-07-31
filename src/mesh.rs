@@ -29,6 +29,14 @@ pub enum RenderMode {
     /// (plain [`crate::K3dengine::execute`] can't resolve `texture_id`
     /// without a [`crate::texture::TextureManager`]).
     Textured,
+    /// Textured surface combined with Gouraud lighting.
+    TexturedGouraud(Vector3<f32>),
+    /// Spherical Environment Mapping (MatCap) shading. Procedurally generates
+    /// UV coordinates based on camera-space normals. Uses the mesh's
+    /// `geometry.texture_id` as the MatCap sphere map.
+    MatCap,
+    /// Toon cel-shading with a light direction and number of discrete shading bands.
+    Toon(Vector3<f32>, u8),
 }
 #[derive(Debug, Default, Copy, Clone)]
 pub struct Geometry<'a> {
@@ -153,6 +161,8 @@ pub struct K3dMesh<'a> {
     pub lod_low: Option<Geometry<'a>>,
     pub lod_levels: LODLevels,
     pub priority: u8,
+    pub outline_color: Option<Rgb565>,
+    pub outline_width: f32,
 }
 
 impl<'a> K3dMesh<'a> {
@@ -169,6 +179,8 @@ impl<'a> K3dMesh<'a> {
             lod_low: None,
             lod_levels: LODLevels::default(),
             priority: 128,
+            outline_color: None,
+            outline_width: 0.0,
         }
     }
 

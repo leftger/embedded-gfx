@@ -777,6 +777,7 @@ fn prim_bounds(p: &DrawPrimitive) -> (i32, i32, i32, i32) {
         | DrawPrimitive::GouraudTriangleWithDepth { points: pts, .. }
         | DrawPrimitive::TexturedTriangle { points: pts, .. }
         | DrawPrimitive::TexturedTriangleWithDepth { points: pts, .. }
+        | DrawPrimitive::TexturedGouraudTriangleWithDepth { points: pts, .. }
         | DrawPrimitive::LightmappedTriangle { points: pts, .. } => {
             let min_x = pts.iter().map(|p| p.x).min().unwrap_or(0);
             let min_y = pts.iter().map(|p| p.y).min().unwrap_or(0);

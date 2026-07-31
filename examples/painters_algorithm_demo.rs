@@ -69,6 +69,7 @@ fn depth_key_for_primitive(prim: &DrawPrimitive) -> i32 {
         DrawPrimitive::ColoredTriangleWithDepth { depths, .. }
         | DrawPrimitive::GouraudTriangleWithDepth { depths, .. }
         | DrawPrimitive::TexturedTriangleWithDepth { depths, .. }
+        | DrawPrimitive::TexturedGouraudTriangleWithDepth { depths, .. }
         | DrawPrimitive::LightmappedTriangle { depths, .. } => {
             (depths[0] + depths[1] + depths[2]) / 3.0
         }
@@ -100,6 +101,7 @@ fn as_painter_primitive(prim: &DrawPrimitive) -> Option<DrawPrimitive> {
         // Painter fallback for this demo only supports flat/gouraud primitives.
         DrawPrimitive::TexturedTriangle { .. }
         | DrawPrimitive::TexturedTriangleWithDepth { .. }
+        | DrawPrimitive::TexturedGouraudTriangleWithDepth { .. }
         | DrawPrimitive::TranslucentTriangleWithDepth { .. }
         | DrawPrimitive::LightmappedTriangle { .. } => None,
     }

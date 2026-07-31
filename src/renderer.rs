@@ -67,6 +67,7 @@ fn primitive_bounds(primitive: &DrawPrimitive) -> (i32, i32, i32, i32) {
         | DrawPrimitive::GouraudTriangleWithDepth { points, .. }
         | DrawPrimitive::TexturedTriangle { points, .. }
         | DrawPrimitive::TexturedTriangleWithDepth { points, .. }
+        | DrawPrimitive::TexturedGouraudTriangleWithDepth { points, .. }
         | DrawPrimitive::LightmappedTriangle { points, .. } => {
             let min_x = points.iter().map(|p| p.x).min().unwrap_or(0);
             let min_y = points.iter().map(|p| p.y).min().unwrap_or(0);
@@ -183,6 +184,25 @@ fn tint_primitive(
             lightmap_id,
             brightness,
             dynamic_tint: apply_post(dynamic_tint, tint, palette_mode),
+        },
+        DrawPrimitive::TexturedGouraudTriangleWithDepth {
+            points,
+            depths,
+            ws,
+            uvs,
+            colors,
+            texture_id,
+        } => DrawPrimitive::TexturedGouraudTriangleWithDepth {
+            points,
+            depths,
+            ws,
+            uvs,
+            colors: [
+                apply_post(colors[0], tint, palette_mode),
+                apply_post(colors[1], tint, palette_mode),
+                apply_post(colors[2], tint, palette_mode),
+            ],
+            texture_id,
         },
         other => other,
     }
@@ -522,7 +542,8 @@ where
                         );
                     }
                     DrawPrimitive::TexturedTriangle { .. }
-                    | DrawPrimitive::TexturedTriangleWithDepth { .. } => {
+                    | DrawPrimitive::TexturedTriangleWithDepth { .. }
+                    | DrawPrimitive::TexturedGouraudTriangleWithDepth { .. } => {
                         draw_zbuffered_with_textures_mapped(
                             primitive.clone(),
                             fb,

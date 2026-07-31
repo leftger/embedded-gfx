@@ -7,6 +7,13 @@
 use embedded_graphics_core::pixelcolor::{Rgb565, RgbColor};
 use heapless::Vec as HeaplessVec;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextureFormat {
+    Rgb565,
+    Palettized8,
+    Palettized4,
+}
+
 /// A 2D texture with RGB565 pixel data
 ///
 /// Textures must have power-of-2 dimensions (8, 16, 32, 64, 128, 256, etc.)
@@ -23,6 +30,12 @@ pub struct Texture {
     width_mask: u32,
     /// Bit mask for wrapping height (height - 1)
     height_mask: u32,
+    /// Palette colors (for palettized modes)
+    pub palette: &'static [Rgb565],
+    /// Pixel index data (for palettized modes)
+    pub indices: &'static [u8],
+    /// Texture format (RGB565, 8-bit palettized, or 4-bit palettized)
+    pub format: TextureFormat,
 }
 
 impl Texture {
@@ -53,6 +66,101 @@ impl Texture {
             height,
             width_mask: width - 1,
             height_mask: height - 1,
+            palette: &[],
+            indices: &[],
+            format: TextureFormat::Rgb565,
+        }
+    }
+
+    /// Create a new 8-bit palettized texture
+    pub fn new_palettized8(
+        indices: &'static [u8],
+        palette: &'static [Rgb565],
+        width: u32,
+        height: u32,
+    ) -> Self {
+        assert!(width.is_power_of_two(), "Texture width must be power of 2");
+        assert!(
+            height.is_power_of_two(),
+            "Texture height must be power of 2"
+        );
+        assert_eq!(
+            indices.len(),
+            (width * height) as usize,
+            "Indices length must match width × height"
+        );
+        assert!(palette.len() <= 256, "Palette cannot exceed 256 colors");
+
+        Self {
+            data: &[],
+            width,
+            height,
+            width_mask: width - 1,
+            height_mask: height - 1,
+            palette,
+            indices,
+            format: TextureFormat::Palettized8,
+        }
+    }
+
+    /// Create a new 4-bit palettized texture
+    pub fn new_palettized4(
+        indices: &'static [u8],
+        palette: &'static [Rgb565],
+        width: u32,
+        height: u32,
+    ) -> Self {
+        assert!(width.is_power_of_two(), "Texture width must be power of 2");
+        assert!(
+            height.is_power_of_two(),
+            "Texture height must be power of 2"
+        );
+        assert_eq!(
+            indices.len(),
+            ((width * height + 1) / 2) as usize,
+            "Indices length must match packed width × height / 2"
+        );
+        assert!(palette.len() <= 16, "Palette cannot exceed 16 colors");
+
+        Self {
+            data: &[],
+            width,
+            height,
+            width_mask: width - 1,
+            height_mask: height - 1,
+            palette,
+            indices,
+            format: TextureFormat::Palettized4,
+        }
+    }
+
+    /// Lookup pixel directly based on current texture format
+    #[inline(always)]
+    pub fn lookup_pixel(&self, tex_x: u32, tex_y: u32) -> Rgb565 {
+        match self.format {
+            TextureFormat::Rgb565 => {
+                self.data[(tex_y * self.width + tex_x) as usize]
+            }
+            TextureFormat::Palettized8 => {
+                let idx = self.indices[(tex_y * self.width + tex_x) as usize] as usize;
+                if idx < self.palette.len() {
+                    self.palette[idx]
+                } else {
+                    Rgb565::new(0, 0, 0)
+                }
+            }
+            TextureFormat::Palettized4 => {
+                let pixel_idx = (tex_y * self.width + tex_x) as usize;
+                let byte_idx = pixel_idx / 2;
+                let shift = if pixel_idx % 2 == 0 { 4 } else { 0 };
+                let val = self.indices[byte_idx];
+                let palette_idx = ((val >> shift) & 0x0F) as usize;
+                if palette_idx < self.palette.len() {
+                    self.palette[palette_idx]
+                } else {
+                    Rgb565::new(0, 0, 0)
+                }
+            }
         }
     }
 
@@ -77,7 +185,7 @@ impl Texture {
         let tex_y = tex_y & self.height_mask;
 
         // Lookup pixel
-        self.data[(tex_y * self.width + tex_x) as usize]
+        self.lookup_pixel(tex_x, tex_y)
     }
 
     /// Sample the texture at UV coordinates (integer version for performance)
@@ -98,7 +206,7 @@ impl Texture {
         let tex_x = tex_x & self.width_mask;
         let tex_y = tex_y & self.height_mask;
 
-        self.data[(tex_y * self.width + tex_x) as usize]
+        self.lookup_pixel(tex_x, tex_y)
     }
 
     /// Sample the texture at Q16.16 fixed-point UV coordinates using fast affine indexing.
@@ -108,7 +216,7 @@ impl Texture {
     pub fn sample_affine_q16(&self, u_q16: u32, v_q16: u32) -> Rgb565 {
         let tex_x = (((u_q16 as u64 * self.width as u64) >> 16) as u32) & self.width_mask;
         let tex_y = (((v_q16 as u64 * self.height as u64) >> 16) as u32) & self.height_mask;
-        self.data[(tex_y * self.width + tex_x) as usize]
+        self.lookup_pixel(tex_x, tex_y)
     }
 
     /// Sample the texture at Q16.16 fixed-point UV coordinates using 2xSSAA (4-sample sub-pixel anti-aliasing).

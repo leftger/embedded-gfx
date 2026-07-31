@@ -31,6 +31,7 @@ fn primitive_bounds(primitive: &DrawPrimitive) -> (i32, i32, i32, i32) {
         | DrawPrimitive::GouraudTriangleWithDepth { points, .. }
         | DrawPrimitive::TexturedTriangle { points, .. }
         | DrawPrimitive::TexturedTriangleWithDepth { points, .. }
+        | DrawPrimitive::TexturedGouraudTriangleWithDepth { points, .. }
         | DrawPrimitive::LightmappedTriangle { points, .. } => {
             let min_x = points.iter().map(|p| p.x).min().unwrap_or(0);
             let min_y = points.iter().map(|p| p.y).min().unwrap_or(0);

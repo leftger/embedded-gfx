@@ -7,7 +7,7 @@ pub struct Camera {
     fov: f32,
     pub near: f32,
     pub far: f32,
-    view_matrix: nalgebra::Matrix4<f32>,
+    pub view_matrix: nalgebra::Matrix4<f32>,
     projection_matrix: nalgebra::Matrix4<f32>,
     pub vp_matrix: nalgebra::Matrix4<f32>,
     target: Point3<f32>,

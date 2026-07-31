@@ -196,6 +196,14 @@ pub enum DrawPrimitive {
         uvs: [[f32; 2]; 3],
         texture_id: u32,
     },
+    TexturedGouraudTriangleWithDepth {
+        points: [Point2<i32>; 3],
+        depths: [f32; 3],
+        ws: [f32; 3],
+        uvs: [[f32; 2]; 3],
+        colors: [Rgb565; 3],
+        texture_id: u32,
+    },
     /// Perspective-correct textured triangle with baked lightmap.
     ///
     /// The final pixel colour is:
@@ -477,12 +485,14 @@ impl K3dengine {
             QualityTier::Fastest => match mode {
                 RenderMode::BlinnPhong { .. }
                 | RenderMode::GouraudLightDir(_)
+                | RenderMode::Toon(_, _)
                 | RenderMode::SolidLightDir(_) => RenderMode::Solid,
                 _ => mode.clone(),
             },
             QualityTier::Balanced => match (self.material_profile, mode) {
                 (MaterialProfile::Unlit, RenderMode::BlinnPhong { .. })
                 | (MaterialProfile::Unlit, RenderMode::GouraudLightDir(_))
+                | (MaterialProfile::Unlit, RenderMode::Toon(_, _))
                 | (MaterialProfile::Unlit, RenderMode::SolidLightDir(_)) => RenderMode::Solid,
                 (MaterialProfile::Lambert, RenderMode::BlinnPhong { light_dir, .. }) => {
                     RenderMode::SolidLightDir(*light_dir)
@@ -492,6 +502,7 @@ impl K3dengine {
             QualityTier::Quality => match (self.material_profile, mode) {
                 (MaterialProfile::Unlit, RenderMode::BlinnPhong { .. })
                 | (MaterialProfile::Unlit, RenderMode::GouraudLightDir(_))
+                | (MaterialProfile::Unlit, RenderMode::Toon(_, _))
                 | (MaterialProfile::Unlit, RenderMode::SolidLightDir(_)) => RenderMode::Solid,
                 (MaterialProfile::Lambert, RenderMode::BlinnPhong { light_dir, .. }) => {
                     RenderMode::SolidLightDir(*light_dir)
@@ -942,7 +953,7 @@ impl K3dengine {
             let transform_matrix = self.camera.vp_matrix * mesh.model_matrix;
 
             let render_mode = self.resolve_render_mode(&mesh.render_mode);
-            let is_textured = matches!(render_mode, RenderMode::Textured);
+            let is_textured = matches!(render_mode, RenderMode::Textured | RenderMode::TexturedGouraud(_) | RenderMode::MatCap);
 
             let mut v_cache_plain: [Option<Point3<i32>>; 256] = [None; 256];
             let mut v_cache_w: [Option<(Point3<i32>, f32)>; 256] = [None; 256];
@@ -986,6 +997,84 @@ impl K3dengine {
                 let (p2, w2) = get_pt_w(face[2])?;
                 Some(([p0, p1, p2], [w0, w1, w2]))
             };
+
+            if let Some(out_color) = mesh.outline_color {
+                if mesh.outline_width > 0.0 {
+                    let has_vertex_normals = !geometry.vertex_normals.is_empty();
+                    let has_face_normals = !geometry.normals.is_empty();
+                    
+                    for (face_idx, face) in geometry.faces.iter().enumerate() {
+                        let face_normal = if has_face_normals {
+                            Vector3::new(
+                                geometry.normals[face_idx][0],
+                                geometry.normals[face_idx][1],
+                                geometry.normals[face_idx][2],
+                            )
+                        } else {
+                            let v0 = Vector3::new(
+                                geometry.vertices[face[0]][0],
+                                geometry.vertices[face[0]][1],
+                                geometry.vertices[face[0]][2],
+                            );
+                            let v1 = Vector3::new(
+                                geometry.vertices[face[1]][0],
+                                geometry.vertices[face[1]][1],
+                                geometry.vertices[face[1]][2],
+                            );
+                            let v2 = Vector3::new(
+                                geometry.vertices[face[2]][0],
+                                geometry.vertices[face[2]][1],
+                                geometry.vertices[face[2]][2],
+                            );
+                            (v1 - v0).cross(&(v2 - v0)).normalize()
+                        };
+
+                        let transformed_normal = mesh.model_matrix.transform_vector(&face_normal);
+                        if !self.is_backface(
+                            face,
+                            geometry.vertices,
+                            mesh.model_matrix,
+                            &transformed_normal,
+                        ) {
+                            continue;
+                        }
+
+                        let mut pts = [Point3::origin(); 3];
+                        let mut valid = true;
+                        for i in 0..3 {
+                            let vn = if has_vertex_normals {
+                                Vector3::new(
+                                    geometry.vertex_normals[face[i]][0],
+                                    geometry.vertex_normals[face[i]][1],
+                                    geometry.vertex_normals[face[i]][2],
+                                )
+                            } else {
+                                face_normal
+                            };
+                            let vpos = geometry.vertices[face[i]];
+                            let ext_v = [
+                                vpos[0] + vn.x * mesh.outline_width,
+                                vpos[1] + vn.y * mesh.outline_width,
+                                vpos[2] + vn.z * mesh.outline_width,
+                            ];
+                            if let Some(pt) = self.transform_point(&ext_v, transform_matrix) {
+                                pts[i] = pt;
+                            } else {
+                                valid = false;
+                                break;
+                            }
+                        }
+
+                        if valid {
+                            callback(DrawPrimitive::ColoredTriangleWithDepth {
+                                points: [pts[0].xy(), pts[1].xy(), pts[2].xy()],
+                                depths: [pts[0].z as f32, pts[1].z as f32, pts[2].z as f32],
+                                color: out_color,
+                            });
+                        }
+                    }
+                }
+            }
 
             let render_mode = self.resolve_render_mode(&mesh.render_mode);
             match render_mode {
@@ -1127,6 +1216,60 @@ impl K3dengine {
                                 points: [p1.xy(), p2.xy(), p3.xy()],
                                 depths: [p1.z as f32, p2.z as f32, p3.z as f32],
                                 colors: vertex_colors,
+                            });
+                        }
+                    }
+                }
+
+                RenderMode::Toon(direction, bands) => {
+                    let color_as_float = Vector3::new(
+                        mesh.color.r() as f32 / 32.0,
+                        mesh.color.g() as f32 / 64.0,
+                        mesh.color.b() as f32 / 32.0,
+                    );
+                    let ambient_color = color_as_float * 0.15;
+                    let adjusted_dir = Vector3::new(direction.x, direction.y, -direction.z);
+                    let bands_f = bands.max(1) as f32;
+
+                    for (face, normal) in geometry.faces.iter().zip(geometry.normals.iter()) {
+                        let normal = Vector3::new(normal[0], normal[1], normal[2]);
+                        let transformed_normal = mesh.model_matrix.transform_vector(&normal);
+                        if self.is_backface(
+                            face,
+                            geometry.vertices,
+                            mesh.model_matrix,
+                            &transformed_normal,
+                        ) {
+                            continue;
+                        }
+
+                        if let Some([p1, p2, p3]) = tf_face(face) {
+                            let raw_intensity = transformed_normal.dot(&adjusted_dir).max(0.0);
+                            let intensity = ((raw_intensity * bands_f).round() / bands_f).clamp(0.0, 1.0);
+                            
+                            let final_color = color_as_float * intensity + ambient_color;
+                            let final_color = Vector3::new(
+                                final_color.x.clamp(0.0, 1.0),
+                                final_color.y.clamp(0.0, 1.0),
+                                final_color.z.clamp(0.0, 1.0),
+                            );
+                            let mut color = Rgb565::new(
+                                (final_color.x * 31.0) as u8,
+                                (final_color.y * 63.0) as u8,
+                                (final_color.z * 31.0) as u8,
+                            );
+                            if !self.point_lights.is_empty() {
+                                let wc = Self::face_world_center(
+                                    face,
+                                    geometry.vertices,
+                                    mesh.model_matrix,
+                                );
+                                color = Self::add_tint(color, self.light_tint_at(wc));
+                            }
+                            callback(DrawPrimitive::ColoredTriangleWithDepth {
+                                points: [p1.xy(), p2.xy(), p3.xy()],
+                                depths: [p1.z as f32, p2.z as f32, p3.z as f32],
+                                color,
                             });
                         }
                     }
@@ -1467,6 +1610,189 @@ impl K3dengine {
                         }
                     }
                 }
+                RenderMode::TexturedGouraud(direction) => {
+                    let Some(texture_id) = geometry.texture_id else {
+                        continue;
+                    };
+                    if geometry.uvs.is_empty() {
+                        continue;
+                    }
+                    let color_as_float = Vector3::new(
+                        mesh.color.r() as f32 / 32.0,
+                        mesh.color.g() as f32 / 64.0,
+                        mesh.color.b() as f32 / 32.0,
+                    );
+                    let ambient_color = color_as_float * 0.1;
+                    let adjusted_dir = Vector3::new(direction.x, direction.y, -direction.z);
+
+                    if geometry.normals.is_empty() {
+                        for face in geometry.faces.iter() {
+                            if let Some((points, ws)) = tf_face_w(face) {
+                                let vertex_colors = [mesh.color, mesh.color, mesh.color];
+                                callback(DrawPrimitive::TexturedGouraudTriangleWithDepth {
+                                    points: [points[0].xy(), points[1].xy(), points[2].xy()],
+                                    depths: [
+                                        points[0].z as f32,
+                                        points[1].z as f32,
+                                        points[2].z as f32,
+                                    ],
+                                    ws,
+                                    uvs: [
+                                        geometry.uvs[face[0]],
+                                        geometry.uvs[face[1]],
+                                        geometry.uvs[face[2]],
+                                    ],
+                                    colors: vertex_colors,
+                                    texture_id,
+                                });
+                            }
+                        }
+                    } else {
+                        for (face, face_normal) in geometry.faces.iter().zip(geometry.normals.iter()) {
+                            let fn_vec = Vector3::new(face_normal[0], face_normal[1], face_normal[2]);
+                            let transformed_fn = mesh.model_matrix.transform_vector(&fn_vec);
+
+                            if self.is_backface(
+                                face,
+                                geometry.vertices,
+                                mesh.model_matrix,
+                                &transformed_fn,
+                            ) {
+                                continue;
+                            }
+
+                            if let Some((points, ws)) = tf_face_w(face) {
+                                let vertex_colors: [Rgb565; 3] = core::array::from_fn(|k| {
+                                    let vn = if !geometry.vertex_normals.is_empty() {
+                                        let vn_arr = geometry.vertex_normals[face[k]];
+                                        let vn_vec = Vector3::new(vn_arr[0], vn_arr[1], vn_arr[2]);
+                                        mesh.model_matrix.transform_vector(&vn_vec)
+                                    } else {
+                                        transformed_fn
+                                    };
+
+                                    let intensity = vn.dot(&adjusted_dir).max(0.0);
+                                    let c = color_as_float * intensity + ambient_color;
+                                    let mut vc = Rgb565::new(
+                                        (c.x.clamp(0.0, 1.0) * 31.0) as u8,
+                                        (c.y.clamp(0.0, 1.0) * 63.0) as u8,
+                                        (c.z.clamp(0.0, 1.0) * 31.0) as u8,
+                                    );
+                                    if !self.point_lights.is_empty() {
+                                        let vpos = geometry.vertices[face[k]];
+                                        let wp = mesh
+                                            .model_matrix
+                                            .transform_point(&Point3::new(vpos[0], vpos[1], vpos[2]));
+                                        vc = Self::add_tint(vc, self.light_tint_at(wp));
+                                    }
+                                    vc
+                                });
+
+                                callback(DrawPrimitive::TexturedGouraudTriangleWithDepth {
+                                    points: [points[0].xy(), points[1].xy(), points[2].xy()],
+                                    depths: [
+                                        points[0].z as f32,
+                                        points[1].z as f32,
+                                        points[2].z as f32,
+                                    ],
+                                    ws,
+                                    uvs: [
+                                        geometry.uvs[face[0]],
+                                        geometry.uvs[face[1]],
+                                        geometry.uvs[face[2]],
+                                    ],
+                                    colors: vertex_colors,
+                                    texture_id,
+                                });
+                            }
+                        }
+                    }
+                }
+                RenderMode::MatCap => {
+                    let Some(texture_id) = geometry.texture_id else {
+                        continue;
+                    };
+                    let has_vertex_normals = !geometry.vertex_normals.is_empty();
+                    let has_face_normals = !geometry.normals.is_empty();
+                    if !has_vertex_normals && !has_face_normals {
+                        continue;
+                    }
+
+                    let mv = self.camera.view_matrix * mesh.model_matrix;
+                    let normal_matrix = nalgebra::Matrix3::new(
+                        mv[(0, 0)], mv[(0, 1)], mv[(0, 2)],
+                        mv[(1, 0)], mv[(1, 1)], mv[(1, 2)],
+                        mv[(2, 0)], mv[(2, 1)], mv[(2, 2)],
+                    );
+
+                    for (face_idx, face) in geometry.faces.iter().enumerate() {
+                        let face_normal = if has_face_normals {
+                            Vector3::new(
+                                geometry.normals[face_idx][0],
+                                geometry.normals[face_idx][1],
+                                geometry.normals[face_idx][2],
+                            )
+                        } else {
+                            let v0 = Vector3::new(
+                                geometry.vertices[face[0]][0],
+                                geometry.vertices[face[0]][1],
+                                geometry.vertices[face[0]][2],
+                            );
+                            let v1 = Vector3::new(
+                                geometry.vertices[face[1]][0],
+                                geometry.vertices[face[1]][1],
+                                geometry.vertices[face[1]][2],
+                            );
+                            let v2 = Vector3::new(
+                                geometry.vertices[face[2]][0],
+                                geometry.vertices[face[2]][1],
+                                geometry.vertices[face[2]][2],
+                            );
+                            (v1 - v0).cross(&(v2 - v0)).normalize()
+                        };
+
+                        let transformed_normal = mesh.model_matrix.transform_vector(&face_normal);
+                        if self.is_backface(
+                            face,
+                            geometry.vertices,
+                            mesh.model_matrix,
+                            &transformed_normal,
+                        ) {
+                            continue;
+                        }
+
+                        if let Some((points, ws)) = tf_face_w(face) {
+                            let mut uvs = [[0.0f32; 2]; 3];
+                            for i in 0..3 {
+                                let vertex_normal = if has_vertex_normals {
+                                    Vector3::new(
+                                        geometry.vertex_normals[face[i]][0],
+                                        geometry.vertex_normals[face[i]][1],
+                                        geometry.vertex_normals[face[i]][2],
+                                    )
+                                } else {
+                                    face_normal
+                                };
+                                let view_normal = (normal_matrix * vertex_normal).normalize();
+                                let u = view_normal.x * 0.5 + 0.5;
+                                let v = -view_normal.y * 0.5 + 0.5;
+                                uvs[i] = [u, v];
+                            }
+
+                            callback(DrawPrimitive::TexturedTriangleWithDepth {
+                                points: [points[0].xy(), points[1].xy(), points[2].xy()],
+                                depths: [
+                                    points[0].z as f32,
+                                    points[1].z as f32,
+                                    points[2].z as f32,
+                                ],
+                                ws,
+                                uvs,
+                                texture_id,
+                            });
+                        }
+                    }
+                }
             }
         }
     }
@@ -1481,6 +1807,66 @@ impl K3dengine {
         MS: IntoIterator<Item = &'a K3dMesh<'a>>,
     {
         self.record_impl(meshes, commands, telemetry)
+    }
+
+    /// Record a projected drop shadow decal for a mesh grounded to a specific floor height.
+    /// Uses an 8-sided flat polygon projected via camera view-projection matrix to form 8 translucent triangles.
+    pub fn record_drop_shadow<const MAX: usize>(
+        &self,
+        mesh: &K3dMesh,
+        floor_y: f32,
+        shadow_radius: f32,
+        max_fade_distance: f32,
+        shadow_opacity: u8,
+        color: Rgb565,
+        commands: &mut crate::command_buffer::CommandBuffer<MAX>,
+    ) -> Result<(), crate::error::RenderError> {
+        #[cfg(not(feature = "std"))]
+        use micromath::F32Ext as _;
+
+        let pos = mesh.get_position();
+        let height = pos.y - floor_y;
+        if height < 0.0 || height >= max_fade_distance {
+            return Ok(());
+        }
+
+        let fade = 1.0 - (height / max_fade_distance).clamp(0.0, 1.0);
+        let radius = shadow_radius * fade;
+        let opacity = (shadow_opacity as f32 * fade) as u8;
+        if opacity == 0 {
+            return Ok(());
+        }
+
+        let y_pos = floor_y + 0.01;
+        let center_world = [pos.x, y_pos, pos.z];
+        let center_proj = self.transform_point_with_w(&center_world, self.camera.vp_matrix);
+        let Some((c_pt, _c_w)) = center_proj else {
+            return Ok(());
+        };
+
+        let mut outer_proj: [Option<(Point3<i32>, f32)>; 8] = [None; 8];
+        for i in 0..8 {
+            let angle = (i as f32) * (core::f32::consts::PI / 4.0);
+            let px = pos.x + radius * angle.cos();
+            let pz = pos.z + radius * angle.sin();
+            outer_proj[i] = self.transform_point_with_w(&[px, y_pos, pz], self.camera.vp_matrix);
+        }
+
+        for i in 0..8 {
+            let next_idx = (i + 1) % 8;
+            if let (Some((p1, _w1)), Some((p2, _w2))) = (outer_proj[i], outer_proj[next_idx]) {
+                commands.push(crate::command_buffer::RenderCommand::Draw(
+                    DrawPrimitive::TranslucentTriangleWithDepth {
+                        points: [c_pt.xy(), p1.xy(), p2.xy()],
+                        depths: [c_pt.z as f32, p1.z as f32, p2.z as f32],
+                        color,
+                        alpha: opacity,
+                    }
+                ))?;
+            }
+        }
+
+        Ok(())
     }
 
     fn record_impl<'a, MS, const MAX: usize>(

@@ -2138,6 +2138,284 @@ fn test_degradation_policy_returns_recoverable_when_exhausted() {
     ));
 }
 
+#[test]
+fn test_matcap_record_and_execute_with_textures() {
+    let engine = K3dengine::new(640, 480);
+
+    let vertices = [
+        [-0.5, -0.5, -5.0],
+        [0.5, -0.5, -5.0],
+        [0.5, 0.5, -5.0],
+        [-0.5, 0.5, -5.0],
+    ];
+    let faces = [[0, 1, 2], [0, 2, 3]];
+    let normals = [
+        [0.0, 0.0, 1.0],
+        [0.0, 0.0, 1.0],
+    ];
+    let vertex_normals = [
+        [0.0, 0.0, 1.0],
+        [0.0, 0.0, 1.0],
+        [0.0, 0.0, 1.0],
+        [0.0, 0.0, 1.0],
+    ];
+
+    static TEX_DATA: [Rgb565; 4] = [
+        Rgb565::CSS_RED,
+        Rgb565::CSS_GREEN,
+        Rgb565::CSS_BLUE,
+        Rgb565::CSS_WHITE,
+    ];
+    let texture = Texture::new(&TEX_DATA, 2, 2);
+    let mut tex_mgr = TextureManager::<1>::new();
+    let texture_id = tex_mgr
+        .add_texture(texture)
+        .expect("texture manager has room");
+
+    let geometry = Geometry {
+        vertices: &vertices,
+        faces: &faces,
+        colors: &[],
+        lines: &[],
+        normals: &normals,
+        vertex_normals: &vertex_normals,
+        uvs: &[],
+        texture_id: Some(texture_id),
+    };
+
+    let mut mesh = K3dMesh::new(geometry);
+    mesh.set_render_mode(RenderMode::MatCap);
+
+    let mut fb = TestFramebuffer::new(640, 480);
+    let mut zbuffer = vec![u32::MAX; 640 * 480];
+    let mut cmd = CommandBuffer::<128>::new();
+    engine
+        .record(std::iter::once(&mesh), &mut cmd, None)
+        .unwrap();
+    let mut frame = FrameCtx {
+        zbuffer: &mut zbuffer,
+        width: 640,
+        height: 480,
+    };
+    engine
+        .execute_with_textures(&mut fb, &mut frame, &cmd, &tex_mgr, None)
+        .unwrap();
+
+    assert!(
+        fb.pixel_count() > 50,
+        "MatCap quad should rasterize pixels"
+    );
+}
+
+#[test]
+fn test_palettized_textures() {
+    use embedded_3dgfx::texture::Texture;
+
+    static PALETTE: [Rgb565; 4] = [
+        Rgb565::CSS_RED,
+        Rgb565::CSS_GREEN,
+        Rgb565::CSS_BLUE,
+        Rgb565::CSS_WHITE,
+    ];
+
+    // 8-bit palettized texture (2x2)
+    static INDICES_8: [u8; 4] = [0, 1, 2, 3];
+    let tex_8 = Texture::new_palettized8(&INDICES_8, &PALETTE, 2, 2);
+    assert_eq!(tex_8.sample(0.0, 0.0), Rgb565::CSS_RED);
+    assert_eq!(tex_8.sample(0.9, 0.0), Rgb565::CSS_GREEN);
+    assert_eq!(tex_8.sample(0.0, 0.9), Rgb565::CSS_BLUE);
+    assert_eq!(tex_8.sample(0.9, 0.9), Rgb565::CSS_WHITE);
+
+    // 4-bit palettized texture (2x2) - 4 indices packed into 2 bytes
+    // Pixel 0: 0 (Red), Pixel 1: 1 (Green) -> byte 0: (0 << 4) | 1 = 0x01
+    // Pixel 2: 2 (Blue), Pixel 3: 3 (White) -> byte 1: (2 << 4) | 3 = 0x23
+    static INDICES_4: [u8; 2] = [0x01, 0x23];
+    let tex_4 = Texture::new_palettized4(&INDICES_4, &PALETTE, 2, 2);
+    assert_eq!(tex_4.sample(0.0, 0.0), Rgb565::CSS_RED);
+    assert_eq!(tex_4.sample(0.9, 0.0), Rgb565::CSS_GREEN);
+    assert_eq!(tex_4.sample(0.0, 0.9), Rgb565::CSS_BLUE);
+    assert_eq!(tex_4.sample(0.9, 0.9), Rgb565::CSS_WHITE);
+}
+
+#[test]
+fn test_textured_gouraud_rendering() {
+    let engine = K3dengine::new(640, 480);
+
+    let vertices = [
+        [-0.5, -0.5, -5.0],
+        [0.5, -0.5, -5.0],
+        [0.5, 0.5, -5.0],
+        [-0.5, 0.5, -5.0],
+    ];
+    let faces = [[0, 1, 2], [0, 2, 3]];
+    let normals = [
+        [0.0, 0.0, 1.0],
+        [0.0, 0.0, 1.0],
+    ];
+    let vertex_normals = [
+        [0.0, 0.0, 1.0],
+        [0.0, 0.0, 1.0],
+        [0.0, 0.0, 1.0],
+        [0.0, 0.0, 1.0],
+    ];
+    let uvs = [
+        [0.0, 0.0],
+        [1.0, 0.0],
+        [1.0, 1.0],
+        [0.0, 1.0],
+    ];
+
+    static TEX_DATA: [Rgb565; 4] = [
+        Rgb565::CSS_RED,
+        Rgb565::CSS_GREEN,
+        Rgb565::CSS_BLUE,
+        Rgb565::CSS_WHITE,
+    ];
+    let texture = Texture::new(&TEX_DATA, 2, 2);
+    let mut tex_mgr = TextureManager::<1>::new();
+    let texture_id = tex_mgr
+        .add_texture(texture)
+        .expect("texture manager has room");
+
+    let geometry = Geometry {
+        vertices: &vertices,
+        faces: &faces,
+        colors: &[],
+        lines: &[],
+        normals: &normals,
+        vertex_normals: &vertex_normals,
+        uvs: &uvs,
+        texture_id: Some(texture_id),
+    };
+
+    let mut mesh = K3dMesh::new(geometry);
+    mesh.color = Rgb565::CSS_WHITE;
+    mesh.set_render_mode(RenderMode::TexturedGouraud(Vector3::new(0.0, 0.0, 1.0)));
+
+    let mut fb = TestFramebuffer::new(640, 480);
+    let mut zbuffer = vec![u32::MAX; 640 * 480];
+    let mut cmd = CommandBuffer::<128>::new();
+    engine
+        .record(std::iter::once(&mesh), &mut cmd, None)
+        .unwrap();
+    let mut frame = FrameCtx {
+        zbuffer: &mut zbuffer,
+        width: 640,
+        height: 480,
+    };
+    engine
+        .execute_with_textures(&mut fb, &mut frame, &cmd, &tex_mgr, None)
+        .unwrap();
+
+    assert!(
+        fb.pixel_count() > 50,
+        "Textured Gouraud quad should rasterize pixels"
+    );
+}
+
+#[test]
+fn test_drop_shadow_recording_and_execution() {
+    let mut engine = K3dengine::new(640, 480);
+    engine.camera.set_position(Point3::new(0.0, 2.0, 0.0));
+    engine.camera.set_target(Point3::new(0.0, 0.0, -5.0));
+
+    let vertices = [
+        [-0.5, -0.5, -5.0],
+        [0.5, -0.5, -5.0],
+        [0.5, 0.5, -5.0],
+        [-0.5, 0.5, -5.0],
+    ];
+    let faces = [[0, 1, 2], [0, 2, 3]];
+    let geometry = Geometry {
+        vertices: &vertices,
+        faces: &faces,
+        colors: &[],
+        lines: &[],
+        normals: &[],
+        vertex_normals: &[],
+        uvs: &[],
+        texture_id: None,
+    };
+
+    let mut mesh = K3dMesh::new(geometry);
+    mesh.similarity.isometry.translation.vector = Vector3::new(0.0, 1.0, -5.0);
+    mesh.model_matrix = mesh.similarity.to_homogeneous();
+
+    let mut fb = TestFramebuffer::new(640, 480);
+    let mut zbuffer = vec![u32::MAX; 640 * 480];
+    let mut cmd = CommandBuffer::<128>::new();
+
+    engine
+        .record_drop_shadow(&mesh, 0.0, 1.0, 3.0, 128, Rgb565::CSS_GRAY, &mut cmd)
+        .unwrap();
+
+    let mut frame = FrameCtx {
+        zbuffer: &mut zbuffer,
+        width: 640,
+        height: 480,
+    };
+    engine.execute(&mut fb, &mut frame, &cmd, None).unwrap();
+
+    assert!(
+        fb.pixel_count() > 20,
+        "Projected drop shadow should render pixels on the floor"
+    );
+}
+
+#[test]
+fn test_toon_shading_and_outline_rendering() {
+    let mut engine = K3dengine::new(640, 480);
+    engine.camera.set_position(Point3::new(0.0, 0.0, 0.0));
+    engine.camera.set_target(Point3::new(0.0, 0.0, -5.0));
+
+    let vertices = [
+        [-0.5, -0.5, -5.0],
+        [0.5, -0.5, -5.0],
+        [0.5, 0.5, -5.0],
+        [-0.5, 0.5, -5.0],
+    ];
+    let faces = [[0, 1, 2], [0, 2, 3]];
+    let normals = [
+        [0.0, 0.0, 1.0],
+        [0.0, 0.0, 1.0],
+    ];
+    let geometry = Geometry {
+        vertices: &vertices,
+        faces: &faces,
+        colors: &[],
+        lines: &[],
+        normals: &normals,
+        vertex_normals: &[],
+        uvs: &[],
+        texture_id: None,
+    };
+
+    let mut mesh = K3dMesh::new(geometry);
+    mesh.set_render_mode(RenderMode::Toon(Vector3::new(0.0, 0.0, 1.0), 3));
+    mesh.outline_color = Some(Rgb565::BLACK);
+    mesh.outline_width = 0.1;
+
+    let mut fb = TestFramebuffer::new(640, 480);
+    let mut zbuffer = vec![u32::MAX; 640 * 480];
+    let mut cmd = CommandBuffer::<128>::new();
+
+    engine
+        .record(std::iter::once(&mesh), &mut cmd, None)
+        .unwrap();
+
+    let mut frame = FrameCtx {
+        zbuffer: &mut zbuffer,
+        width: 640,
+        height: 480,
+    };
+    engine.execute(&mut fb, &mut frame, &cmd, None).unwrap();
+
+    assert!(
+        fb.pixel_count() > 50,
+        "Toon and outline rendering should rasterize pixels"
+    );
+}
+
 #[allow(dead_code)]
 fn _draw_helper(prim: embedded_3dgfx::DrawPrimitive, fb: &mut TestFramebuffer) {
     draw(prim, fb);

@@ -1457,9 +1457,9 @@ fn test_golden_hash_points_scene_record_execute() {
         .unwrap();
 
     let digest = fb.hash_pixels();
-    #[cfg(feature = "aa")]
+    #[cfg(feature = "fixed-transform")]
     assert_eq!(digest, 6129921384842109618);
-    #[cfg(not(feature = "aa"))]
+    #[cfg(not(feature = "fixed-transform"))]
     assert_eq!(digest, 4519810522198061541);
 }
 
@@ -1500,9 +1500,9 @@ fn test_golden_hash_lines_scene_record_execute() {
         .unwrap();
 
     let digest = fb.hash_pixels();
-    #[cfg(feature = "aa")]
+    #[cfg(feature = "fixed-transform")]
     assert_eq!(digest, 4815696538317319914);
-    #[cfg(not(feature = "aa"))]
+    #[cfg(not(feature = "fixed-transform"))]
     assert_eq!(digest, 3107081647503172710);
 }
 

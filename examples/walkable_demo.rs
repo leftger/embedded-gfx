@@ -19,6 +19,7 @@ use std::f32::consts::PI;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use embedded_3dgfx::Z_MAX_VALUE;
 use embedded_3dgfx::command_buffer::CommandBuffer;
 use embedded_3dgfx::config::apply_default_caps;
 use embedded_3dgfx::lights::PointLight;
@@ -253,7 +254,7 @@ fn main() {
     // closer than that never have all vertices behind the clip plane.
     engine.camera.set_near_far(0.1, 20.0);
 
-    let mut zbuffer = vec![u32::MAX; WIDTH * HEIGHT];
+    let mut zbuffer = vec![Z_MAX_VALUE; WIDTH * HEIGHT];
     let mut commands = CommandBuffer::<8192>::new();
 
     // ── Level mesh ────────────────────────────────────────────────────────────
@@ -458,7 +459,7 @@ fn main() {
 
         // ── Render ────────────────────────────────────────────────────────────
         display.clear(Rgb565::BLACK).unwrap();
-        zbuffer.fill(u32::MAX);
+        zbuffer.fill(Z_MAX_VALUE);
 
         engine
             .record(std::iter::once(&level), &mut commands, None)

@@ -8,6 +8,7 @@ use std::fs::File;
 use std::time::Instant;
 
 use embedded_3dgfx::DrawPrimitive;
+use embedded_3dgfx::Z_MAX_VALUE;
 use embedded_3dgfx::bsp::BspTelemetry;
 use embedded_3dgfx::bsp::builder::{RoomSpec, build_room_strip};
 use embedded_3dgfx::bsp::scratch::BspScratch;
@@ -128,7 +129,7 @@ fn capture_wireframe_cube() {
     const W: usize = 640;
     const H: usize = 480;
     let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(640, 480));
-    let mut zbuffer = vec![u32::MAX; W * H];
+    let mut zbuffer = vec![Z_MAX_VALUE; W * H];
     let mut commands = CommandBuffer::<4096>::new();
     let mut engine = K3dengine::new(640, 480);
     engine.clear_caps();
@@ -177,7 +178,7 @@ fn capture_wireframe_cube() {
     cube.set_attitude(0.5, 1.0, 0.3);
 
     display.clear(Rgb565::BLACK).unwrap();
-    zbuffer.fill(u32::MAX);
+    zbuffer.fill(Z_MAX_VALUE);
     engine
         .record(std::iter::once(&cube), &mut commands, None)
         .unwrap();
@@ -200,7 +201,7 @@ fn capture_wireframe_cube() {
 
 fn capture_blinn_phong() {
     let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(800, 600));
-    let mut zbuffer = vec![u32::MAX; 800 * 600];
+    let mut zbuffer = vec![Z_MAX_VALUE; 800 * 600];
     let mut commands = CommandBuffer::<8192>::new();
 
     let mut engine = K3dengine::new(800, 600);
@@ -225,7 +226,7 @@ fn capture_blinn_phong() {
     });
 
     display.clear(Rgb565::BLACK).unwrap();
-    zbuffer.fill(u32::MAX);
+    zbuffer.fill(Z_MAX_VALUE);
 
     engine
         .record(std::iter::once(&suzanne), &mut commands, None)
@@ -315,7 +316,7 @@ fn make_uv_sphere(lat: usize, lon: usize) -> (Vec<[f32; 3]>, Vec<[usize; 3]>, Ve
 #[cfg(feature = "physics")]
 fn capture_physics() {
     let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(640, 480));
-    let mut zbuffer = vec![u32::MAX; 640 * 480];
+    let mut zbuffer = vec![Z_MAX_VALUE; 640 * 480];
     let mut commands = CommandBuffer::<16384>::new();
 
     let mut engine = K3dengine::new(640, 480);
@@ -427,7 +428,7 @@ fn capture_physics() {
     }
 
     display.clear(Rgb565::BLACK).unwrap();
-    zbuffer.fill(u32::MAX);
+    zbuffer.fill(Z_MAX_VALUE);
 
     let all_meshes: Vec<&K3dMesh> = meshes.iter().chain(std::iter::once(&floor_mesh)).collect();
     engine
@@ -453,7 +454,7 @@ fn capture_cloth() {
     let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(640, 480));
     let mut engine = K3dengine::new(640, 480);
     engine.clear_caps();
-    let mut zbuffer = vec![u32::MAX; 640 * 480];
+    let mut zbuffer = vec![Z_MAX_VALUE; 640 * 480];
     let mut commands = CommandBuffer::<8192>::new();
     // Slightly elevated side view so the hanging cloth reads as 3-D
     engine.camera.set_position(Point3::new(1.0, 3.5, 7.0));
@@ -509,7 +510,7 @@ fn capture_cloth() {
     mesh.set_color(Rgb565::CSS_CYAN);
 
     display.clear(Rgb565::BLACK).unwrap();
-    zbuffer.fill(u32::MAX);
+    zbuffer.fill(Z_MAX_VALUE);
     engine
         .record(std::iter::once(&mesh), &mut commands, None)
         .unwrap();
@@ -529,7 +530,7 @@ fn capture_cloth() {
 
 fn capture_gouraud() {
     let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(800, 600));
-    let mut zbuffer = vec![u32::MAX; 800 * 600];
+    let mut zbuffer = vec![Z_MAX_VALUE; 800 * 600];
     let mut engine = K3dengine::new(800, 600);
     engine.clear_caps();
     engine.camera.set_position(Point3::new(0.0, 2.5, 9.0));
@@ -621,7 +622,7 @@ fn capture_gouraud() {
     cube.set_attitude(0.5, 0.7, 0.3);
 
     display.clear(Rgb565::BLACK).unwrap();
-    zbuffer.fill(u32::MAX);
+    zbuffer.fill(Z_MAX_VALUE);
 
     for mesh in [&pyramid as &K3dMesh, &cube] {
         let dist = (mesh.get_position() - engine.camera.position).norm();
@@ -662,7 +663,7 @@ fn capture_gouraud() {
 
 fn capture_fog_dither() {
     let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(800, 600));
-    let mut zbuffer = vec![u32::MAX; 800 * 600];
+    let mut zbuffer = vec![Z_MAX_VALUE; 800 * 600];
     let mut engine = K3dengine::new(800, 600);
     engine.clear_caps();
     engine.camera.set_position(Point3::new(0.0, 3.0, 15.0));
@@ -731,7 +732,7 @@ fn capture_fog_dither() {
     let dither = Some(DitherConfig::new(40u8));
 
     display.clear(fog_color).unwrap();
-    zbuffer.fill(u32::MAX);
+    zbuffer.fill(Z_MAX_VALUE);
 
     for mesh in &cubes {
         let dist = (mesh.get_position() - engine.camera.position).norm();
@@ -776,7 +777,7 @@ fn capture_fog_dither() {
 
 fn capture_newtons_cradle() {
     let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(640, 480));
-    let mut zbuffer = vec![u32::MAX; 640 * 480];
+    let mut zbuffer = vec![Z_MAX_VALUE; 640 * 480];
     let mut engine = K3dengine::new(640, 480);
     engine.clear_caps();
 
@@ -870,7 +871,7 @@ fn capture_newtons_cradle() {
     engine.camera.set_target(Point3::new(-0.5, 2.0, 0.0));
 
     display.clear(Rgb565::BLACK).unwrap();
-    zbuffer.fill(u32::MAX);
+    zbuffer.fill(Z_MAX_VALUE);
 
     let mut commands = CommandBuffer::<16384>::new();
     let mut all_meshes: Vec<&K3dMesh> = Vec::new();
@@ -895,7 +896,7 @@ fn capture_newtons_cradle() {
 
 fn capture_texture() {
     let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(800, 600));
-    let mut zbuffer = vec![u32::MAX; 800 * 600];
+    let mut zbuffer = vec![Z_MAX_VALUE; 800 * 600];
     let mut engine = K3dengine::new(800, 600);
     engine.clear_caps();
     engine.camera.set_position(Point3::new(0.0, 2.0, 8.0));
@@ -1009,7 +1010,7 @@ fn capture_texture() {
     ];
 
     display.clear(Rgb565::new(5, 10, 15)).unwrap();
-    zbuffer.fill(u32::MAX);
+    zbuffer.fill(Z_MAX_VALUE);
 
     for mesh in &cubes {
         let dist = (mesh.get_position() - engine.camera.position).norm();
@@ -1051,7 +1052,7 @@ fn capture_retro_doom_preset() {
     const W: usize = 800;
     const H: usize = 600;
     let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(W as u32, H as u32));
-    let mut zbuffer = vec![u32::MAX; W * H];
+    let mut zbuffer = vec![Z_MAX_VALUE; W * H];
     let mut commands = CommandBuffer::<8192>::new();
     let mut engine = K3dengine::new(W as u16, H as u16);
     engine.clear_caps();
@@ -1123,7 +1124,7 @@ fn capture_retro_doom_preset() {
     right.set_color(Rgb565::CSS_CYAN);
 
     display.clear(Rgb565::new(3, 6, 10)).unwrap();
-    zbuffer.fill(u32::MAX);
+    zbuffer.fill(Z_MAX_VALUE);
     let meshes = [&left, &center, &right];
     engine
         .record(meshes.iter().copied(), &mut commands, None)
@@ -1151,7 +1152,7 @@ fn capture_bsp_builder() {
     const W: usize = 800;
     const H: usize = 600;
     let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(W as u32, H as u32));
-    let mut zbuffer = vec![u32::MAX; W * H];
+    let mut zbuffer = vec![Z_MAX_VALUE; W * H];
     let mut commands = CommandBuffer::<8192>::new();
     let mut engine = K3dengine::new(W as u16, H as u16);
     engine.clear_caps();
@@ -1226,7 +1227,7 @@ fn capture_bsp_builder() {
     tex_mgr.add_texture(Texture::new(&CEIL_TEX, 8, 8)).unwrap();
 
     display.clear(Rgb565::new(2, 3, 7)).unwrap();
-    zbuffer.fill(u32::MAX);
+    zbuffer.fill(Z_MAX_VALUE);
     engine
         .record_bsp(&world, &mut scratch, &mut commands, Some(&mut bsp_tel))
         .unwrap();
@@ -1257,7 +1258,7 @@ fn gif_rotating_cube() {
     let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(W as u32, H as u32));
     let mut engine = K3dengine::new(W, H);
     engine.clear_caps();
-    let mut zbuffer = vec![u32::MAX; W as usize * H as usize];
+    let mut zbuffer = vec![Z_MAX_VALUE; W as usize * H as usize];
     let mut commands = CommandBuffer::<4096>::new();
     engine.camera.set_position(Point3::new(0.0, 1.0, 3.5));
     engine.camera.set_target(Point3::new(0.0, 0.0, 0.0));
@@ -1307,7 +1308,7 @@ fn gif_rotating_cube() {
         let yaw = i as f32 * (2.0 * PI / total as f32);
         cube.set_attitude(0.3, yaw, 0.1);
         display.clear(Rgb565::BLACK).unwrap();
-        zbuffer.fill(u32::MAX);
+        zbuffer.fill(Z_MAX_VALUE);
         let t = Instant::now();
         engine
             .record(std::iter::once(&cube), &mut commands, None)
@@ -1338,7 +1339,7 @@ fn gif_suzanne() {
     const W: u16 = 320;
     const H: u16 = 240;
     let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(W as u32, H as u32));
-    let mut zbuffer = vec![u32::MAX; W as usize * H as usize];
+    let mut zbuffer = vec![Z_MAX_VALUE; W as usize * H as usize];
     let mut commands = CommandBuffer::<8192>::new();
     let mut engine = K3dengine::new(W, H);
     engine.clear_caps();
@@ -1365,7 +1366,7 @@ fn gif_suzanne() {
         suzanne.set_attitude(-PI / 2.0, yaw, 0.0);
 
         display.clear(Rgb565::BLACK).unwrap();
-        zbuffer.fill(u32::MAX);
+        zbuffer.fill(Z_MAX_VALUE);
         let t = Instant::now();
         engine
             .record(std::iter::once(&suzanne), &mut commands, None)
@@ -1397,7 +1398,7 @@ fn gif_bouncing_balls() {
     const W: u16 = 320;
     const H: u16 = 240;
     let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(W as u32, H as u32));
-    let mut zbuffer = vec![u32::MAX; W as usize * H as usize];
+    let mut zbuffer = vec![Z_MAX_VALUE; W as usize * H as usize];
     let mut commands = CommandBuffer::<16384>::new();
     let mut engine = K3dengine::new(W, H);
     engine.clear_caps();
@@ -1503,7 +1504,7 @@ fn gif_bouncing_balls() {
         let sim_ms = ts.elapsed().as_secs_f64() * 1000.0;
 
         display.clear(Rgb565::BLACK).unwrap();
-        zbuffer.fill(u32::MAX);
+        zbuffer.fill(Z_MAX_VALUE);
         let all: Vec<&K3dMesh> = meshes.iter().chain(std::iter::once(&floor)).collect();
         let tr = Instant::now();
         engine
@@ -1546,7 +1547,7 @@ fn gif_newtons_cradle() {
     const W: u16 = 320;
     const H: u16 = 240;
     let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(W as u32, H as u32));
-    let mut zbuffer = vec![u32::MAX; W as usize * H as usize];
+    let mut zbuffer = vec![Z_MAX_VALUE; W as usize * H as usize];
     let mut commands = CommandBuffer::<16384>::new();
     let mut engine = K3dengine::new(W, H);
     engine.clear_caps();
@@ -1659,7 +1660,7 @@ fn gif_newtons_cradle() {
         let sim_ms = ts.elapsed().as_secs_f64() * 1000.0;
 
         display.clear(Rgb565::BLACK).unwrap();
-        zbuffer.fill(u32::MAX);
+        zbuffer.fill(Z_MAX_VALUE);
 
         let fgeom = Geometry {
             vertices: &fverts,
@@ -1724,7 +1725,7 @@ fn gif_cloth() {
     let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(W as u32, H as u32));
     let mut engine = K3dengine::new(W, H);
     engine.clear_caps();
-    let mut zbuffer = vec![u32::MAX; W as usize * H as usize];
+    let mut zbuffer = vec![Z_MAX_VALUE; W as usize * H as usize];
     let mut commands = CommandBuffer::<8192>::new();
     engine.camera.set_position(Point3::new(1.0, 3.5, 7.0));
     engine.camera.set_target(Point3::new(0.0, 2.0, 0.0));
@@ -1776,7 +1777,7 @@ fn gif_cloth() {
         mesh.set_render_mode(RenderMode::Lines);
         mesh.set_color(Rgb565::CSS_CYAN);
         display.clear(Rgb565::BLACK).unwrap();
-        zbuffer.fill(u32::MAX);
+        zbuffer.fill(Z_MAX_VALUE);
         let tr = Instant::now();
         engine
             .record(std::iter::once(&mesh), &mut commands, None)
@@ -1827,7 +1828,7 @@ fn capture_particles_fog() {
     const W: usize = 800;
     const H: usize = 600;
     let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(W as u32, H as u32));
-    let mut zbuffer = vec![u32::MAX; W * H];
+    let mut zbuffer = vec![Z_MAX_VALUE; W * H];
     let mut commands = CommandBuffer::<8192>::new();
     let mut engine = K3dengine::new(W as u16, H as u16);
     engine.clear_caps();
@@ -1904,7 +1905,7 @@ fn capture_particles_fog() {
     floor.set_color(Rgb565::new(8, 16, 10)); // brighter so fog tint is visible
 
     display.clear(fog_color).unwrap();
-    zbuffer.fill(u32::MAX);
+    zbuffer.fill(Z_MAX_VALUE);
 
     engine
         .record(std::iter::once(&floor), &mut commands, None)
@@ -1937,7 +1938,7 @@ fn capture_point_lights() {
     const W: usize = 800;
     const H: usize = 600;
     let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(W as u32, H as u32));
-    let mut zbuffer = vec![u32::MAX; W * H];
+    let mut zbuffer = vec![Z_MAX_VALUE; W * H];
     let mut commands = CommandBuffer::<8192>::new();
     let mut engine = K3dengine::new(W as u16, H as u16);
     engine.clear_caps();
@@ -1986,7 +1987,7 @@ fn capture_point_lights() {
         .collect();
 
     display.clear(Rgb565::new(0, 1, 2)).unwrap();
-    zbuffer.fill(u32::MAX);
+    zbuffer.fill(Z_MAX_VALUE);
 
     engine
         .record(sphere_meshes.iter(), &mut commands, None)
@@ -2014,7 +2015,7 @@ fn gif_particles() {
     const W: u16 = 320;
     const H: u16 = 240;
     let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(W as u32, H as u32));
-    let mut zbuffer = vec![u32::MAX; W as usize * H as usize];
+    let mut zbuffer = vec![Z_MAX_VALUE; W as usize * H as usize];
     let mut commands = CommandBuffer::<4096>::new();
     let mut engine = K3dengine::new(W, H);
     engine.clear_caps();
@@ -2092,7 +2093,7 @@ fn gif_particles() {
         sys.update(1.0 / 30.0, gravity);
 
         display.clear(fog_color).unwrap();
-        zbuffer.fill(u32::MAX);
+        zbuffer.fill(Z_MAX_VALUE);
         engine
             .record(std::iter::once(&floor), &mut commands, None)
             .unwrap();
@@ -2127,7 +2128,7 @@ fn gif_point_lights() {
     const W: u16 = 320;
     const H: u16 = 240;
     let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(W as u32, H as u32));
-    let mut zbuffer = vec![u32::MAX; W as usize * H as usize];
+    let mut zbuffer = vec![Z_MAX_VALUE; W as usize * H as usize];
     let mut commands = CommandBuffer::<4096>::new();
     let mut engine = K3dengine::new(W, H);
     engine.clear_caps();
@@ -2192,7 +2193,7 @@ fn gif_point_lights() {
         ); // slow green sweep above
 
         display.clear(Rgb565::new(0, 1, 2)).unwrap();
-        zbuffer.fill(u32::MAX);
+        zbuffer.fill(Z_MAX_VALUE);
 
         let t = Instant::now();
         engine
@@ -2258,7 +2259,7 @@ fn benchmark() {
     // --- Scene A: wireframe cube ---
     {
         let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(W as u32, H as u32));
-        let mut zbuffer = vec![u32::MAX; W * H];
+        let mut zbuffer = vec![Z_MAX_VALUE; W * H];
         let mut commands = CommandBuffer::<4096>::new();
         let mut engine = K3dengine::new(W as u16, H as u16);
         engine.clear_caps();
@@ -2308,7 +2309,7 @@ fn benchmark() {
             yaw += 0.05;
             cube.set_attitude(0.3, yaw, 0.1);
             display.clear(Rgb565::BLACK).unwrap();
-            zbuffer.fill(u32::MAX);
+            zbuffer.fill(Z_MAX_VALUE);
             engine
                 .record(std::iter::once(&cube), &mut commands, None)
                 .unwrap();
@@ -2326,7 +2327,7 @@ fn benchmark() {
     // --- Scene B: Blinn-Phong Suzanne ---
     {
         let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(W as u32, H as u32));
-        let mut zbuffer = vec![u32::MAX; W * H];
+        let mut zbuffer = vec![Z_MAX_VALUE; W * H];
         let mut commands = CommandBuffer::<8192>::new();
         let mut engine = K3dengine::new(W as u16, H as u16);
         engine.clear_caps();
@@ -2348,7 +2349,7 @@ fn benchmark() {
                 shininess: 56.0,
             });
             display.clear(Rgb565::BLACK).unwrap();
-            zbuffer.fill(u32::MAX);
+            zbuffer.fill(Z_MAX_VALUE);
             engine
                 .record(std::iter::once(&suzanne), &mut commands, None)
                 .unwrap();
@@ -2367,7 +2368,7 @@ fn benchmark() {
     #[cfg(feature = "physics")]
     {
         let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(W as u32, H as u32));
-        let mut zbuffer = vec![u32::MAX; W * H];
+        let mut zbuffer = vec![Z_MAX_VALUE; W * H];
         let mut commands = CommandBuffer::<16384>::new();
         let mut engine = K3dengine::new(W as u16, H as u16);
         engine.clear_caps();
@@ -2456,7 +2457,7 @@ fn benchmark() {
                 sync_body_to_mesh(physics.body(id).unwrap(), &mut meshes[i]);
             }
             display.clear(Rgb565::BLACK).unwrap();
-            zbuffer.fill(u32::MAX);
+            zbuffer.fill(Z_MAX_VALUE);
             let all: Vec<&K3dMesh> = meshes.iter().chain(std::iter::once(&floor)).collect();
             engine
                 .record(all.iter().copied(), &mut commands, None)

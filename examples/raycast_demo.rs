@@ -17,6 +17,7 @@
 //! - ESC: Exit
 
 use embedded_3dgfx::K3dengine;
+use embedded_3dgfx::Z_MAX_VALUE;
 use embedded_3dgfx::command_buffer::CommandBuffer;
 use embedded_3dgfx::config::apply_default_caps;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
@@ -110,7 +111,7 @@ fn main() {
     const WIDTH: usize = 320;
     const HEIGHT: usize = 240;
     let mut display: SimulatorDisplay<Rgb565> = SimulatorDisplay::new(Size::new(320, 240));
-    let mut zbuffer = vec![u32::MAX; WIDTH * HEIGHT];
+    let mut zbuffer = vec![Z_MAX_VALUE; WIDTH * HEIGHT];
     let mut commands = CommandBuffer::<4096>::new();
     let output_settings = OutputSettingsBuilder::new().scale(2).build();
     let mut window = Window::new("Ray Casting Demo", &output_settings);
@@ -222,7 +223,7 @@ fn main() {
         engine.camera.set_target(Point3::new(0.0, 2.0, 0.0));
 
         display.clear(Rgb565::BLACK).unwrap();
-        zbuffer.fill(u32::MAX);
+        zbuffer.fill(Z_MAX_VALUE);
         let mut frame_meshes: Vec<K3dMesh> = Vec::new();
 
         // Render objects

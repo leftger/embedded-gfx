@@ -7,6 +7,7 @@
 use embedded_graphics_core::pixelcolor::IntoStorage;
 use embedded_graphics_core::pixelcolor::Rgb565;
 use embedded_graphics_core::pixelcolor::RgbColor;
+#[allow(unused_imports)]
 use micromath::F32Ext;
 
 /// 16x16 Texture Sampler for 2.5D Walls, Floors, and Ceilings.

@@ -11,6 +11,7 @@
 //! - ESC: Exit
 
 use embedded_3dgfx::K3dengine;
+use embedded_3dgfx::Z_MAX_VALUE;
 use embedded_3dgfx::billboard::Billboard;
 use embedded_3dgfx::config::apply_default_caps;
 use embedded_3dgfx::draw::draw_zbuffered;
@@ -79,7 +80,7 @@ fn main() {
     let text_style = MonoTextStyle::new(&FONT_6X10, Rgb565::CSS_WHITE);
 
     // Z-buffer
-    let mut zbuffer = vec![u32::MAX; 800 * 600];
+    let mut zbuffer = vec![Z_MAX_VALUE; 800 * 600];
 
     // Particles
     let mut particles: Vec<Particle> = Vec::new();
@@ -219,7 +220,7 @@ fn main() {
 
         // Clear display and Z-buffer
         display.clear(Rgb565::BLACK).unwrap();
-        zbuffer.fill(u32::MAX);
+        zbuffer.fill(Z_MAX_VALUE);
 
         // Render billboards as triangles
         let camera_up = Vector3::new(0.0, 1.0, 0.0);

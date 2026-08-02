@@ -16,6 +16,7 @@
 //! - ESC: Exit
 
 use embedded_3dgfx::K3dengine;
+use embedded_3dgfx::Z_MAX_VALUE;
 use embedded_3dgfx::command_buffer::CommandBuffer;
 use embedded_3dgfx::config::apply_default_caps;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, LODLevels, RenderMode};
@@ -94,7 +95,7 @@ fn main() {
     let text_style = MonoTextStyle::new(&FONT_6X10, Rgb565::CSS_WHITE);
 
     // Z-buffer
-    let mut zbuffer = vec![u32::MAX; WIDTH * HEIGHT];
+    let mut zbuffer = vec![Z_MAX_VALUE; WIDTH * HEIGHT];
     let mut commands = CommandBuffer::<16384>::new();
     let mut record_telemetry = RecordTelemetry::default();
     let mut execute_telemetry = ExecuteTelemetry::default();
@@ -300,7 +301,7 @@ fn main() {
 
         // Clear display and Z-buffer
         display.clear(Rgb565::BLACK).unwrap();
-        zbuffer.fill(u32::MAX);
+        zbuffer.fill(Z_MAX_VALUE);
 
         // Count LOD levels being used
         let mut high_count = 0;

@@ -16,6 +16,7 @@
 //! - ESC: Exit
 
 use embedded_3dgfx::K3dengine;
+use embedded_3dgfx::Z_MAX_VALUE;
 use embedded_3dgfx::config::apply_default_caps;
 use embedded_3dgfx::draw::draw_zbuffered_with_textures;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh};
@@ -52,7 +53,7 @@ fn main() {
     let text_style = MonoTextStyle::new(&FONT_6X10, Rgb565::CSS_WHITE);
 
     // Z-buffer
-    let mut zbuffer = vec![u32::MAX; 800 * 600];
+    let mut zbuffer = vec![Z_MAX_VALUE; 800 * 600];
 
     // Create textures
     let mut texture_manager = TextureManager::<4>::new();
@@ -258,7 +259,7 @@ fn main() {
 
         // Clear display and Z-buffer
         display.clear(Rgb565::new(5, 10, 15)).unwrap();
-        zbuffer.fill(u32::MAX);
+        zbuffer.fill(Z_MAX_VALUE);
 
         // Render with textures
         let cubes = [&cube1, &cube2, &cube3];

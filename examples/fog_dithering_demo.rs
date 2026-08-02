@@ -18,6 +18,7 @@
 //! - ESC: Exit
 
 use embedded_3dgfx::K3dengine;
+use embedded_3dgfx::Z_MAX_VALUE;
 use embedded_3dgfx::config::apply_default_caps;
 use embedded_3dgfx::draw::{DitherConfig, FogConfig, draw_zbuffered_with_effects};
 use embedded_3dgfx::mesh::{Geometry, K3dMesh};
@@ -53,7 +54,7 @@ fn main() {
     let text_style = MonoTextStyle::new(&FONT_6X10, Rgb565::CSS_WHITE);
 
     // Z-buffer
-    let mut zbuffer = vec![u32::MAX; 800 * 600];
+    let mut zbuffer = vec![Z_MAX_VALUE; 800 * 600];
 
     // Create a cube with Gouraud shading
     let cube_vertices = [
@@ -204,7 +205,7 @@ fn main() {
 
         // Clear display and Z-buffer
         display.clear(fog_color).unwrap();
-        zbuffer.fill(u32::MAX);
+        zbuffer.fill(Z_MAX_VALUE);
 
         // Setup fog and dither configs
         let fog_config = if fog_enabled {

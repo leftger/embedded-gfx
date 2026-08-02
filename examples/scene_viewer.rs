@@ -4,6 +4,7 @@
 //! Use arrow keys to rotate the scene and +/- to zoom.
 
 use embedded_3dgfx::K3dengine;
+use embedded_3dgfx::Z_MAX_VALUE;
 use embedded_3dgfx::command_buffer::CommandBuffer;
 use embedded_3dgfx::config::apply_default_caps;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
@@ -92,7 +93,7 @@ fn main() {
     const WIDTH: usize = 800;
     const HEIGHT: usize = 600;
     let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(800, 600));
-    let mut zbuffer = vec![u32::MAX; WIDTH * HEIGHT];
+    let mut zbuffer = vec![Z_MAX_VALUE; WIDTH * HEIGHT];
     let mut commands = CommandBuffer::<8192>::new();
 
     let output_settings = OutputSettingsBuilder::new().scale(1).build();
@@ -227,7 +228,7 @@ fn main() {
 
         // Clear display
         display.clear(Rgb565::BLACK).unwrap();
-        zbuffer.fill(u32::MAX);
+        zbuffer.fill(Z_MAX_VALUE);
 
         engine
             .record(

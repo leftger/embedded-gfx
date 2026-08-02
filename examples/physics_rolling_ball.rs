@@ -15,6 +15,7 @@
 //! - ESC: Exit
 
 use embedded_3dgfx::K3dengine;
+use embedded_3dgfx::Z_MAX_VALUE;
 use embedded_3dgfx::command_buffer::CommandBuffer;
 use embedded_3dgfx::config::apply_default_caps;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
@@ -70,7 +71,7 @@ fn main() {
     const WIDTH: usize = 640;
     const HEIGHT: usize = 480;
     let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(640, 480));
-    let mut zbuffer = vec![u32::MAX; WIDTH * HEIGHT];
+    let mut zbuffer = vec![Z_MAX_VALUE; WIDTH * HEIGHT];
     let mut commands = CommandBuffer::<8192>::new();
     let output_settings = OutputSettingsBuilder::new().scale(1).build();
     let mut window = Window::new(
@@ -302,7 +303,7 @@ fn main() {
         sync_body_to_mesh(ball_body, &mut ball_mesh);
 
         display.clear(Rgb565::BLACK).unwrap();
-        zbuffer.fill(u32::MAX);
+        zbuffer.fill(Z_MAX_VALUE);
 
         let all_meshes = vec![&ball_mesh, &ramp_mesh, &floor_mesh];
         engine

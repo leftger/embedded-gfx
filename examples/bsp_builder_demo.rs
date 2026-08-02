@@ -14,6 +14,7 @@ use std::f32::consts::PI;
 use std::thread;
 use std::time::Duration;
 
+use embedded_3dgfx::Z_MAX_VALUE;
 use embedded_3dgfx::bsp::BspTelemetry;
 use embedded_3dgfx::bsp::builder::{RoomSpec, build_room_strip};
 use embedded_3dgfx::bsp::scratch::BspScratch;
@@ -119,7 +120,7 @@ fn main() {
     let mut visframe = vec![0u32; world.faces.len()];
     let mut scratch = BspScratch::new(&mut visframe);
     let mut commands = CommandBuffer::<8192>::new();
-    let mut zbuffer = vec![u32::MAX; WIDTH * HEIGHT];
+    let mut zbuffer = vec![Z_MAX_VALUE; WIDTH * HEIGHT];
 
     let mut textures = TextureManager::<4>::new();
     textures.add_texture(Texture::new(&CHECKER, 8, 8)).unwrap();
@@ -205,7 +206,7 @@ fn main() {
         });
 
         display.clear(Rgb565::new(1, 3, 6)).unwrap();
-        zbuffer.fill(u32::MAX);
+        zbuffer.fill(Z_MAX_VALUE);
 
         let mut tel = BspTelemetry::default();
         engine

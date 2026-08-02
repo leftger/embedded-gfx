@@ -17,6 +17,7 @@
 //! - ESC: exit
 
 use embedded_3dgfx::K3dengine;
+use embedded_3dgfx::Z_MAX_VALUE;
 use embedded_3dgfx::command_buffer::CommandBuffer;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
 use embedded_3dgfx::renderer::FrameCtx;
@@ -101,7 +102,7 @@ fn main() {
     let mut mesh = K3dMesh::new(geometry);
     mesh.set_render_mode(RenderMode::Textured);
 
-    let mut zbuffer = vec![u32::MAX; (WIDTH * HEIGHT) as usize];
+    let mut zbuffer = vec![Z_MAX_VALUE; (WIDTH * HEIGHT) as usize];
     let mut yaw = 0.0f32;
     let mut spinning = true;
     let clock = Instant::now();
@@ -117,7 +118,7 @@ fn main() {
         mesh.set_attitude(0.0, yaw, 0.0);
 
         display.clear(Rgb565::BLACK).unwrap();
-        zbuffer.fill(u32::MAX);
+        zbuffer.fill(Z_MAX_VALUE);
 
         let mut commands: CommandBuffer<64> = CommandBuffer::new();
         engine

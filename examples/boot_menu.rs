@@ -21,6 +21,7 @@ use embedded_3dgfx::renderer::FrameCtx;
 use embedded_3dgfx::texture::{Texture, TextureManager};
 use embedded_3dgfx::transform_anim::{AnimationPlayer, TransformKeyframe, TransformTrack};
 use embedded_3dgfx::tween::{Easing, Tween, scale_rgb565};
+use embedded_3dgfx::{Z_MAX_VALUE, ZDepth};
 use embedded_graphics::mono_font::{MonoTextStyle, ascii::FONT_6X10};
 use embedded_graphics::text::Text;
 use embedded_graphics_core::pixelcolor::{Rgb565, RgbColor};
@@ -191,7 +192,7 @@ fn render_textured_billboard(
     texture_id: u32,
     texture_manager: &TextureManager<4>,
     display: &mut SimulatorDisplay<Rgb565>,
-    zbuffer: &mut [u32],
+    zbuffer: &mut [ZDepth],
 ) {
     let camera_up = Vector3::y();
     let quad = billboard.generate_quad(engine.camera.position, camera_up);
@@ -228,7 +229,7 @@ fn render_scene(
     menu_items: &[K3dMesh<'static>],
     commands: &mut CommandBuffer<1024>,
     display: &mut SimulatorDisplay<Rgb565>,
-    zbuffer: &mut [u32],
+    zbuffer: &mut [ZDepth],
 ) {
     match screen {
         Screen::Boot => {
@@ -283,7 +284,7 @@ fn reset_demo(
     screen: &mut Screen,
     selected: &mut usize,
     logo_billboard: &mut Billboard,
-    zbuffer: &mut [u32],
+    zbuffer: &mut [ZDepth],
 ) {
     *menu_items = make_menu_items();
     logo_player.reset();
@@ -295,7 +296,7 @@ fn reset_demo(
     *screen = Screen::Boot;
     *selected = 0;
     *logo_billboard = Billboard::new(Point3::new(0.0, -1.8, 0.0), 0.9, Rgb565::CSS_CYAN);
-    zbuffer.fill(u32::MAX);
+    zbuffer.fill(Z_MAX_VALUE);
 }
 
 fn main() {
@@ -327,7 +328,7 @@ fn main() {
 
     let mut screen = Screen::Boot;
     let mut selected: usize = 0;
-    let mut zbuffer = [u32::MAX; (W as usize) * (H as usize)];
+    let mut zbuffer = [Z_MAX_VALUE; (W as usize) * (H as usize)];
     let mut commands = CommandBuffer::<1024>::new();
     let mut last_frame = std::time::Instant::now();
 
@@ -469,7 +470,7 @@ fn main() {
         }
 
         display.clear(Rgb565::BLACK).unwrap();
-        zbuffer.fill(u32::MAX);
+        zbuffer.fill(Z_MAX_VALUE);
 
         render_scene(
             &engine,

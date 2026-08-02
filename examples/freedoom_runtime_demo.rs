@@ -10,6 +10,7 @@ use std::f32::consts::PI;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use embedded_3dgfx::Z_MAX_VALUE;
 use embedded_3dgfx::bsp::BspTelemetry;
 use embedded_3dgfx::bsp::scratch::BspScratch;
 use embedded_3dgfx::command_buffer::CommandBuffer;
@@ -170,7 +171,7 @@ fn main() {
     let mut scratch = BspScratch::new(&mut visframe);
     // Keep the large fixed-capacity command buffer off the thread stack.
     let mut commands = Box::new(CommandBuffer::<8192>::new());
-    let mut zbuffer = vec![u32::MAX; WIDTH * HEIGHT];
+    let mut zbuffer = vec![Z_MAX_VALUE; WIDTH * HEIGHT];
 
     let mut textures = TextureManager::<2>::new();
     textures
@@ -270,7 +271,7 @@ fn main() {
         });
 
         display.clear(Rgb565::new(1, 3, 6)).unwrap();
-        zbuffer.fill(u32::MAX);
+        zbuffer.fill(Z_MAX_VALUE);
 
         let mut tel = BspTelemetry::default();
         let t = start.elapsed().as_secs_f32();

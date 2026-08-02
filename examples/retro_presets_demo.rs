@@ -12,6 +12,7 @@
 use std::thread;
 use std::time::{Duration, Instant};
 
+use embedded_3dgfx::Z_MAX_VALUE;
 use embedded_3dgfx::command_buffer::CommandBuffer;
 use embedded_3dgfx::config::apply_default_caps;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
@@ -90,7 +91,7 @@ fn main() {
     perf.only_fps(true);
 
     let text_style = MonoTextStyle::new(&FONT_6X10, Rgb565::CSS_WHITE);
-    let mut zbuffer = vec![u32::MAX; WIDTH * HEIGHT];
+    let mut zbuffer = vec![Z_MAX_VALUE; WIDTH * HEIGHT];
     let mut commands = CommandBuffer::<8192>::new();
 
     let geometry = Geometry {
@@ -172,7 +173,7 @@ fn main() {
         mesh_right.set_attitude(0.8 + t * 0.3, 1.1 + t * 0.7, 0.2);
 
         display.clear(Rgb565::new(2, 4, 8)).unwrap();
-        zbuffer.fill(u32::MAX);
+        zbuffer.fill(Z_MAX_VALUE);
 
         let meshes = [&mesh_left, &mesh_center, &mesh_right];
         engine

@@ -9,7 +9,7 @@ use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
 use embedded_3dgfx::renderer::FrameCtx;
 use embedded_3dgfx::telemetry::{ExecuteTelemetry, RecordTelemetry};
 use embedded_3dgfx::texture::{Texture, TextureManager};
-use embedded_3dgfx::{K3dengine, RetroStyle};
+use embedded_3dgfx::{K3dengine, RetroStyle, Z_MAX_VALUE};
 use embedded_graphics_core::pixelcolor::Rgb565;
 use embedded_graphics_core::prelude::*;
 use nalgebra::{Point3, Vector3};
@@ -104,7 +104,7 @@ fn test_full_rendering_pipeline_points() {
     mesh.set_color(Rgb565::CSS_RED);
 
     let mut fb = TestFramebuffer::new(640, 480);
-    let mut zbuffer = vec![u32::MAX; 640 * 480];
+    let mut zbuffer = vec![Z_MAX_VALUE; 640 * 480];
     let mut cmd = CommandBuffer::<64>::new();
     engine
         .record(std::iter::once(&mesh), &mut cmd, None)
@@ -144,7 +144,7 @@ fn test_full_rendering_pipeline_lines() {
     mesh.set_color(Rgb565::CSS_GREEN);
 
     let mut fb = TestFramebuffer::new(640, 480);
-    let mut zbuffer = vec![u32::MAX; 640 * 480];
+    let mut zbuffer = vec![Z_MAX_VALUE; 640 * 480];
     let mut cmd = CommandBuffer::<128>::new();
     engine
         .record(std::iter::once(&mesh), &mut cmd, None)
@@ -184,7 +184,7 @@ fn test_full_rendering_pipeline_solid() {
     mesh.set_color(Rgb565::CSS_BLUE);
 
     let mut fb = TestFramebuffer::new(640, 480);
-    let mut zbuffer = vec![u32::MAX; 640 * 480];
+    let mut zbuffer = vec![Z_MAX_VALUE; 640 * 480];
     let mut cmd = CommandBuffer::<128>::new();
     engine
         .record(std::iter::once(&mesh), &mut cmd, None)
@@ -252,7 +252,7 @@ fn test_textured_quad_record_and_execute_with_textures() {
     mesh.set_render_mode(RenderMode::Textured);
 
     let mut fb = TestFramebuffer::new(640, 480);
-    let mut zbuffer = vec![u32::MAX; 640 * 480];
+    let mut zbuffer = vec![Z_MAX_VALUE; 640 * 480];
     let mut cmd = CommandBuffer::<128>::new();
     engine
         .record(std::iter::once(&mesh), &mut cmd, None)
@@ -312,7 +312,7 @@ fn test_textured_mode_without_uvs_or_texture_id_renders_nothing() {
     mesh.set_render_mode(RenderMode::Textured);
 
     let mut fb = TestFramebuffer::new(640, 480);
-    let mut zbuffer = vec![u32::MAX; 640 * 480];
+    let mut zbuffer = vec![Z_MAX_VALUE; 640 * 480];
     let mut cmd = CommandBuffer::<128>::new();
     engine
         .record(std::iter::once(&mesh), &mut cmd, None)
@@ -363,7 +363,7 @@ fn test_multiple_meshes() {
     mesh2.set_render_mode(RenderMode::Points);
 
     let mut fb = TestFramebuffer::new(640, 480);
-    let mut zbuffer = vec![u32::MAX; 640 * 480];
+    let mut zbuffer = vec![Z_MAX_VALUE; 640 * 480];
     let mut cmd = CommandBuffer::<64>::new();
     engine
         .record([&mesh1, &mesh2].iter().copied(), &mut cmd, None)
@@ -400,7 +400,7 @@ fn test_mesh_transformation() {
     mesh.set_position(1.0, 0.0, 0.0);
 
     let mut fb = TestFramebuffer::new(640, 480);
-    let mut zbuffer = vec![u32::MAX; 640 * 480];
+    let mut zbuffer = vec![Z_MAX_VALUE; 640 * 480];
     let mut cmd = CommandBuffer::<64>::new();
     engine
         .record(std::iter::once(&mesh), &mut cmd, None)
@@ -437,7 +437,7 @@ fn test_mesh_scaling() {
     mesh.set_scale(2.0);
 
     let mut fb = TestFramebuffer::new(640, 480);
-    let mut zbuffer = vec![u32::MAX; 640 * 480];
+    let mut zbuffer = vec![Z_MAX_VALUE; 640 * 480];
     let mut cmd = CommandBuffer::<64>::new();
     engine
         .record(std::iter::once(&mesh), &mut cmd, None)
@@ -479,7 +479,7 @@ fn test_backface_culling() {
     mesh.set_render_mode(RenderMode::Solid);
 
     let mut fb = TestFramebuffer::new(640, 480);
-    let mut zbuffer = vec![u32::MAX; 640 * 480];
+    let mut zbuffer = vec![Z_MAX_VALUE; 640 * 480];
     let mut cmd = CommandBuffer::<64>::new();
     engine
         .record(std::iter::once(&mesh), &mut cmd, None)
@@ -521,7 +521,7 @@ fn test_camera_movement() {
     engine.camera.set_target(Point3::new(0.0, 0.0, -5.0));
 
     let mut fb = TestFramebuffer::new(640, 480);
-    let mut zbuffer = vec![u32::MAX; 640 * 480];
+    let mut zbuffer = vec![Z_MAX_VALUE; 640 * 480];
     let mut cmd = CommandBuffer::<64>::new();
     engine
         .record(std::iter::once(&mesh), &mut cmd, None)
@@ -558,7 +558,7 @@ fn test_out_of_view_culling() {
     mesh.set_render_mode(RenderMode::Points);
 
     let mut fb = TestFramebuffer::new(640, 480);
-    let mut zbuffer = vec![u32::MAX; 640 * 480];
+    let mut zbuffer = vec![Z_MAX_VALUE; 640 * 480];
     let mut cmd = CommandBuffer::<64>::new();
     engine
         .record(std::iter::once(&mesh), &mut cmd, None)
@@ -600,7 +600,7 @@ fn test_lighting_mode() {
     mesh.set_color(Rgb565::CSS_WHITE);
 
     let mut fb = TestFramebuffer::new(640, 480);
-    let mut zbuffer = vec![u32::MAX; 640 * 480];
+    let mut zbuffer = vec![Z_MAX_VALUE; 640 * 480];
     let mut cmd = CommandBuffer::<128>::new();
     engine
         .record(std::iter::once(&mesh), &mut cmd, None)
@@ -639,7 +639,7 @@ fn test_colored_vertices() {
     mesh.set_render_mode(RenderMode::Points);
 
     let mut fb = TestFramebuffer::new(640, 480);
-    let mut zbuffer = vec![u32::MAX; 640 * 480];
+    let mut zbuffer = vec![Z_MAX_VALUE; 640 * 480];
     let mut cmd = CommandBuffer::<64>::new();
     engine
         .record(std::iter::once(&mesh), &mut cmd, None)
@@ -678,7 +678,7 @@ fn test_lines_from_explicit_edges() {
     mesh.set_render_mode(RenderMode::Lines);
 
     let mut fb = TestFramebuffer::new(640, 480);
-    let mut zbuffer = vec![u32::MAX; 640 * 480];
+    let mut zbuffer = vec![Z_MAX_VALUE; 640 * 480];
     let mut cmd = CommandBuffer::<128>::new();
     engine
         .record(std::iter::once(&mesh), &mut cmd, None)
@@ -743,7 +743,7 @@ fn test_execute_recorded_frame_rejects_invalid_zbuffer_len() {
     mesh.set_render_mode(RenderMode::Points);
 
     let mut fb = TestFramebuffer::new(640, 480);
-    let mut zbuffer = vec![u32::MAX; 8];
+    let mut zbuffer = vec![Z_MAX_VALUE; 8];
     let mut commands = CommandBuffer::<64>::new();
     engine
         .record(std::iter::once(&mesh), &mut commands, None)
@@ -820,7 +820,7 @@ fn test_legacy_render_count_matches_recorded_draw_count() {
     mesh.set_render_mode(RenderMode::Lines);
 
     let mut fb = TestFramebuffer::new(640, 480);
-    let mut zbuffer_legacy = vec![u32::MAX; 640 * 480];
+    let mut zbuffer_legacy = vec![Z_MAX_VALUE; 640 * 480];
     let mut cmd_legacy = CommandBuffer::<128>::new();
     engine
         .record(std::iter::once(&mesh), &mut cmd_legacy, None)
@@ -1361,7 +1361,7 @@ fn test_record_and_execute_telemetry_reports_counts() {
     assert!(!rec.fallback_used);
 
     let mut fb = TestFramebuffer::new(640, 480);
-    let mut zbuffer = vec![u32::MAX; 640 * 480];
+    let mut zbuffer = vec![Z_MAX_VALUE; 640 * 480];
     let mut exec = ExecuteTelemetry::default();
     let mut frame = FrameCtx {
         zbuffer: &mut zbuffer,
@@ -1400,7 +1400,7 @@ fn test_golden_hash_points_scene_record_execute() {
         .unwrap();
 
     let mut fb = TestFramebuffer::new(640, 480);
-    let mut zbuffer = vec![u32::MAX; 640 * 480];
+    let mut zbuffer = vec![Z_MAX_VALUE; 640 * 480];
     let mut frame = FrameCtx {
         zbuffer: &mut zbuffer,
         width: 640,
@@ -1440,7 +1440,7 @@ fn test_golden_hash_lines_scene_record_execute() {
         .unwrap();
 
     let mut fb = TestFramebuffer::new(640, 480);
-    let mut zbuffer = vec![u32::MAX; 640 * 480];
+    let mut zbuffer = vec![Z_MAX_VALUE; 640 * 480];
     let mut frame = FrameCtx {
         zbuffer: &mut zbuffer,
         width: 640,
@@ -1481,7 +1481,7 @@ fn test_golden_hash_solid_scene_record_execute() {
         .unwrap();
 
     let mut fb = TestFramebuffer::new(640, 480);
-    let mut zbuffer = vec![u32::MAX; 640 * 480];
+    let mut zbuffer = vec![Z_MAX_VALUE; 640 * 480];
     let mut frame = FrameCtx {
         zbuffer: &mut zbuffer,
         width: 640,
@@ -1525,7 +1525,7 @@ fn test_golden_hash_gouraud_scene_record_execute() {
         .unwrap();
 
     let mut fb = TestFramebuffer::new(640, 480);
-    let mut zbuffer = vec![u32::MAX; 640 * 480];
+    let mut zbuffer = vec![Z_MAX_VALUE; 640 * 480];
     let mut frame = FrameCtx {
         zbuffer: &mut zbuffer,
         width: 640,
@@ -1570,7 +1570,7 @@ fn test_golden_hash_doom_preset_scene_record_execute() {
         .unwrap();
 
     let mut fb = TestFramebuffer::new(320, 240);
-    let mut zbuffer = vec![u32::MAX; 320 * 240];
+    let mut zbuffer = vec![Z_MAX_VALUE; 320 * 240];
     let mut frame = FrameCtx {
         zbuffer: &mut zbuffer,
         width: 320,
@@ -1615,7 +1615,7 @@ fn test_golden_hash_psx_preset_scene_record_execute() {
         .unwrap();
 
     let mut fb = TestFramebuffer::new(320, 240);
-    let mut zbuffer = vec![u32::MAX; 320 * 240];
+    let mut zbuffer = vec![Z_MAX_VALUE; 320 * 240];
     let mut frame = FrameCtx {
         zbuffer: &mut zbuffer,
         width: 320,
@@ -1655,7 +1655,7 @@ fn test_ci_telemetry_snapshot_record_execute() {
         .unwrap();
 
     let mut fb = TestFramebuffer::new(640, 480);
-    let mut zbuffer = vec![u32::MAX; 640 * 480];
+    let mut zbuffer = vec![Z_MAX_VALUE; 640 * 480];
     let mut exec = ExecuteTelemetry::default();
     let mut frame = FrameCtx {
         zbuffer: &mut zbuffer,
@@ -1705,7 +1705,7 @@ fn test_ci_telemetry_snapshot_lines_record_execute() {
         .unwrap();
 
     let mut fb = TestFramebuffer::new(640, 480);
-    let mut zbuffer = vec![u32::MAX; 640 * 480];
+    let mut zbuffer = vec![Z_MAX_VALUE; 640 * 480];
     let mut exec = ExecuteTelemetry::default();
     let mut frame = FrameCtx {
         zbuffer: &mut zbuffer,
@@ -1759,7 +1759,7 @@ fn test_ci_telemetry_snapshot_stress_points_record_execute() {
         .unwrap();
 
     let mut fb = TestFramebuffer::new(640, 480);
-    let mut zbuffer = vec![u32::MAX; 640 * 480];
+    let mut zbuffer = vec![Z_MAX_VALUE; 640 * 480];
     let mut exec = ExecuteTelemetry::default();
     let mut frame = FrameCtx {
         zbuffer: &mut zbuffer,
@@ -1833,7 +1833,7 @@ fn test_ci_telemetry_snapshot_failsoft_record_execute() {
         .unwrap();
 
     let mut fb = TestFramebuffer::new(640, 480);
-    let mut zbuffer = vec![u32::MAX; 640 * 480];
+    let mut zbuffer = vec![Z_MAX_VALUE; 640 * 480];
     let mut exec = ExecuteTelemetry::default();
     let mut frame = FrameCtx {
         zbuffer: &mut zbuffer,
@@ -1888,7 +1888,7 @@ fn test_execute_recorded_frame_reports_dirty_region() {
         .unwrap();
 
     let mut fb = TestFramebuffer::new(64, 64);
-    let mut zbuffer = vec![u32::MAX; 64 * 64];
+    let mut zbuffer = vec![Z_MAX_VALUE; 64 * 64];
     let mut frame = FrameCtx {
         zbuffer: &mut zbuffer,
         width: 64,
@@ -1959,7 +1959,7 @@ fn test_tiled_execute_matches_non_tiled_pixel_count() {
         .unwrap();
 
     let mut fb_a = TestFramebuffer::new(96, 64);
-    let mut zb_a = vec![u32::MAX; 96 * 64];
+    let mut zb_a = vec![Z_MAX_VALUE; 96 * 64];
     let mut frame_a = FrameCtx {
         zbuffer: &mut zb_a,
         width: 96,
@@ -1970,7 +1970,7 @@ fn test_tiled_execute_matches_non_tiled_pixel_count() {
         .unwrap();
 
     let mut fb_b = TestFramebuffer::new(96, 64);
-    let mut zb_b = vec![u32::MAX; 96 * 64];
+    let mut zb_b = vec![Z_MAX_VALUE; 96 * 64];
     let mut frame_b = FrameCtx {
         zbuffer: &mut zb_b,
         width: 96,
@@ -2014,7 +2014,7 @@ fn test_dirty_region_smaller_than_full_frame_for_small_scene() {
         .record(std::iter::once(&mesh), &mut cmd, None)
         .unwrap();
     let mut fb = TestFramebuffer::new(160, 120);
-    let mut zb = vec![u32::MAX; 160 * 120];
+    let mut zb = vec![Z_MAX_VALUE; 160 * 120];
     let mut frame = FrameCtx {
         zbuffer: &mut zb,
         width: 160,
@@ -2184,7 +2184,7 @@ fn test_matcap_record_and_execute_with_textures() {
     mesh.set_render_mode(RenderMode::MatCap);
 
     let mut fb = TestFramebuffer::new(640, 480);
-    let mut zbuffer = vec![u32::MAX; 640 * 480];
+    let mut zbuffer = vec![Z_MAX_VALUE; 640 * 480];
     let mut cmd = CommandBuffer::<128>::new();
     engine
         .record(std::iter::once(&mesh), &mut cmd, None)
@@ -2279,7 +2279,7 @@ fn test_textured_gouraud_rendering() {
     mesh.set_render_mode(RenderMode::TexturedGouraud(Vector3::new(0.0, 0.0, 1.0)));
 
     let mut fb = TestFramebuffer::new(640, 480);
-    let mut zbuffer = vec![u32::MAX; 640 * 480];
+    let mut zbuffer = vec![Z_MAX_VALUE; 640 * 480];
     let mut cmd = CommandBuffer::<128>::new();
     engine
         .record(std::iter::once(&mesh), &mut cmd, None)
@@ -2328,7 +2328,7 @@ fn test_drop_shadow_recording_and_execution() {
     mesh.model_matrix = mesh.similarity.to_homogeneous();
 
     let mut fb = TestFramebuffer::new(640, 480);
-    let mut zbuffer = vec![u32::MAX; 640 * 480];
+    let mut zbuffer = vec![Z_MAX_VALUE; 640 * 480];
     let mut cmd = CommandBuffer::<128>::new();
 
     engine
@@ -2379,7 +2379,7 @@ fn test_toon_shading_and_outline_rendering() {
     mesh.outline_width = 0.1;
 
     let mut fb = TestFramebuffer::new(640, 480);
-    let mut zbuffer = vec![u32::MAX; 640 * 480];
+    let mut zbuffer = vec![Z_MAX_VALUE; 640 * 480];
     let mut cmd = CommandBuffer::<128>::new();
 
     engine

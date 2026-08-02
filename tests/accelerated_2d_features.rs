@@ -415,7 +415,7 @@ fn test_translucent_triangle_blends_correctly() {
     // The translucent rasterizer computes: arm_2d_blend_rgb565(BLACK, color, alpha).
     // So alpha=128 red over black gives: r≈15 (half of max 31), g=0, b=0.
     let mut fb = MockFb::new(16, 16);
-    let mut zbuffer = std::vec![u32::MAX; 16 * 16];
+    let mut zbuffer = std::vec![embedded_3dgfx::Z_MAX_VALUE; 16 * 16];
 
     let prim = DrawPrimitive::TranslucentTriangleWithDepth {
         points: [
@@ -423,7 +423,7 @@ fn test_translucent_triangle_blends_correctly() {
             Point2::new(15i32, 0i32),
             Point2::new(0i32, 15i32),
         ],
-        depths: [0.1, 0.1, 0.1],
+        depths: [1.0, 1.0, 1.0],
         color: Rgb565::CSS_RED,
         alpha: 128,
     };
@@ -444,7 +444,7 @@ fn test_translucent_triangle_blends_correctly() {
 #[test]
 fn test_zbuffered_triangle_opaque_writes_z() {
     let mut fb = MockFb::new(16, 16);
-    let mut zbuffer = std::vec![u32::MAX; 16 * 16];
+    let mut zbuffer = std::vec![embedded_3dgfx::Z_MAX_VALUE; 16 * 16];
 
     let prim = DrawPrimitive::ColoredTriangleWithDepth {
         points: [
@@ -452,15 +452,15 @@ fn test_zbuffered_triangle_opaque_writes_z() {
             Point2::new(15i32, 0i32),
             Point2::new(0i32, 15i32),
         ],
-        depths: [0.5, 0.5, 0.5],
+        depths: [5.0, 5.0, 5.0],
         color: Rgb565::CSS_BLUE,
     };
 
     embedded_3dgfx::draw::draw_zbuffered(prim, &mut fb, &mut zbuffer, 16);
-    // z-buffer at (0,0) should have been written (no longer u32::MAX)
+    // z-buffer at (0,0) should have been written (no longer Z_MAX_VALUE)
     assert_ne!(
         zbuffer[0],
-        u32::MAX,
+        embedded_3dgfx::Z_MAX_VALUE,
         "z-buffer must be updated after opaque triangle"
     );
     assert_eq!(fb.pixel_at(0, 0), Rgb565::CSS_BLUE, "pixel must be blue");
@@ -471,7 +471,7 @@ fn test_zbuffered_occlusion() {
     // Draw a near blue triangle, then a far red triangle on top.
     // The far red triangle should be occluded by the near blue one.
     let mut fb = MockFb::new(16, 16);
-    let mut zbuffer = std::vec![u32::MAX; 16 * 16];
+    let mut zbuffer = std::vec![embedded_3dgfx::Z_MAX_VALUE; 16 * 16];
 
     let near_prim = DrawPrimitive::ColoredTriangleWithDepth {
         points: [
@@ -479,7 +479,7 @@ fn test_zbuffered_occlusion() {
             Point2::new(15i32, 0i32),
             Point2::new(0i32, 15i32),
         ],
-        depths: [0.2, 0.2, 0.2],
+        depths: [2.0, 2.0, 2.0],
         color: Rgb565::CSS_BLUE,
     };
     let far_prim = DrawPrimitive::ColoredTriangleWithDepth {
@@ -488,7 +488,7 @@ fn test_zbuffered_occlusion() {
             Point2::new(15i32, 0i32),
             Point2::new(0i32, 15i32),
         ],
-        depths: [0.9, 0.9, 0.9],
+        depths: [9.0, 9.0, 9.0],
         color: Rgb565::CSS_RED,
     };
 

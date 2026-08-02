@@ -91,6 +91,7 @@ embedded-graphics-simulator = "0.8"
 embedded-graphics = "0.8"
 load_stl = { path = "load_stl" }
 gif = "0.13"
+sdl2 = { version = "0.38", features = ["use-pkgconfig"] }
 
 [[example]]
 name = "physics_bouncing_balls"

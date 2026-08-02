@@ -8,7 +8,7 @@ These examples use `embedded-graphics-simulator` for desktop visualization. SDL2
 
 ### macOS
 ```bash
-brew install sdl2
+brew install sdl2 pkg-config
 ```
 
 ### Ubuntu/Debian

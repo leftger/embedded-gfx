@@ -4,6 +4,7 @@
 //! This demo uses simple cubes positioned to show clear lighting differences.
 
 use embedded_3dgfx::K3dengine;
+use embedded_3dgfx::Z_MAX_VALUE;
 use embedded_3dgfx::command_buffer::CommandBuffer;
 use embedded_3dgfx::config::apply_default_caps;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
@@ -137,7 +138,7 @@ fn main() {
 
     // Create Z-buffer (using u32 for better embedded performance)
     // u32::MAX represents infinity (furthest distance)
-    let mut zbuffer = vec![u32::MAX; WIDTH * HEIGHT];
+    let mut zbuffer = vec![Z_MAX_VALUE; WIDTH * HEIGHT];
     let mut commands = CommandBuffer::<8192>::new();
 
     let start_time = Instant::now();
@@ -220,7 +221,7 @@ fn main() {
 
         // Clear display and Z-buffer
         display.clear(Rgb565::BLACK).unwrap();
-        zbuffer.fill(u32::MAX);
+        zbuffer.fill(Z_MAX_VALUE);
 
         engine
             .record(

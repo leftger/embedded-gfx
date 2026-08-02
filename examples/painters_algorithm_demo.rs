@@ -16,6 +16,7 @@
 
 use embedded_3dgfx::DrawPrimitive;
 use embedded_3dgfx::K3dengine;
+use embedded_3dgfx::Z_MAX_VALUE;
 use embedded_3dgfx::command_buffer::{CommandBuffer, RenderCommand};
 use embedded_3dgfx::draw::draw;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
@@ -335,7 +336,7 @@ fn main() {
             triangle_count = sorted.len();
         } else {
             // Traditional Z-buffered rendering (reference)
-            let mut zbuffer = vec![u32::MAX; WIDTH * HEIGHT];
+            let mut zbuffer = vec![Z_MAX_VALUE; WIDTH * HEIGHT];
             let mut frame = FrameCtx {
                 zbuffer: &mut zbuffer,
                 width: WIDTH,

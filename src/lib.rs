@@ -30,7 +30,9 @@ pub const fn to_zdepth(z: u32) -> ZDepth {
 
 #[cfg(feature = "dma2d")]
 unsafe extern "Rust" {
+    #[cfg(feature = "depth-u16")]
     fn dma2d_clear_zbuffer_u16(ptr: *mut u16, len: usize, value: u16);
+    #[cfg(not(feature = "depth-u16"))]
     fn dma2d_clear_zbuffer_u32(ptr: *mut u32, len: usize, value: u32);
 }
 
@@ -2381,20 +2383,21 @@ pub fn mesh_ray_cast(
     nearest
 }
 
-#[cfg(test)]
 #[cfg(feature = "dma2d")]
-#[unsafe(no_mangle)]
-extern "Rust" fn dma2d_clear_zbuffer_u16(ptr: *mut u16, len: usize, value: u16) {
-    let slice = unsafe { core::slice::from_raw_parts_mut(ptr, len) };
-    slice.fill(value);
-}
+mod dma2d_stubs {
+    #[cfg(feature = "depth-u16")]
+    #[unsafe(no_mangle)]
+    extern "Rust" fn dma2d_clear_zbuffer_u16(ptr: *mut u16, len: usize, value: u16) {
+        let slice = unsafe { core::slice::from_raw_parts_mut(ptr, len) };
+        slice.fill(value);
+    }
 
-#[cfg(test)]
-#[cfg(feature = "dma2d")]
-#[unsafe(no_mangle)]
-extern "Rust" fn dma2d_clear_zbuffer_u32(ptr: *mut u32, len: usize, value: u32) {
-    let slice = unsafe { core::slice::from_raw_parts_mut(ptr, len) };
-    slice.fill(value);
+    #[cfg(not(feature = "depth-u16"))]
+    #[unsafe(no_mangle)]
+    extern "Rust" fn dma2d_clear_zbuffer_u32(ptr: *mut u32, len: usize, value: u32) {
+        let slice = unsafe { core::slice::from_raw_parts_mut(ptr, len) };
+        slice.fill(value);
+    }
 }
 
 #[cfg(test)]

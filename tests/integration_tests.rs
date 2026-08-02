@@ -55,6 +55,52 @@ impl TestFramebuffer {
         hash
     }
 
+    fn to_dense_buffer(&self) -> Vec<Rgb565> {
+        let mut buf = vec![Rgb565::BLACK; (self.width * self.height) as usize];
+        for &(x, y, c) in &self.pixels {
+            if x >= 0 && (x as u32) < self.width && y >= 0 && (y as u32) < self.height {
+                let idx = (y as u32 * self.width + x as u32) as usize;
+                buf[idx] = c;
+            }
+        }
+        buf
+    }
+
+    fn save_png(&self, path: &std::path::Path) {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).ok();
+        }
+        let file = std::fs::File::create(path).expect("failed to create PNG file");
+        let ref mut w = std::io::BufWriter::new(file);
+        let mut encoder = png::Encoder::new(w, self.width, self.height);
+        encoder.set_color(png::ColorType::Rgb);
+        encoder.set_depth(png::BitDepth::Eight);
+        let mut writer = encoder.write_header().expect("failed to write PNG header");
+
+        let dense = self.to_dense_buffer();
+        let mut raw_bytes = Vec::with_capacity(dense.len() * 3);
+        for p in dense {
+            let r8 = ((p.r() as u16 * 255) / 31) as u8;
+            let g8 = ((p.g() as u16 * 255) / 63) as u8;
+            let b8 = ((p.b() as u16 * 255) / 31) as u8;
+            raw_bytes.push(r8);
+            raw_bytes.push(g8);
+            raw_bytes.push(b8);
+        }
+        writer
+            .write_image_data(&raw_bytes)
+            .expect("failed to write PNG image data");
+    }
+
+    fn export_png(&self, name: &str) {
+        let rendered_path = std::path::Path::new("target/rendered_images").join(name);
+        self.save_png(&rendered_path);
+        if std::env::var("GENERATE_GOLDEN_IMAGES").is_ok() {
+            let golden_path = std::path::Path::new("tests/golden_images").join(name);
+            self.save_png(&golden_path);
+        }
+    }
+
     #[allow(dead_code)]
     fn clear(&mut self) {
         self.pixels.clear();
@@ -1411,6 +1457,9 @@ fn test_golden_hash_points_scene_record_execute() {
         .unwrap();
 
     let digest = fb.hash_pixels();
+    #[cfg(feature = "aa")]
+    assert_eq!(digest, 6129921384842109618);
+    #[cfg(not(feature = "aa"))]
     assert_eq!(digest, 4519810522198061541);
 }
 
@@ -1451,6 +1500,9 @@ fn test_golden_hash_lines_scene_record_execute() {
         .unwrap();
 
     let digest = fb.hash_pixels();
+    #[cfg(feature = "aa")]
+    assert_eq!(digest, 4815696538317319914);
+    #[cfg(not(feature = "aa"))]
     assert_eq!(digest, 3107081647503172710);
 }
 
@@ -1492,6 +1544,7 @@ fn test_golden_hash_solid_scene_record_execute() {
         .unwrap();
 
     let digest = fb.hash_pixels();
+    fb.export_png("solid_cube.png");
     assert_eq!(digest, 14695981039346656037);
 }
 
@@ -1536,6 +1589,7 @@ fn test_golden_hash_gouraud_scene_record_execute() {
         .unwrap();
 
     let digest = fb.hash_pixels();
+    fb.export_png("gouraud_mesh.png");
     assert_eq!(digest, 3505104233474102080);
 }
 
@@ -1581,6 +1635,7 @@ fn test_golden_hash_doom_preset_scene_record_execute() {
         .unwrap();
 
     let digest = fb.hash_pixels();
+    fb.export_png("doom_preset.png");
     assert_eq!(digest, 5071304079467840572);
 }
 

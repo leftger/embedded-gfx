@@ -29,7 +29,7 @@ default = ["row_width_240", "std", "aa-heuristic", "aa-coverage"]
 std = ["perfcounter"]
 physics = []
 dma2d = []
-dsp = ["dep:embedded-dsp"]
+dsp = ["dep:embedded-dsp", "embedded-dsp/libm", "embedded-dsp/quaternion"]
 depth-u16 = []
 perfcounter = []
 row_width_96 = []
@@ -58,6 +58,8 @@ embassy = ["embassy-time", "dep:embassy-sync"]
 # lives in embedded-dsp's "fixed-point" feature (shared with embedded-gui),
 # rather than a bespoke copy in this crate.
 fixed-transform = ["dsp", "embedded-dsp/fixed-point"]
+# Pure Q16.16 fixed-point triangle rasterization hotpath.
+fixed-raster = ["fixed-transform"]
 # Enable DWT cycle-counter profiling hooks.
 dwt-profiler = []
 # Enable RTT trace sink markers (board-specific integration required).
@@ -76,7 +78,7 @@ line_drawing = "1.0"
 heapless = "0.9"
 embassy-time = { version = "0.5", default-features = false, optional = true }
 embassy-sync = { version = "0.8", default-features = false, optional = true }
-embedded-dsp = { version = "0.2.0", optional = true }
+embedded-dsp = { version = "0.2.0", default-features = false, optional = true }
 
 [lib]
 name = "embedded_3dgfx"
@@ -92,6 +94,7 @@ embedded-graphics = "0.8"
 load_stl = { path = "load_stl" }
 gif = "0.13"
 sdl2 = { version = "0.38", features = ["use-pkgconfig"] }
+png = "0.17"
 
 [[example]]
 name = "physics_bouncing_balls"
@@ -100,6 +103,10 @@ required-features = ["physics"]
 [[example]]
 name = "physics_demo"
 required-features = ["physics"]
+
+[[bench]]
+name = "raster_benchmark"
+harness = false
 
 [[example]]
 name = "physics_domino_chain"

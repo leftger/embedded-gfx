@@ -124,6 +124,8 @@ jobs:
         run: bash .github/scripts/ci_test.sh
       - name: Telemetry budget guard
         run: cargo test --test integration_tests test_ci_telemetry_snapshot_ -- --nocapture 2>&1 | .github/scripts/check_telemetry_budget.py
+      - name: Golden image diff guard
+        run: python3 .github/scripts/check_image_diff.py --golden-dir tests/golden_images --rendered-dir target/rendered_images
 
   embedded-budget:
     name: Embedded Budget (${{ matrix.row_width_feature }})

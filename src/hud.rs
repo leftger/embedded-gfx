@@ -1,5 +1,103 @@
-use embedded_graphics_core::{Pixel, draw_target::DrawTarget, geometry::Point, pixelcolor::Rgb565};
+use embedded_graphics_core::{
+    Pixel,
+    draw_target::DrawTarget,
+    geometry::{OriginDimensions, Point, Size},
+    pixelcolor::Rgb565,
+};
 use heapless::Vec;
+
+// ---------------------------------------------------------------------------
+// FramebufDrawTarget — thin DrawTarget wrapper over a flat Rgb565 slice.
+//
+// Eliminates the OffscreenBuffer / DirtyRect boilerplate that every embedded
+// demo otherwise needs to copy.  Construct with `FramebufDrawTarget::new` and
+// pass to any embedded-graphics draw call.
+// ---------------------------------------------------------------------------
+
+/// A lightweight [`DrawTarget`] backed by a flat `Rgb565` pixel buffer.
+///
+/// Construct once per frame and pass it to `embedded-graphics` text/shape
+/// renderers.  No heap allocation, no dirty-rect tracking overhead.
+///
+/// ```ignore
+/// let mut fb = FramebufDrawTarget::new(&mut framebuf, 240, 320);
+/// Text::new("HEALTH", Point::new(3, 262), style).draw(&mut fb).ok();
+/// ```
+pub struct FramebufDrawTarget<'a> {
+    pixels: &'a mut [Rgb565],
+    width: usize,
+    height: usize,
+}
+
+impl<'a> FramebufDrawTarget<'a> {
+    /// Create a new draw target backed by `pixels` of size `width × height`.
+    ///
+    /// `pixels` must have at least `width * height` elements; the constructor
+    /// does **not** panic — out-of-bounds pixel writes are silently dropped.
+    #[inline]
+    pub fn new(pixels: &'a mut [Rgb565], width: usize, height: usize) -> Self {
+        Self {
+            pixels,
+            width,
+            height,
+        }
+    }
+}
+
+impl OriginDimensions for FramebufDrawTarget<'_> {
+    fn size(&self) -> Size {
+        Size::new(self.width as u32, self.height as u32)
+    }
+}
+
+impl DrawTarget for FramebufDrawTarget<'_> {
+    type Color = Rgb565;
+    type Error = core::convert::Infallible;
+
+    #[inline]
+    fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
+    where
+        I: IntoIterator<Item = Pixel<Self::Color>>,
+    {
+        for Pixel(coord, color) in pixels {
+            if coord.x >= 0
+                && coord.y >= 0
+                && (coord.x as usize) < self.width
+                && (coord.y as usize) < self.height
+            {
+                let idx = coord.y as usize * self.width + coord.x as usize;
+                if idx < self.pixels.len() {
+                    self.pixels[idx] = color;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// format_u16_dec — no_std / no_alloc integer formatter.
+// ---------------------------------------------------------------------------
+
+/// Format a `u16` as a zero-padded decimal string into a fixed-size byte
+/// buffer, right-aligned with leading spaces.
+///
+/// Returns a `&str` slice over the used portion of `buf`.  `buf` must be at
+/// least as long as `digits`; the function fills the rightmost `digits` bytes.
+///
+/// # Example
+/// ```ignore
+/// let mut buf = [b' '; 4];
+/// let s = format_u16_dec(42, &mut buf, 3); // "042"
+/// ```
+pub fn format_u16_dec(mut value: u16, buf: &mut [u8], digits: usize) -> &str {
+    let start = buf.len().saturating_sub(digits);
+    for i in (start..buf.len()).rev() {
+        buf[i] = b'0' + (value % 10) as u8;
+        value /= 10;
+    }
+    core::str::from_utf8(&buf[start..]).unwrap_or("")
+}
 
 /// A single HUD element drawn as a 2D overlay after the 3D scene.
 #[derive(Clone, Copy, Debug)]

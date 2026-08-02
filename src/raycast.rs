@@ -329,10 +329,250 @@ impl Raycaster2D {
             }
         }
     }
+
+    /// Render 3D textured walls using a **per-tile pixel callback** instead of a flat colour
+    /// palette.
+    ///
+    /// The `get_pixel` closure receives `(tile_id, tex_x, tex_y)` and returns the raw
+    /// `Rgb565` texel **before** distance shading is applied.  This lets callers supply
+    /// hand-painted bitmaps, procedural patterns (brick mortar, tech panels, hazard
+    /// stripes …) or atlas lookups without the overhead of a full texture object.
+    ///
+    /// All other parameters are identical to [`render_walls`].
+    pub fn render_walls_textured<F>(
+        &self,
+        pos_x: f32,
+        pos_y: f32,
+        angle: f32,
+        head_bob: i32,
+        map: &[u8],
+        map_size: usize,
+        z_buffer: &mut [f32],
+        framebuf_u32: &mut [u32],
+        get_pixel: F,
+    ) where
+        F: Fn(u8, usize, usize) -> Rgb565,
+    {
+        let dir_x = angle.cos();
+        let dir_y = angle.sin();
+
+        let plane_x = -dir_y * self.fov_scale;
+        let plane_y = dir_x * self.fov_scale;
+
+        let stride_u32 = self.width / 2;
+
+        for x in (0..self.width).step_by(4) {
+            let camera_x = -(2.0 * (x as f32) / (self.width as f32) - 1.0);
+            let ray_dir_x = dir_x + plane_x * camera_x;
+            let ray_dir_y = dir_y + plane_y * camera_x;
+
+            let mut map_x = pos_x as i32;
+            let mut map_y = pos_y as i32;
+
+            let delta_dist_x = if ray_dir_x == 0.0 {
+                1e30
+            } else {
+                (1.0 / ray_dir_x).abs()
+            };
+            let delta_dist_y = if ray_dir_y == 0.0 {
+                1e30
+            } else {
+                (1.0 / ray_dir_y).abs()
+            };
+
+            let (step_x, mut side_dist_x) = if ray_dir_x < 0.0 {
+                (-1, (pos_x - map_x as f32) * delta_dist_x)
+            } else {
+                (1, (map_x as f32 + 1.0 - pos_x) * delta_dist_x)
+            };
+
+            let (step_y, mut side_dist_y) = if ray_dir_y < 0.0 {
+                (-1, (pos_y - map_y as f32) * delta_dist_y)
+            } else {
+                (1, (map_y as f32 + 1.0 - pos_y) * delta_dist_y)
+            };
+
+            let mut hit_wall = 0u8;
+            let mut side = 0u8;
+            let mut steps = 0;
+
+            while hit_wall == 0 && steps < 24 {
+                if side_dist_x < side_dist_y {
+                    side_dist_x += delta_dist_x;
+                    map_x += step_x;
+                    side = 0;
+                } else {
+                    side_dist_y += delta_dist_y;
+                    map_y += step_y;
+                    side = 1;
+                }
+
+                if map_x >= 0 && map_x < map_size as i32 && map_y >= 0 && map_y < map_size as i32 {
+                    let tile = map[(map_y as usize) * map_size + (map_x as usize)];
+                    if tile > 0 {
+                        hit_wall = tile;
+                    }
+                } else {
+                    hit_wall = 1;
+                }
+                steps += 1;
+            }
+
+            let perp_wall_dist = if side == 0 {
+                side_dist_x - delta_dist_x
+            } else {
+                side_dist_y - delta_dist_y
+            }
+            .max(0.1);
+
+            for i in 0..4 {
+                if x + i < self.width {
+                    z_buffer[x + i] = perp_wall_dist;
+                }
+            }
+
+            let line_height = (self.height as f32 / perp_wall_dist) as i32;
+            let center_y = (self.height / 2) as i32 + head_bob;
+
+            let draw_start = (center_y - line_height / 2).clamp(0, self.height as i32 - 1) as usize;
+            let draw_end = (center_y + line_height / 2).clamp(0, self.height as i32 - 1) as usize;
+
+            // Fractional wall-hit position → texture column
+            let mut wall_x = if side == 0 {
+                pos_y + perp_wall_dist * ray_dir_y
+            } else {
+                pos_x + perp_wall_dist * ray_dir_x
+            };
+            wall_x -= wall_x.floor();
+            let tex_x = ((wall_x * 16.0) as usize).clamp(0, 15);
+
+            // Distance shading: darker further away; side faces at 70% brightness
+            let base_shade = 1.0 / (1.0 + perp_wall_dist * 0.18);
+            let shade = if side == 1 {
+                base_shade * 0.7
+            } else {
+                base_shade
+            };
+
+            let x_u32 = x / 2;
+            let tex_step = 16.0 / (line_height as f32).max(1.0);
+            let mut tex_pos = ((draw_start as i32 - center_y + line_height / 2) as f32) * tex_step;
+
+            for y in draw_start..=draw_end {
+                let tex_y = (tex_pos as usize) & 15;
+                tex_pos += tex_step;
+
+                let raw_color = get_pixel(hit_wall, tex_x, tex_y);
+                let shaded = apply_shade(raw_color, shade);
+                let pixel_u32 = pack_rgb565_u32(shaded);
+
+                let idx = y * stride_u32 + x_u32;
+                if idx < framebuf_u32.len() {
+                    framebuf_u32[idx] = pixel_u32;
+                    if idx + 1 < framebuf_u32.len() {
+                        framebuf_u32[idx + 1] = pixel_u32;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Render billboarded 2.5D sprites (enemies, items, projectiles) into a **per-pixel**
+    /// `Rgb565` framebuffer with z-buffer occlusion against previously rendered walls.
+    ///
+    /// # Parameters
+    /// - `pos_x / pos_y` – camera world position.
+    /// - `angle` – camera yaw in radians.
+    /// - `head_bob` – vertical pixel offset for head-bob animation.
+    /// - `sprites` – slice of world-space sprite descriptors.
+    /// - `z_buffer` – per-column perpendicular wall distance written by [`render_walls`] /
+    ///   [`render_walls_textured`].  Sprites behind a wall are automatically clipped.
+    /// - `framebuf` – flat `Rgb565` pixel buffer of size `width × height`.
+    /// - `get_color` – closure `(sprite: &RaycastSprite, norm_y: f32) -> Option<Rgb565>`
+    ///   that returns the pixel colour for the given sprite at normalised vertical position
+    ///   `norm_y ∈ [0, 1]`.  Return `None` to skip (transparent) pixels.
+    pub fn render_sprites<F>(
+        &self,
+        pos_x: f32,
+        pos_y: f32,
+        angle: f32,
+        head_bob: i32,
+        sprites: &[RaycastSprite],
+        z_buffer: &[f32],
+        framebuf: &mut [Rgb565],
+        get_color: F,
+    ) where
+        F: Fn(&RaycastSprite, f32) -> Option<Rgb565>,
+    {
+        let dir_x = angle.cos();
+        let dir_y = angle.sin();
+        let plane_x = -dir_y * self.fov_scale;
+        let plane_y = dir_x * self.fov_scale;
+        let inv_det = 1.0 / (plane_x * dir_y - dir_x * plane_y);
+        let center_y = (self.height / 2) as i32 + head_bob;
+
+        for sprite in sprites {
+            if !sprite.active {
+                continue;
+            }
+
+            let sx = sprite.x - pos_x;
+            let sy = sprite.y - pos_y;
+
+            let transform_x = inv_det * (dir_y * sx - dir_x * sy);
+            let transform_y = inv_det * (-plane_y * sx + plane_x * sy);
+
+            // Only render sprites in front of the camera
+            if transform_y <= 0.3 {
+                continue;
+            }
+
+            let sprite_screen_x =
+                ((self.width as f32 / 2.0) * (1.0 - transform_x / transform_y)) as i32;
+            let sprite_height = ((self.height as f32 / transform_y).abs()) as i32;
+            let sprite_width = sprite_height;
+
+            let draw_start_y =
+                (center_y - sprite_height / 2).clamp(0, self.height as i32 - 1) as usize;
+            let draw_end_y =
+                (center_y + sprite_height / 2).clamp(0, self.height as i32 - 1) as usize;
+
+            let draw_start_x =
+                (sprite_screen_x - sprite_width / 2).clamp(0, self.width as i32 - 1) as usize;
+            let draw_end_x =
+                (sprite_screen_x + sprite_width / 2).clamp(0, self.width as i32 - 1) as usize;
+
+            for stripe_x in draw_start_x..draw_end_x {
+                // Z-buffer occlusion: skip columns behind a closer wall
+                if transform_y >= z_buffer[stripe_x] {
+                    continue;
+                }
+
+                for y in draw_start_y..draw_end_y {
+                    let norm_y = if draw_end_y > draw_start_y {
+                        (y - draw_start_y) as f32 / (draw_end_y - draw_start_y) as f32
+                    } else {
+                        0.0
+                    };
+
+                    if let Some(color) = get_color(sprite, norm_y) {
+                        let idx = y * self.width + stripe_x;
+                        if idx < framebuf.len() {
+                            framebuf[idx] = color;
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
+/// Apply a distance-based shade factor `[0.0, 1.0]` to an `Rgb565` colour.
+///
+/// Useful for manual pixel colouring that needs to match the shading applied
+/// internally by [`Raycaster2D`] and [`Mode7Renderer`].
 #[inline(always)]
-fn apply_shade(color: Rgb565, factor: f32) -> Rgb565 {
+pub fn apply_shade(color: Rgb565, factor: f32) -> Rgb565 {
     let f = factor.clamp(0.05, 1.0);
     let r = ((color.r() as f32) * f) as u8;
     let g = ((color.g() as f32) * f) as u8;
@@ -340,8 +580,12 @@ fn apply_shade(color: Rgb565, factor: f32) -> Rgb565 {
     Rgb565::new(r, g, b)
 }
 
+/// Pack two identical `Rgb565` pixels into one `u32` for 32-bit-wide framebuffer writes.
+///
+/// Matches the internal packing used by [`Raycaster2D`] and [`Mode7Renderer`] so
+/// callers can fill adjacent pixel pairs in a single store operation.
 #[inline(always)]
-fn pack_rgb565_u32(color: Rgb565) -> u32 {
+pub fn pack_rgb565_u32(color: Rgb565) -> u32 {
     let raw = color.into_storage() as u32;
     (raw << 16) | raw
 }
@@ -395,5 +639,131 @@ mod tests {
         );
 
         assert!(z_buffer[0] > 0.0, "Z-buffer should record wall distances");
+    }
+
+    #[test]
+    fn test_render_walls_textured_writes_pixels_and_z_buffer() {
+        let raycaster = Raycaster2D::new(240, 256);
+        // 4×4 map with a wall ring around the inside
+        let map = [1u8, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 1, 1, 1];
+        let mut z_buffer = [0.0f32; 240];
+        let mut framebuf_u32 = [0u32; (240 * 256) / 2];
+
+        raycaster.render_walls_textured(
+            1.5,
+            1.5,
+            0.0,
+            0,
+            &map,
+            4,
+            &mut z_buffer,
+            &mut framebuf_u32,
+            |tile, _tex_x, _tex_y| {
+                // Tile 1 → green; anything else → red
+                if tile == 1 {
+                    Rgb565::GREEN
+                } else {
+                    Rgb565::RED
+                }
+            },
+        );
+
+        assert!(
+            z_buffer[0] > 0.0,
+            "render_walls_textured must write the z-buffer"
+        );
+        let written = framebuf_u32.iter().any(|&p| p != 0);
+        assert!(
+            written,
+            "render_walls_textured must write at least one pixel"
+        );
+    }
+
+    #[test]
+    fn test_render_sprites_draws_behind_z_buffer() {
+        let raycaster = Raycaster2D::new(240, 256);
+
+        // Place a sprite at (5, 1.5) while camera looks along +X from (1.5, 1.5).
+        // Set z_buffer to a large value so the sprite is NOT occluded.
+        let sprites = [RaycastSprite {
+            x: 5.0,
+            y: 1.5,
+            texture_id: 0,
+            active: true,
+        }];
+        let z_buffer = [100.0f32; 240];
+        let mut framebuf = [Rgb565::BLACK; 240 * 256];
+
+        raycaster.render_sprites(
+            1.5,
+            1.5,
+            0.0, // facing +X
+            0,
+            &sprites,
+            &z_buffer,
+            &mut framebuf,
+            |_sprite, _norm_y| Some(Rgb565::YELLOW),
+        );
+
+        // At least one pixel should have been coloured yellow
+        let yellow_pixels = framebuf.iter().filter(|&&p| p == Rgb565::YELLOW).count();
+        assert!(
+            yellow_pixels > 0,
+            "render_sprites should draw the sprite when unoccluded"
+        );
+    }
+
+    #[test]
+    fn test_render_sprites_occluded_by_z_buffer() {
+        let raycaster = Raycaster2D::new(240, 256);
+
+        // Same setup but z_buffer has tiny values → sprite is behind walls → nothing drawn
+        let sprites = [RaycastSprite {
+            x: 5.0,
+            y: 1.5,
+            texture_id: 0,
+            active: true,
+        }];
+        let z_buffer = [0.1f32; 240]; // all columns show a very close wall
+        let mut framebuf = [Rgb565::BLACK; 240 * 256];
+
+        raycaster.render_sprites(
+            1.5,
+            1.5,
+            0.0,
+            0,
+            &sprites,
+            &z_buffer,
+            &mut framebuf,
+            |_sprite, _norm_y| Some(Rgb565::YELLOW),
+        );
+
+        let yellow_pixels = framebuf.iter().filter(|&&p| p == Rgb565::YELLOW).count();
+        assert_eq!(
+            yellow_pixels, 0,
+            "Occluded sprite should not write any pixels"
+        );
+    }
+
+    #[test]
+    fn test_apply_shade_public() {
+        // Full brightness (factor = 1.0) should be identity (within rounding)
+        let c = Rgb565::new(20, 40, 15);
+        let out = apply_shade(c, 1.0);
+        assert_eq!(out.r(), 20);
+        assert_eq!(out.g(), 40);
+        assert_eq!(out.b(), 15);
+
+        // Clamped at 0.05 — channels should still be non-zero for a bright input
+        let dark = apply_shade(Rgb565::new(31, 63, 31), 0.0);
+        assert!(dark.r() > 0);
+    }
+
+    #[test]
+    fn test_pack_rgb565_u32_public() {
+        let c = Rgb565::new(10, 20, 10);
+        let raw = c.into_storage() as u32;
+        let packed = pack_rgb565_u32(c);
+        assert_eq!(packed, (raw << 16) | raw);
     }
 }

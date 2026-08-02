@@ -141,7 +141,7 @@ impl Mode7Renderer {
             let c_shade = (1.0 / (1.0 + row_dist * 0.22)).clamp(0.08, 0.7);
             let row_u32 = y * stride_u32;
 
-            for x_u32 in 0..120 {
+            for x_u32 in 0..stride_u32 {
                 let cell_x = ceil_x as i32;
                 let cell_y = ceil_y as i32;
 
@@ -162,6 +162,74 @@ impl Mode7Renderer {
 
                 ceil_x += ceil_step_x * 2.0;
                 ceil_y += ceil_step_y * 2.0;
+            }
+        }
+    }
+
+    /// Fast-path floor and ceiling renderer for flat/checkerboard patterns without per-pixel distance shading.
+    pub fn render_floor_and_ceiling_fast(
+        &self,
+        pos_x: f32,
+        pos_y: f32,
+        angle: f32,
+        head_bob: i32,
+        floor_color_a: Rgb565,
+        floor_color_b: Rgb565,
+        ceil_color_a: Rgb565,
+        ceil_color_b: Rgb565,
+        framebuf_u32: &mut [u32],
+    ) {
+        let dir_x = angle.cos();
+        let dir_y = angle.sin();
+        let plane_x = -dir_y * self.fov_scale;
+        let plane_y = dir_x * self.fov_scale;
+
+        let horizon = (self.height / 2) as i32 + head_bob;
+
+        let floor_a_u32 = pack_rgb565_u32(floor_color_a);
+        let floor_b_u32 = pack_rgb565_u32(floor_color_b);
+        let ceiling_a_u32 = pack_rgb565_u32(ceil_color_a);
+        let ceiling_b_u32 = pack_rgb565_u32(ceil_color_b);
+
+        let fov_inv = 2.0 / (self.width as f32);
+        let stride_u32 = self.width / 2;
+
+        for y in 0..self.height {
+            let p = (y as i32 - horizon) as f32;
+            if p == 0.0 {
+                continue;
+            }
+
+            let is_floor = p > 0.0;
+            let row_distance = if is_floor {
+                (self.height as f32 * 0.625) / p
+            } else {
+                (self.height as f32 * 0.625) / -p
+            };
+
+            let step_x = -row_distance * (plane_x * fov_inv) * 2.0;
+            let step_y = -row_distance * (plane_y * fov_inv) * 2.0;
+
+            let mut curr_x = pos_x + row_distance * (dir_x + plane_x);
+            let mut curr_y = pos_y + row_distance * (dir_y + plane_y);
+
+            let row_u32 = y * stride_u32;
+            let (col_a, col_b) = if is_floor {
+                (floor_a_u32, floor_b_u32)
+            } else {
+                (ceiling_a_u32, ceiling_b_u32)
+            };
+
+            for x2 in 0..stride_u32 {
+                let tx = (curr_x as usize) & 1;
+                let ty = (curr_y as usize) & 1;
+                let pixel_u32 = if (tx ^ ty) == 0 { col_a } else { col_b };
+
+                if row_u32 + x2 < framebuf_u32.len() {
+                    framebuf_u32[row_u32 + x2] = pixel_u32;
+                }
+                curr_x += step_x;
+                curr_y += step_y;
             }
         }
     }
@@ -453,6 +521,7 @@ impl Raycaster2D {
             } else {
                 base_shade
             };
+            let shade_q8 = (shade.clamp(0.05, 1.0) * 256.0) as u32;
 
             let x_u32 = x / 2;
             let tex_step = 16.0 / (line_height as f32).max(1.0);
@@ -463,7 +532,7 @@ impl Raycaster2D {
                 tex_pos += tex_step;
 
                 let raw_color = get_pixel(hit_wall, tex_x, tex_y);
-                let shaded = apply_shade(raw_color, shade);
+                let shaded = apply_shade_q8(raw_color, shade_q8);
                 let pixel_u32 = pack_rgb565_u32(shaded);
 
                 let idx = y * stride_u32 + x_u32;
@@ -477,21 +546,12 @@ impl Raycaster2D {
         }
     }
 
-    /// Render billboarded 2.5D sprites (enemies, items, projectiles) into a **per-pixel**
-    /// `Rgb565` framebuffer with z-buffer occlusion against previously rendered walls.
+    /// Fast-path sprite rendering using a **per-sprite setup callback** and per-pixel color getter.
     ///
-    /// # Parameters
-    /// - `pos_x / pos_y` – camera world position.
-    /// - `angle` – camera yaw in radians.
-    /// - `head_bob` – vertical pixel offset for head-bob animation.
-    /// - `sprites` – slice of world-space sprite descriptors.
-    /// - `z_buffer` – per-column perpendicular wall distance written by [`render_walls`] /
-    ///   [`render_walls_textured`].  Sprites behind a wall are automatically clipped.
-    /// - `framebuf` – flat `Rgb565` pixel buffer of size `width × height`.
-    /// - `get_color` – closure `(sprite: &RaycastSprite, norm_y: f32) -> Option<Rgb565>`
-    ///   that returns the pixel colour for the given sprite at normalised vertical position
-    ///   `norm_y ∈ [0, 1]`.  Return `None` to skip (transparent) pixels.
-    pub fn render_sprites<F>(
+    /// `prepare_sprite(sprite, transform_y)` is called **ONCE PER SPRITE** with the perpendicular
+    /// distance `transform_y`. Return `None` to skip rendering the sprite, or `Some(data)` to pass
+    /// pre-calculated properties (such as pre-shaded colors) to `get_pixel`.
+    pub fn render_sprites_fast<P, F, T>(
         &self,
         pos_x: f32,
         pos_y: f32,
@@ -500,9 +560,11 @@ impl Raycaster2D {
         sprites: &[RaycastSprite],
         z_buffer: &[f32],
         framebuf: &mut [Rgb565],
-        get_color: F,
+        prepare_sprite: P,
+        get_pixel: F,
     ) where
-        F: Fn(&RaycastSprite, f32) -> Option<Rgb565>,
+        P: Fn(&RaycastSprite, f32) -> Option<T>,
+        F: Fn(&T, usize, usize, usize, usize) -> Option<Rgb565>,
     {
         let dir_x = angle.cos();
         let dir_y = angle.sin();
@@ -527,6 +589,11 @@ impl Raycaster2D {
                 continue;
             }
 
+            let sprite_data = match prepare_sprite(sprite, transform_y) {
+                Some(d) => d,
+                None => continue,
+            };
+
             let sprite_screen_x =
                 ((self.width as f32 / 2.0) * (1.0 - transform_x / transform_y)) as i32;
             let sprite_height = ((self.height as f32 / transform_y).abs()) as i32;
@@ -544,18 +611,14 @@ impl Raycaster2D {
 
             for stripe_x in draw_start_x..draw_end_x {
                 // Z-buffer occlusion: skip columns behind a closer wall
-                if transform_y >= z_buffer[stripe_x] {
+                if stripe_x >= z_buffer.len() || transform_y >= z_buffer[stripe_x] {
                     continue;
                 }
 
                 for y in draw_start_y..draw_end_y {
-                    let norm_y = if draw_end_y > draw_start_y {
-                        (y - draw_start_y) as f32 / (draw_end_y - draw_start_y) as f32
-                    } else {
-                        0.0
-                    };
-
-                    if let Some(color) = get_color(sprite, norm_y) {
+                    if let Some(color) =
+                        get_pixel(&sprite_data, stripe_x, y, draw_start_y, draw_end_y)
+                    {
                         let idx = y * self.width + stripe_x;
                         if idx < framebuf.len() {
                             framebuf[idx] = color;
@@ -565,19 +628,58 @@ impl Raycaster2D {
             }
         }
     }
+
+    /// Render billboarded 2.5D sprites (enemies, items, projectiles) into a **per-pixel**
+    /// `Rgb565` framebuffer with z-buffer occlusion against previously rendered walls.
+    pub fn render_sprites<F>(
+        &self,
+        pos_x: f32,
+        pos_y: f32,
+        angle: f32,
+        head_bob: i32,
+        sprites: &[RaycastSprite],
+        z_buffer: &[f32],
+        framebuf: &mut [Rgb565],
+        get_color: F,
+    ) where
+        F: Fn(&RaycastSprite, f32) -> Option<Rgb565>,
+    {
+        self.render_sprites_fast(
+            pos_x,
+            pos_y,
+            angle,
+            head_bob,
+            sprites,
+            z_buffer,
+            framebuf,
+            |sprite, _dist| Some(*sprite),
+            |sprite, _stripe_x, y, draw_start_y, draw_end_y| {
+                let norm_y = if draw_end_y > draw_start_y {
+                    (y - draw_start_y) as f32 / (draw_end_y - draw_start_y) as f32
+                } else {
+                    0.0
+                };
+                get_color(sprite, norm_y)
+            },
+        );
+    }
 }
 
-/// Apply a distance-based shade factor `[0.0, 1.0]` to an `Rgb565` colour.
-///
-/// Useful for manual pixel colouring that needs to match the shading applied
-/// internally by [`Raycaster2D`] and [`Mode7Renderer`].
+/// Apply a Q8 fixed-point integer distance-based shade factor `[0, 256]` to an `Rgb565` colour.
+#[inline(always)]
+pub fn apply_shade_q8(color: Rgb565, shade_q8: u32) -> Rgb565 {
+    let raw = color.into_storage() as u32;
+    let r = ((((raw >> 11) & 0x1F) * shade_q8) >> 8).min(31);
+    let g = ((((raw >> 5) & 0x3F) * shade_q8) >> 8).min(63);
+    let b = (((raw & 0x1F) * shade_q8) >> 8).min(31);
+    Rgb565::new(r as u8, g as u8, b as u8)
+}
+
+/// Apply a distance-based shade factor `[0.0, 1.0]` to an `Rgb565` colour using fixed-point integer math.
 #[inline(always)]
 pub fn apply_shade(color: Rgb565, factor: f32) -> Rgb565 {
-    let f = factor.clamp(0.05, 1.0);
-    let r = ((color.r() as f32) * f) as u8;
-    let g = ((color.g() as f32) * f) as u8;
-    let b = ((color.b() as f32) * f) as u8;
-    Rgb565::new(r, g, b)
+    let shade_q8 = (factor.clamp(0.05, 1.0) * 256.0) as u32;
+    apply_shade_q8(color, shade_q8)
 }
 
 /// Pack two identical `Rgb565` pixels into one `u32` for 32-bit-wide framebuffer writes.

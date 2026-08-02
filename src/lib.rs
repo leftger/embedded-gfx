@@ -94,6 +94,7 @@ pub mod particles;
 pub mod perfcounter;
 #[cfg(feature = "physics")]
 pub mod physics;
+pub mod raycast;
 pub mod renderer;
 pub mod retro;
 pub mod scene_format;

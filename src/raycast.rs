@@ -407,7 +407,7 @@ impl Raycaster2D {
     /// hand-painted bitmaps, procedural patterns (brick mortar, tech panels, hazard
     /// stripes …) or atlas lookups without the overhead of a full texture object.
     ///
-    /// All other parameters are identical to [`render_walls`].
+    /// All other parameters are identical to [`Self::render_walls`].
     pub fn render_walls_textured<F>(
         &self,
         pos_x: f32,

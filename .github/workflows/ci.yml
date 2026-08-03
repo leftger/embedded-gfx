@@ -173,6 +173,31 @@ jobs:
       - name: Profile telemetry budget guard
         run: cargo test --test integration_tests test_ci_telemetry_snapshot_ -- --nocapture 2>&1 | .github/scripts/check_telemetry_budget.py
 
+  perf-baseline:
+    name: Perf Baseline (${{ matrix.caps_profile }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        caps_profile:
+          - m3
+          - m4
+          - m33
+          - m55
+    env:
+      EMBEDDED_3DGFX_CAPS: ${{ matrix.caps_profile }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install SDL2
+        run: sudo apt-get update && sudo apt-get install -y libsdl2-dev
+      # Report-only: shared CI runners are too noisy for a reliable wall-clock
+      # regression gate, so this records per-profile throughput for visibility
+      # rather than failing the build. See #24.
+      - name: Raster perf baseline (report-only)
+        run: cargo bench --bench raster_benchmark --features fixed-raster | tee -a "$GITHUB_STEP_SUMMARY"
+
   m55-perf-budget:
     name: M55 Perf Budget
     runs-on: ubuntu-latest

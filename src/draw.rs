@@ -370,7 +370,7 @@ impl EdgeStepper {
 }
 
 #[inline(always)]
-fn fill_triangle<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
+pub fn fill_triangle<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
     p1: Point,
     p2: Point,
     p3: Point,

@@ -1681,6 +1681,7 @@ fn test_golden_hash_psx_preset_scene_record_execute() {
         .unwrap();
 
     let digest = fb.hash_pixels();
+    fb.export_png("psx_preset.png");
     assert_eq!(digest, 16266472473208947511);
 }
 

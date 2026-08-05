@@ -17,7 +17,7 @@ impl RenderLayers {
     /// Belong to all 64 layers.
     pub const ALL: Self = Self(u64::MAX);
 
-    /// Single layer `n` (`0..64`). Out-of-range indices yield [`NONE`].
+    /// Single layer `n` (`0..64`). Out-of-range indices yield [`Self::NONE`].
     #[inline]
     pub const fn layer(n: u8) -> Self {
         if n >= 64 { Self::NONE } else { Self(1u64 << n) }

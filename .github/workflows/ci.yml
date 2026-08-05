@@ -27,6 +27,10 @@ env:
   CI_INTEGRATION_TEST_ARGS: "-- --test-threads=1"
   CI_INTEGRATION_CHECK: "true"
   CI_INTEGRATION_CHECK_CMD: "cargo build --examples"
+  # Default unit tests run without the opt-in scene extras, so exercise the
+  # gated modules and their cfg'd code paths in a second pass.
+  CI_EXTRA_TEST_COMMANDS: |
+    cargo test --lib --features scene-extras
   TELEMETRY_MAX_RECORD_DRAW_COMMANDS: "3"
   TELEMETRY_MAX_EXECUTE_COMMANDS_TOTAL: "4"
   TELEMETRY_MAX_EXECUTE_DRAW_COMMANDS: "3"

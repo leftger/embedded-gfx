@@ -28,11 +28,33 @@ fi
 if [ -d tests ] && compgen -G "tests/*.rs" >/dev/null; then
   echo "::endgroup::"
   echo "::group::Integration tests"
+  # Naming a test target whose `required-features` are unmet is a hard cargo
+  # error, so read them from cargo metadata and enable them per target.
+  required_features="$(python3 - <<'PY'
+import json, subprocess
+
+meta = json.loads(
+    subprocess.check_output(["cargo", "metadata", "--no-deps", "--format-version", "1"])
+)
+for pkg in meta["packages"]:
+    for target in pkg["targets"]:
+        if "test" in target["kind"]:
+            feats = target.get("required-features") or []
+            print("{}\t{}".format(target["name"], ",".join(feats)))
+PY
+)"
   for test_file in tests/*.rs; do
     test_name="$(basename "$test_file" .rs)"
-    echo "Running integration test: ${test_name}"
-    # shellcheck disable=SC2086
-    cargo_test --test "${test_name}" ${INTEGRATION_ARGS}
+    feats="$(printf '%s\n' "$required_features" | awk -F'\t' -v n="$test_name" '$1 == n { print $2 }')"
+    if [ -n "$feats" ]; then
+      echo "Running integration test: ${test_name} (--features ${feats})"
+      # shellcheck disable=SC2086
+      cargo_test --test "${test_name}" --features "${feats}" ${INTEGRATION_ARGS}
+    else
+      echo "Running integration test: ${test_name}"
+      # shellcheck disable=SC2086
+      cargo_test --test "${test_name}" ${INTEGRATION_ARGS}
+    fi
   done
 fi
 

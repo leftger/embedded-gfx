@@ -66,6 +66,25 @@ dwt-profiler = []
 rtt-trace = []
 # Enable ITM trace sink markers (board-specific integration required).
 itm-trace = []
+# --- Optional scene extras (opt-in; off by default to keep MCU binaries lean) ---
+# Two-stage frustum cull (sphere → oriented AABB) + cached mesh AABB +
+# mesh-space raycast AABB broadphase.
+aabb-cull = []
+# Camera ↔ mesh RenderLayers bitmasks.
+render-layers = []
+# Sort recorded meshes by priority (desc) then distance (asc).
+record-sort = []
+# LODLevels::fade_margin crossfade between LOD geometries.
+lod-crossfade = []
+# Skeletal AnimClip blending, Bone::slerp_rotation, joint/skinned AABBs.
+# Also enables quaternion slerp in transform_anim sampling.
+anim-blend = ["aabb-cull"]
+# Debug AABB / frustum wireframe helpers (record_*_gizmo).
+gizmos = ["aabb-cull"]
+# Visibility-oriented extras without animation/gizmos.
+visibility-extras = ["aabb-cull", "render-layers", "record-sort", "lod-crossfade"]
+# All optional scene extras (visibility + animation blend + gizmos).
+scene-extras = ["visibility-extras", "anim-blend", "gizmos"]
 
 [dependencies]
 embedded-graphics-core = "0.4.1"
@@ -147,3 +166,7 @@ required-features = ["physics"]
 [[example]]
 name = "raycast_demo"
 required-features = ["physics"]
+
+[[test]]
+name = "scene_extras"
+required-features = ["std", "scene-extras"]

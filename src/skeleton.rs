@@ -409,7 +409,257 @@ pub fn apply_skinning_to_normals<const N: usize>(
     count
 }
 
-#[cfg(feature = "dsp")]
+#[cfg(feature = "anim-blend")]
+mod anim_blend_api {
+    use super::*;
+
+    /// Local bone pose (position + rotation + scale) for clip sampling / blending.
+    #[derive(Debug, Clone, Copy)]
+    pub struct BonePose {
+        pub position: Vector3<f32>,
+        pub rotation: UnitQuaternion<f32>,
+        pub scale: Vector3<f32>,
+    }
+
+    impl BonePose {
+        pub fn identity() -> Self {
+            Self {
+                position: Vector3::zeros(),
+                rotation: UnitQuaternion::identity(),
+                scale: Vector3::new(1.0, 1.0, 1.0),
+            }
+        }
+
+        /// Spherical/linear blend between poses. Rotations use quaternion nlerp
+        /// (normalized lerp) — cheap and stable for short arcs.
+        pub fn blend(a: Self, b: Self, t: f32) -> Self {
+            let t = t.clamp(0.0, 1.0);
+            let q1 = a.rotation.into_inner();
+            let mut q2 = b.rotation.into_inner();
+            if q1.coords.dot(&q2.coords) < 0.0 {
+                q2 = -q2;
+            }
+            let q = nalgebra::Quaternion::new(
+                q1.w + (q2.w - q1.w) * t,
+                q1.i + (q2.i - q1.i) * t,
+                q1.j + (q2.j - q1.j) * t,
+                q1.k + (q2.k - q1.k) * t,
+            );
+            Self {
+                position: a.position + (b.position - a.position) * t,
+                rotation: UnitQuaternion::new_normalize(q),
+                scale: a.scale + (b.scale - a.scale) * t,
+            }
+        }
+    }
+
+    /// One keyframed skeleton pose (parallel array of per-bone poses).
+    #[derive(Debug, Clone, Copy)]
+    pub struct SkeletonKeyframe<'a> {
+        pub time: f32,
+        pub poses: &'a [BonePose],
+    }
+
+    /// Fixed-capacity clip: sorted keyframes of full-skeleton poses.
+    #[derive(Debug, Clone, Copy)]
+    pub struct AnimClip<'a> {
+        pub keyframes: &'a [SkeletonKeyframe<'a>],
+        pub looping: bool,
+    }
+
+    impl<'a> AnimClip<'a> {
+        pub fn duration(&self) -> f32 {
+            self.keyframes.last().map(|k| k.time).unwrap_or(0.0)
+        }
+
+        /// Sample pose channel `bone_index` at `time` into `out` (one BonePose).
+        pub fn sample_bone(&self, time: f32, bone_index: usize) -> Option<BonePose> {
+            if self.keyframes.is_empty() {
+                return None;
+            }
+            let duration = self.duration();
+            let t = if self.looping {
+                if duration > 0.0 { time % duration } else { 0.0 }
+            } else {
+                time.clamp(0.0, duration)
+            };
+
+            let idx = self.keyframes.partition_point(|kf| kf.time <= t);
+            let i1 = idx.saturating_sub(1);
+            let i2 = idx.min(self.keyframes.len() - 1).max(i1);
+            let k1 = &self.keyframes[i1];
+            let k2 = &self.keyframes[i2];
+            let p1 = *k1.poses.get(bone_index)?;
+            if i1 == i2 {
+                return Some(p1);
+            }
+            let p2 = *k2.poses.get(bone_index)?;
+            let alpha = if k2.time > k1.time {
+                (t - k1.time) / (k2.time - k1.time)
+            } else {
+                0.0
+            };
+            Some(BonePose::blend(p1, p2, alpha))
+        }
+    }
+
+    /// Weighted blend of up to 4 clip samples onto a skeleton's local bone transforms.
+    ///
+    /// `weights` are normalized if their sum > 0. Each entry is `(clip, time, weight)`.
+    pub fn blend_clips_onto_skeleton<const N: usize, const C: usize>(
+        skeleton: &mut Skeleton<N>,
+        layers: &[(&AnimClip<'_>, f32, f32)],
+    ) {
+        let mut accum: heapless::Vec<(BonePose, f32), 4> = heapless::Vec::new();
+        for bone_i in 0..skeleton.bones.len() {
+            accum.clear();
+            let mut wsum = 0.0f32;
+            for &(clip, time, w) in layers.iter().take(C.min(4)) {
+                if w <= 0.0 {
+                    continue;
+                }
+                if let Some(pose) = clip.sample_bone(time, bone_i) {
+                    let _ = accum.push((pose, w));
+                    wsum += w;
+                }
+            }
+            if accum.is_empty() || wsum <= 0.0 {
+                continue;
+            }
+            let mut blended = accum[0].0;
+            let mut acc_w = accum[0].1 / wsum;
+            for i in 1..accum.len() {
+                let w = accum[i].1 / wsum;
+                let t = w / (acc_w + w);
+                blended = BonePose::blend(blended, accum[i].0, t);
+                acc_w += w;
+            }
+            if let Some(bone) = skeleton.get_bone_mut(BoneId(bone_i)) {
+                bone.position = blended.position;
+                bone.rotation = blended.rotation;
+                bone.scale = blended.scale;
+                bone.update_local_transform();
+            }
+        }
+    }
+
+    /// Spherical linear interpolation for a bone rotation (always available; no `dsp` feature needed).
+    impl Bone {
+        pub fn slerp_rotation(&mut self, target: UnitQuaternion<f32>, t: f32) {
+            self.rotation = self.rotation.slerp(&target, t.clamp(0.0, 1.0));
+            self.update_local_transform();
+        }
+    }
+
+    /// Per-joint model-space AABB used to build skinned cull bounds.
+    #[derive(Debug, Clone, Copy)]
+    pub struct JointAabb {
+        pub center: Vector3<f32>,
+        pub half_extents: Vector3<f32>,
+    }
+
+    impl JointAabb {
+        pub fn from_aabb(aabb: crate::bounds::Aabb) -> Self {
+            Self {
+                center: aabb.center,
+                half_extents: aabb.half_extents,
+            }
+        }
+
+        pub fn to_aabb(self) -> crate::bounds::Aabb {
+            crate::bounds::Aabb {
+                center: self.center,
+                half_extents: self.half_extents,
+            }
+        }
+    }
+
+    /// Build per-joint AABBs from bind-pose vertices + skinning weights (model space).
+    ///
+    /// Each joint's AABB encloses vertices that have a non-zero weight on that joint.
+    pub fn compute_joint_aabbs<const N: usize>(
+        skeleton_bones: usize,
+        skinning: &SkinningData,
+        vertices: &[[f32; 3]],
+    ) -> heapless::Vec<Option<JointAabb>, N> {
+        let mut mins = [Vector3::new(f32::MAX, f32::MAX, f32::MAX); 64];
+        let mut maxs = [Vector3::new(f32::MIN, f32::MIN, f32::MIN); 64];
+        let mut used = [false; 64];
+        let n = skeleton_bones.min(64);
+
+        for (vi, skin) in skinning.vertex_skinning.iter().enumerate() {
+            if vi >= vertices.len() {
+                break;
+            }
+            let p = Vector3::new(vertices[vi][0], vertices[vi][1], vertices[vi][2]);
+            for j in 0..skin.num_influences {
+                if skin.bone_weights[j] <= 0.0 {
+                    continue;
+                }
+                let bi = skin.bone_indices[j];
+                if bi >= n {
+                    continue;
+                }
+                used[bi] = true;
+                mins[bi].x = mins[bi].x.min(p.x);
+                mins[bi].y = mins[bi].y.min(p.y);
+                mins[bi].z = mins[bi].z.min(p.z);
+                maxs[bi].x = maxs[bi].x.max(p.x);
+                maxs[bi].y = maxs[bi].y.max(p.y);
+                maxs[bi].z = maxs[bi].z.max(p.z);
+            }
+        }
+
+        let mut out: heapless::Vec<Option<JointAabb>, N> = heapless::Vec::new();
+        for i in 0..skeleton_bones.min(N) {
+            let entry = if i < 64 && used[i] {
+                Some(JointAabb::from_aabb(crate::bounds::Aabb::from_min_max(
+                    mins[i], maxs[i],
+                )))
+            } else {
+                None
+            };
+            let _ = out.push(entry);
+        }
+        out
+    }
+
+    /// Conservative model-space AABB of a skinned mesh under the current pose
+    /// (Arvo OBB transform of each joint AABB, then union).
+    pub fn skinned_model_aabb<const N: usize>(
+        skeleton: &Skeleton<N>,
+        joint_aabbs: &[Option<JointAabb>],
+    ) -> Option<crate::bounds::Aabb> {
+        let mut acc: Option<crate::bounds::Aabb> = None;
+        for (i, ja) in joint_aabbs.iter().enumerate() {
+            let Some(ja) = ja else { continue };
+            let Some(bone) = skeleton.get_bone(BoneId(i)) else {
+                continue;
+            };
+            let skin = bone.world_transform * bone.inverse_bind_pose;
+            let local = ja.to_aabb();
+            let world = local.transformed(&skin);
+            acc = Some(match acc {
+                Some(a) => a.merge(world),
+                None => world,
+            });
+        }
+        acc
+    }
+}
+
+#[cfg(feature = "anim-blend")]
+pub use anim_blend_api::*;
+
+#[cfg(all(feature = "dsp", feature = "anim-blend"))]
+impl Bone {
+    /// Perform spherical linear interpolation (SLERP) between two bone rotations using `embedded-dsp` quaternions.
+    pub fn interpolate_rotation_dsp(&mut self, target_rotation: UnitQuaternion<f32>, t: f32) {
+        self.slerp_rotation(target_rotation, t);
+    }
+}
+
+#[cfg(all(feature = "dsp", not(feature = "anim-blend")))]
 impl Bone {
     /// Perform spherical linear interpolation (SLERP) between two bone rotations using `embedded-dsp` quaternions.
     pub fn interpolate_rotation_dsp(&mut self, target_rotation: UnitQuaternion<f32>, t: f32) {

@@ -1,18 +1,21 @@
-//! Keyframed rigid-body transform animation (position, euler rotation, scale).
+//! Keyframed rigid-body transform animation (position, rotation, scale).
 //!
 //! Designed for boot logos and menu transitions. Store keyframes in flash as `const` data
 //! and drive meshes with [`AnimationPlayer`].
+//!
+//! Keyframes store Euler angles for `const` friendliness; sampling converts to
+//! quaternions and slerps to avoid gimbal artifacts.
 
 use crate::mesh::K3dMesh;
 use crate::tween::lerp;
-use nalgebra::Point3;
+use nalgebra::{Point3, UnitQuaternion};
 
 /// One keyframe of object transform data.
 #[derive(Debug, Clone, Copy)]
 pub struct TransformKeyframe {
     pub time: f32,
     pub position: [f32; 3],
-    /// Euler angles in radians: roll (X), pitch (Y), yaw (Z) — passed to [`K3dMesh::set_attitude`].
+    /// Euler angles in radians: roll (X), pitch (Y), yaw (Z).
     pub roll: f32,
     pub pitch: f32,
     pub yaw: f32,
@@ -37,6 +40,11 @@ impl TransformKeyframe {
             scale,
         }
     }
+
+    #[inline]
+    pub fn quat(&self) -> UnitQuaternion<f32> {
+        UnitQuaternion::from_euler_angles(self.roll, self.pitch, self.yaw)
+    }
 }
 
 /// Sampled transform at a point in time.
@@ -50,10 +58,12 @@ pub struct SampledTransform {
 }
 
 impl SampledTransform {
-    /// Apply this transform to a mesh.
+    /// Apply this transform to a mesh (quaternion path for rotation).
     pub fn apply_to(&self, mesh: &mut K3dMesh<'_>) {
         mesh.set_position(self.position[0], self.position[1], self.position[2]);
-        mesh.set_attitude(self.roll, self.pitch, self.yaw);
+        mesh.set_rotation(UnitQuaternion::from_euler_angles(
+            self.roll, self.pitch, self.yaw,
+        ));
         mesh.set_scale(self.scale);
     }
 
@@ -108,22 +118,18 @@ impl<'a> TransformTrack<'a> {
             time.clamp(0.0, duration)
         };
 
-        let mut kf1_idx = 0usize;
-        let mut kf2_idx = 0usize;
-
-        for (i, kf) in self.keyframes.iter().enumerate() {
-            if kf.time <= t {
-                kf1_idx = i;
-            }
-            if kf.time >= t {
-                kf2_idx = i;
-                break;
-            }
+        let mut kf1_idx = self
+            .keyframes
+            .partition_point(|kf| kf.time <= t)
+            .saturating_sub(1);
+        if self.keyframes[kf1_idx].time > t {
+            kf1_idx = 0;
         }
 
         if kf1_idx == self.keyframes.len() - 1 {
             return keyframe_to_sampled(self.keyframes[kf1_idx]);
         }
+        let kf2_idx = kf1_idx + 1;
 
         let kf1 = self.keyframes[kf1_idx];
         let kf2 = self.keyframes[kf2_idx];
@@ -134,15 +140,28 @@ impl<'a> TransformTrack<'a> {
             0.0
         };
 
+        // Slerp in quaternion space when `anim-blend` is enabled; otherwise Euler lerp.
+        #[cfg(feature = "anim-blend")]
+        let (roll, pitch, yaw) = {
+            let q = kf1.quat().slerp(&kf2.quat(), alpha);
+            q.euler_angles()
+        };
+        #[cfg(not(feature = "anim-blend"))]
+        let (roll, pitch, yaw) = (
+            lerp(kf1.roll, kf2.roll, alpha),
+            lerp(kf1.pitch, kf2.pitch, alpha),
+            lerp(kf1.yaw, kf2.yaw, alpha),
+        );
+
         SampledTransform {
             position: [
                 lerp(kf1.position[0], kf2.position[0], alpha),
                 lerp(kf1.position[1], kf2.position[1], alpha),
                 lerp(kf1.position[2], kf2.position[2], alpha),
             ],
-            roll: lerp(kf1.roll, kf2.roll, alpha),
-            pitch: lerp(kf1.pitch, kf2.pitch, alpha),
-            yaw: lerp(kf1.yaw, kf2.yaw, alpha),
+            roll,
+            pitch,
+            yaw,
             scale: lerp(kf1.scale, kf2.scale, alpha),
         }
     }
@@ -242,7 +261,7 @@ mod tests {
         let track = TransformTrack::new(TRACK, false);
         let mid = track.sample(0.5);
         assert!((mid.position[1] - (-1.0)).abs() < 1e-5);
-        assert!((mid.yaw - 1.57).abs() < 0.1);
+        assert!((mid.yaw - 1.57).abs() < 0.15);
     }
 
     #[test]

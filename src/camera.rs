@@ -1,5 +1,7 @@
 use core::f32::consts;
 
+#[cfg(feature = "render-layers")]
+use crate::render_layers::RenderLayers;
 use nalgebra::{Isometry3, Perspective3, Point3, Vector3};
 
 pub struct Camera {
@@ -12,6 +14,9 @@ pub struct Camera {
     pub vp_matrix: nalgebra::Matrix4<f32>,
     target: Point3<f32>,
     aspect_ratio: f32,
+    /// Visibility layers this camera sees. Default: layer 0.
+    #[cfg(feature = "render-layers")]
+    pub layers: RenderLayers,
 }
 
 impl Camera {
@@ -26,6 +31,8 @@ impl Camera {
             aspect_ratio,
             near: 0.4,
             far: 20.0,
+            #[cfg(feature = "render-layers")]
+            layers: RenderLayers::DEFAULT,
         };
 
         ret.update_projection();
@@ -43,6 +50,17 @@ impl Camera {
         self.fov = fovy;
 
         self.update_projection();
+    }
+
+    /// Vertical field of view in radians.
+    pub fn fovy(&self) -> f32 {
+        self.fov
+    }
+
+    /// Restrict which mesh layers this camera sees.
+    #[cfg(feature = "render-layers")]
+    pub fn set_layers(&mut self, layers: RenderLayers) {
+        self.layers = layers;
     }
 
     pub fn set_near(&mut self, near: f32) {

@@ -1,3 +1,9 @@
+#[cfg(feature = "aabb-cull")]
+use crate::bounds::Aabb;
+#[cfg(feature = "render-layers")]
+use crate::render_layers::RenderLayers;
+#[cfg(feature = "lod-crossfade")]
+use core::cell::Cell;
 use embedded_graphics_core::pixelcolor::{Rgb565, WebColors};
 use heapless::Vec;
 use heapless::index_set::FnvIndexSet;
@@ -129,12 +135,19 @@ impl Geometry<'_> {
 /// - 0 to high_distance: Use high detail geometry
 /// - high_distance to medium_distance: Use medium detail geometry
 /// - Beyond medium_distance: Use low detail geometry
+///
+/// When [`Self::fade_margin`] > 0, LODs crossfade over that distance band
+/// (distance-band margins) instead of switching abruptly.
 #[derive(Debug, Clone, Copy)]
 pub struct LODLevels {
     /// Distance threshold for high detail (0 to this distance)
     pub high_distance: f32,
     /// Distance threshold for medium detail (high_distance to this distance)
     pub medium_distance: f32,
+    /// Crossfade half-width in world units around each LOD boundary.
+    /// `0.0` (default) keeps abrupt switches. Requires `lod-crossfade`.
+    #[cfg(feature = "lod-crossfade")]
+    pub fade_margin: f32,
 }
 
 impl Default for LODLevels {
@@ -142,8 +155,24 @@ impl Default for LODLevels {
         Self {
             high_distance: 50.0,
             medium_distance: 100.0,
+            #[cfg(feature = "lod-crossfade")]
+            fade_margin: 0.0,
         }
     }
+}
+
+/// Result of LOD selection, including optional crossfade.
+#[cfg(feature = "lod-crossfade")]
+#[derive(Debug, Clone, Copy)]
+pub enum LodPick<'a> {
+    /// Single geometry, fully opaque.
+    Single(&'a Geometry<'a>),
+    /// Blend between two LOD levels. `t = 0` is fully `near`, `t = 1` is fully `far`.
+    Crossfade {
+        near: &'a Geometry<'a>,
+        far: &'a Geometry<'a>,
+        t: f32,
+    },
 }
 
 /// A mesh with optional Level of Detail (LOD) support
@@ -163,6 +192,20 @@ pub struct K3dMesh<'a> {
     pub priority: u8,
     pub outline_color: Option<Rgb565>,
     pub outline_width: f32,
+    /// Cached model-space AABB used for two-stage frustum culling / raycast.
+    /// Call [`Self::cache_aabb`] after geometry changes (or at load time).
+    #[cfg(feature = "aabb-cull")]
+    pub aabb: Option<Aabb>,
+    /// Visibility layers. Default: layer 0 (intersects the default camera).
+    #[cfg(feature = "render-layers")]
+    pub layers: RenderLayers,
+    /// Force a specific LOD level for the next render pass (`0` high, `1` medium, `2` low).
+    /// Used internally for crossfade; clear after use.
+    #[cfg(feature = "lod-crossfade")]
+    pub(crate) lod_force: Cell<Option<u8>>,
+    /// Optional per-primitive alpha override for the next render pass (crossfade).
+    #[cfg(feature = "lod-crossfade")]
+    pub(crate) draw_alpha: Cell<Option<u8>>,
 }
 
 impl<'a> K3dMesh<'a> {
@@ -181,6 +224,14 @@ impl<'a> K3dMesh<'a> {
             priority: 128,
             outline_color: None,
             outline_width: 0.0,
+            #[cfg(feature = "aabb-cull")]
+            aabb: Aabb::enclosing(geometry.vertices.iter()),
+            #[cfg(feature = "render-layers")]
+            layers: RenderLayers::DEFAULT,
+            #[cfg(feature = "lod-crossfade")]
+            lod_force: Cell::new(None),
+            #[cfg(feature = "lod-crossfade")]
+            draw_alpha: Cell::new(None),
         }
     }
 
@@ -210,21 +261,121 @@ impl<'a> K3dMesh<'a> {
     }
 
     /// Select the appropriate geometry based on distance from camera
-    ///
-    /// Returns a reference to the geometry that should be used for rendering
     #[inline]
     pub fn select_lod(&self, distance: f32) -> &Geometry<'_> {
-        if distance < self.lod_levels.high_distance {
-            // High detail
-            &self.geometry
-        } else if distance < self.lod_levels.medium_distance {
-            // Medium detail
-            self.lod_medium.as_ref().unwrap_or(&self.geometry)
-        } else {
-            // Low detail
-            self.lod_low
+        #[cfg(feature = "lod-crossfade")]
+        {
+            if let Some(level) = self.lod_force.get() {
+                return self.geometry_for_lod_level(level);
+            }
+            match self.select_lod_pick(distance) {
+                LodPick::Single(g) => g,
+                LodPick::Crossfade { near, far, t } => {
+                    if t < 0.5 {
+                        near
+                    } else {
+                        far
+                    }
+                }
+            }
+        }
+        #[cfg(not(feature = "lod-crossfade"))]
+        {
+            if distance < self.lod_levels.high_distance {
+                &self.geometry
+            } else if distance < self.lod_levels.medium_distance {
+                self.lod_medium.as_ref().unwrap_or(&self.geometry)
+            } else {
+                self.lod_low
+                    .as_ref()
+                    .unwrap_or(self.lod_medium.as_ref().unwrap_or(&self.geometry))
+            }
+        }
+    }
+
+    #[cfg(feature = "lod-crossfade")]
+    #[inline]
+    fn geometry_for_lod_level(&self, level: u8) -> &Geometry<'_> {
+        match level {
+            0 => &self.geometry,
+            1 => self.lod_medium.as_ref().unwrap_or(&self.geometry),
+            _ => self
+                .lod_low
                 .as_ref()
-                .unwrap_or(self.lod_medium.as_ref().unwrap_or(&self.geometry))
+                .unwrap_or(self.lod_medium.as_ref().unwrap_or(&self.geometry)),
+        }
+    }
+
+    /// Map a geometry pointer from [`Self::select_lod_pick`] back to a LOD level id.
+    #[cfg(feature = "lod-crossfade")]
+    #[inline]
+    pub(crate) fn lod_level_of(&self, geom: &Geometry<'_>) -> u8 {
+        if core::ptr::eq(geom as *const _, &self.geometry as *const _) {
+            0
+        } else if self
+            .lod_medium
+            .as_ref()
+            .is_some_and(|m| core::ptr::eq(geom as *const _, m as *const _))
+        {
+            1
+        } else {
+            2
+        }
+    }
+
+    /// LOD selection with optional crossfade when [`LODLevels::fade_margin`] > 0.
+    #[cfg(feature = "lod-crossfade")]
+    #[inline]
+    pub fn select_lod_pick(&self, distance: f32) -> LodPick<'_> {
+        let high = &self.geometry;
+        let medium = self.lod_medium.as_ref().unwrap_or(high);
+        let low = self
+            .lod_low
+            .as_ref()
+            .unwrap_or(self.lod_medium.as_ref().unwrap_or(high));
+
+        let margin = self.lod_levels.fade_margin;
+        if margin <= 0.0 {
+            return if distance < self.lod_levels.high_distance {
+                LodPick::Single(high)
+            } else if distance < self.lod_levels.medium_distance {
+                LodPick::Single(medium)
+            } else {
+                LodPick::Single(low)
+            };
+        }
+
+        let h = self.lod_levels.high_distance;
+        let m = self.lod_levels.medium_distance;
+
+        if distance < h - margin {
+            LodPick::Single(high)
+        } else if distance < h + margin {
+            let t = ((distance - (h - margin)) / (2.0 * margin)).clamp(0.0, 1.0);
+            if core::ptr::eq(high as *const _, medium as *const _) {
+                LodPick::Single(high)
+            } else {
+                LodPick::Crossfade {
+                    near: high,
+                    far: medium,
+                    t,
+                }
+            }
+        } else if distance < m - margin {
+            LodPick::Single(medium)
+        } else if distance < m + margin {
+            let t = ((distance - (m - margin)) / (2.0 * margin)).clamp(0.0, 1.0);
+            if core::ptr::eq(medium as *const _, low as *const _) {
+                LodPick::Single(medium)
+            } else {
+                LodPick::Crossfade {
+                    near: medium,
+                    far: low,
+                    t,
+                }
+            }
+        } else {
+            LodPick::Single(low)
         }
     }
 
@@ -238,6 +389,31 @@ impl<'a> K3dMesh<'a> {
 
     pub fn set_priority(&mut self, priority: u8) {
         self.priority = priority;
+    }
+
+    #[cfg(feature = "render-layers")]
+    pub fn set_layers(&mut self, layers: RenderLayers) {
+        self.layers = layers;
+    }
+
+    /// Recompute and cache the model-space AABB from the primary geometry.
+    #[cfg(feature = "aabb-cull")]
+    pub fn cache_aabb(&mut self) {
+        self.aabb = Aabb::enclosing(self.geometry.vertices.iter());
+    }
+
+    /// Override the cached AABB (e.g. skinned bounds in model space).
+    #[cfg(feature = "aabb-cull")]
+    pub fn set_aabb(&mut self, aabb: Aabb) {
+        self.aabb = Some(aabb);
+    }
+
+    /// Model-space AABB, computing on demand if not cached.
+    #[cfg(feature = "aabb-cull")]
+    #[inline]
+    pub fn model_aabb(&self) -> Aabb {
+        self.aabb
+            .unwrap_or_else(|| Aabb::enclosing(self.geometry.vertices.iter()).unwrap_or(Aabb::ZERO))
     }
 
     pub fn set_position(&mut self, x: f32, y: f32, z: f32) {
@@ -286,11 +462,22 @@ impl<'a> K3dMesh<'a> {
         self.model_matrix = self.similarity.to_homogeneous();
     }
 
-    /// Compute the squared bounding sphere radius of the mesh in model space.
-    /// Returns squared radius to avoid expensive sqrt operation.
-    /// This is used for frustum culling.
+    /// Compute the squared bounding sphere radius of the mesh in world-ish
+    /// scale (model-space radius × uniform scale²).
+    ///
+    /// With `aabb-cull`, uses the cached AABB when present (tighter than
+    /// origin-centered verts).
     #[inline]
     pub fn compute_bounding_radius_sq(&self) -> f32 {
+        let scale = self.similarity.scaling();
+        let scale_sq = scale * scale;
+        #[cfg(feature = "aabb-cull")]
+        if let Some(aabb) = self.aabb {
+            let center_sq = aabb.center.norm_squared();
+            let r = aabb.radius();
+            let rad = r + center_sq.sqrt();
+            return rad * rad * scale_sq;
+        }
         let mut max_dist_sq = 0.0f32;
         for vertex in self.geometry.vertices {
             let dist_sq = vertex[0] * vertex[0] + vertex[1] * vertex[1] + vertex[2] * vertex[2];
@@ -298,8 +485,7 @@ impl<'a> K3dMesh<'a> {
                 max_dist_sq = dist_sq;
             }
         }
-        let scale = self.similarity.scaling();
-        max_dist_sq * scale * scale
+        max_dist_sq * scale_sq
     }
 }
 
@@ -696,5 +882,65 @@ mod tests {
         };
 
         assert!(!geometry.check_validity());
+    }
+
+    #[cfg(feature = "lod-crossfade")]
+    #[test]
+    fn test_lod_crossfade_pick() {
+        let high = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
+        let med = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
+        let faces = [[0usize, 1, 2]];
+        let mut mesh = K3dMesh::new(Geometry {
+            vertices: &high,
+            faces: &faces,
+            colors: &[],
+            lines: &[],
+            normals: &[],
+            vertex_normals: &[],
+            uvs: &[],
+            texture_id: None,
+        });
+        mesh.set_lod(
+            Some(Geometry {
+                vertices: &med,
+                faces: &faces,
+                colors: &[],
+                lines: &[],
+                normals: &[],
+                vertex_normals: &[],
+                uvs: &[],
+                texture_id: None,
+            }),
+            None,
+            LODLevels {
+                high_distance: 10.0,
+                medium_distance: 20.0,
+                fade_margin: 2.0,
+            },
+        );
+        assert!(matches!(mesh.select_lod_pick(5.0), LodPick::Single(_)));
+        assert!(matches!(
+            mesh.select_lod_pick(10.0),
+            LodPick::Crossfade { .. }
+        ));
+    }
+
+    #[cfg(feature = "aabb-cull")]
+    #[test]
+    fn test_mesh_aabb_cached_on_new() {
+        let vertices = [[-2.0, -1.0, 0.0], [2.0, 1.0, 0.0]];
+        let mesh = K3dMesh::new(Geometry {
+            vertices: &vertices,
+            faces: &[],
+            colors: &[],
+            lines: &[],
+            normals: &[],
+            vertex_normals: &[],
+            uvs: &[],
+            texture_id: None,
+        });
+        let aabb = mesh.aabb.expect("cached");
+        assert!((aabb.half_extents.x - 2.0).abs() < 1e-5);
+        assert!((aabb.half_extents.y - 1.0).abs() < 1e-5);
     }
 }

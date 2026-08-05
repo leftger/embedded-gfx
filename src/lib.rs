@@ -73,6 +73,8 @@ use nalgebra::ComplexField;
 
 pub mod animation;
 pub mod billboard;
+#[cfg(feature = "aabb-cull")]
+pub mod bounds;
 pub mod bridge;
 pub mod bsp;
 pub mod camera;
@@ -85,6 +87,8 @@ pub mod draw;
 #[cfg(feature = "embassy")]
 pub mod embassy;
 pub mod error;
+#[cfg(feature = "gizmos")]
+pub mod gizmos;
 pub mod hardware_profile;
 pub mod hud;
 pub mod input;
@@ -97,6 +101,8 @@ pub mod perfcounter;
 #[cfg(feature = "physics")]
 pub mod physics;
 pub mod raycast;
+#[cfg(feature = "render-layers")]
+pub mod render_layers;
 pub mod renderer;
 pub mod retro;
 pub mod scene_format;
@@ -121,6 +127,8 @@ pub use embedded_graphics_framebuf::{
 #[cfg(feature = "aa")]
 pub use draw::ReadPixel;
 
+#[cfg(feature = "aabb-cull")]
+pub use bounds::Aabb;
 pub use bridge::{
     AsEgPoint, AsNalgebraPoint, draw_to, eg_to_nalgebra, nalgebra_to_eg, render_drawable_to_buffer,
 };
@@ -153,6 +161,8 @@ pub use embedded_dsp::fixed_point::{
 pub use input::InputState;
 pub use lights::{PointLight, PointLightSet};
 pub use particles::{ParticleSpawn, ParticleSystem};
+#[cfg(feature = "render-layers")]
+pub use render_layers::RenderLayers;
 pub use renderer::{DirtyRegion, FrameCtx};
 pub use retro::{
     LightLevels, PaletteMode, RetroStyle, ScreenTint, SkyConfig, StippleMode, TextureMapping,
@@ -515,80 +525,109 @@ impl K3dengine {
         }
     }
 
-    /// Fast frustum culling check using bounding sphere.
-    /// Returns true if the mesh should be culled (not rendered).
+    /// Frustum culling. Returns true if the mesh should be culled.
     #[inline]
     fn should_cull_mesh(&self, mesh: &K3dMesh) -> bool {
-        // Get mesh position in world space
-        let mesh_pos = mesh.get_position();
+        #[cfg(feature = "render-layers")]
+        if !self.camera.layers.intersects(mesh.layers) {
+            return true;
+        }
 
-        // Get squared bounding radius and compute radius
-        let radius_sq = mesh.compute_bounding_radius_sq();
-        let radius = radius_sq.sqrt();
+        #[cfg(feature = "aabb-cull")]
+        {
+            let aabb = mesh.model_aabb();
+            let world_center = mesh
+                .model_matrix
+                .transform_point(&nalgebra::Point3::from(aabb.center));
+            let scale = mesh.similarity.scaling();
+            let radius = aabb.radius() * scale;
+            let m = self.camera.vp_matrix;
+            let planes = Self::frustum_planes_from_vp(&m);
 
-        // Extract frustum planes from view-projection matrix (Gribb-Hartmann method)
-        let m = self.camera.vp_matrix;
+            for plane in &planes {
+                let (a, b, c, d) = (plane[0], plane[1], plane[2], plane[3]);
+                let len = (a * a + b * b + c * c).sqrt();
+                if len <= 0.0 {
+                    continue;
+                }
+                let dist = (a * world_center.x + b * world_center.y + c * world_center.z + d) / len;
+                if dist < -radius {
+                    return true;
+                }
+            }
+            for plane in &planes {
+                let (a, b, c, d) = (plane[0], plane[1], plane[2], plane[3]);
+                let len = (a * a + b * b + c * c).sqrt();
+                if len <= 0.0 {
+                    continue;
+                }
+                if aabb.plane_signed_overshoot(a, b, c, d, len, &mesh.model_matrix) < 0.0 {
+                    return true;
+                }
+            }
+            return false;
+        }
 
-        let planes = [
-            // Left: row3 + row0
+        #[cfg(not(feature = "aabb-cull"))]
+        {
+            let mesh_pos = mesh.get_position();
+            let radius_sq = mesh.compute_bounding_radius_sq();
+            let radius = radius_sq.sqrt();
+            let planes = Self::frustum_planes_from_vp(&self.camera.vp_matrix);
+            for plane in &planes {
+                let (a, b, c, d) = (plane[0], plane[1], plane[2], plane[3]);
+                let len = (a * a + b * b + c * c).sqrt();
+                if len > 0.0 {
+                    let dist = (a * mesh_pos.x + b * mesh_pos.y + c * mesh_pos.z + d) / len;
+                    if dist < -radius {
+                        return true;
+                    }
+                }
+            }
+            false
+        }
+    }
+
+    #[inline]
+    fn frustum_planes_from_vp(m: &Matrix4<f32>) -> [[f32; 4]; 6] {
+        [
             [
                 m[(3, 0)] + m[(0, 0)],
                 m[(3, 1)] + m[(0, 1)],
                 m[(3, 2)] + m[(0, 2)],
                 m[(3, 3)] + m[(0, 3)],
             ],
-            // Right: row3 - row0
             [
                 m[(3, 0)] - m[(0, 0)],
                 m[(3, 1)] - m[(0, 1)],
                 m[(3, 2)] - m[(0, 2)],
                 m[(3, 3)] - m[(0, 3)],
             ],
-            // Bottom: row3 + row1
             [
                 m[(3, 0)] + m[(1, 0)],
                 m[(3, 1)] + m[(1, 1)],
                 m[(3, 2)] + m[(1, 2)],
                 m[(3, 3)] + m[(1, 3)],
             ],
-            // Top: row3 - row1
             [
                 m[(3, 0)] - m[(1, 0)],
                 m[(3, 1)] - m[(1, 1)],
                 m[(3, 2)] - m[(1, 2)],
                 m[(3, 3)] - m[(1, 3)],
             ],
-            // Near: row3 + row2
             [
                 m[(3, 0)] + m[(2, 0)],
                 m[(3, 1)] + m[(2, 1)],
                 m[(3, 2)] + m[(2, 2)],
                 m[(3, 3)] + m[(2, 3)],
             ],
-            // Far: row3 - row2
             [
                 m[(3, 0)] - m[(2, 0)],
                 m[(3, 1)] - m[(2, 1)],
                 m[(3, 2)] - m[(2, 2)],
                 m[(3, 3)] - m[(2, 3)],
             ],
-        ];
-
-        for plane in &planes {
-            let a = plane[0];
-            let b = plane[1];
-            let c = plane[2];
-            let d = plane[3];
-            let len = (a * a + b * b + c * c).sqrt();
-            if len > 0.0 {
-                let dist = (a * mesh_pos.x + b * mesh_pos.y + c * mesh_pos.z + d) / len;
-                if dist < -radius {
-                    return true; // Completely outside this plane
-                }
-            }
-        }
-
-        false
+        ]
     }
 
     #[inline(always)]
@@ -952,6 +991,20 @@ impl K3dengine {
             let mesh_pos = mesh.get_position();
             let distance = (mesh_pos - self.camera.position).norm();
             let geometry = mesh.select_lod(distance);
+            #[cfg(feature = "lod-crossfade")]
+            let alpha_override = mesh.draw_alpha.get();
+            #[cfg(feature = "lod-crossfade")]
+            let mut emit = |prim: DrawPrimitive| {
+                let prim = match alpha_override {
+                    Some(a) => apply_draw_alpha(prim, a),
+                    None => prim,
+                };
+                callback(prim);
+            };
+            #[cfg(not(feature = "lod-crossfade"))]
+            let mut emit = |prim: DrawPrimitive| {
+                callback(prim);
+            };
 
             let transform_matrix = self.camera.vp_matrix * mesh.model_matrix;
 
@@ -1072,7 +1125,7 @@ impl K3dengine {
                         }
 
                         if valid {
-                            callback(DrawPrimitive::ColoredTriangleWithDepth {
+                            emit(DrawPrimitive::ColoredTriangleWithDepth {
                                 points: [pts[0].xy(), pts[1].xy(), pts[2].xy()],
                                 depths: [pts[0].z as f32, pts[1].z as f32, pts[2].z as f32],
                                 color: out_color,
@@ -1089,11 +1142,11 @@ impl K3dengine {
 
                     if geometry.colors.len() == geometry.vertices.len() {
                         for (point, color) in screen_space_points.zip(geometry.colors) {
-                            callback(DrawPrimitive::ColoredPoint(point.xy(), *color));
+                            emit(DrawPrimitive::ColoredPoint(point.xy(), *color));
                         }
                     } else {
                         for point in screen_space_points {
-                            callback(DrawPrimitive::ColoredPoint(point.xy(), mesh.color));
+                            emit(DrawPrimitive::ColoredPoint(point.xy(), mesh.color));
                         }
                     }
                 }
@@ -1101,7 +1154,7 @@ impl K3dengine {
                 RenderMode::Lines if !geometry.lines.is_empty() => {
                     for line in geometry.lines {
                         if let (Some(p1), Some(p2)) = (get_pt(line[0]), get_pt(line[1])) {
-                            callback(DrawPrimitive::Line([p1.xy(), p2.xy()], mesh.color));
+                            emit(DrawPrimitive::Line([p1.xy(), p2.xy()], mesh.color));
                         }
                     }
                 }
@@ -1109,9 +1162,9 @@ impl K3dengine {
                 RenderMode::Lines if !geometry.faces.is_empty() => {
                     for face in geometry.faces {
                         if let Some([p1, p2, p3]) = tf_face(face) {
-                            callback(DrawPrimitive::Line([p1.xy(), p2.xy()], mesh.color));
-                            callback(DrawPrimitive::Line([p2.xy(), p3.xy()], mesh.color));
-                            callback(DrawPrimitive::Line([p3.xy(), p1.xy()], mesh.color));
+                            emit(DrawPrimitive::Line([p1.xy(), p2.xy()], mesh.color));
+                            emit(DrawPrimitive::Line([p2.xy(), p3.xy()], mesh.color));
+                            emit(DrawPrimitive::Line([p3.xy(), p1.xy()], mesh.color));
                         }
                     }
                 }
@@ -1160,7 +1213,7 @@ impl K3dengine {
                                 );
                                 color = Self::add_tint(color, self.light_tint_at(wc));
                             }
-                            callback(DrawPrimitive::ColoredTriangleWithDepth {
+                            emit(DrawPrimitive::ColoredTriangleWithDepth {
                                 points: [p1.xy(), p2.xy(), p3.xy()],
                                 depths: [p1.z as f32, p2.z as f32, p3.z as f32],
                                 color,
@@ -1218,7 +1271,7 @@ impl K3dengine {
                                 vc
                             });
 
-                            callback(DrawPrimitive::GouraudTriangleWithDepth {
+                            emit(DrawPrimitive::GouraudTriangleWithDepth {
                                 points: [p1.xy(), p2.xy(), p3.xy()],
                                 depths: [p1.z as f32, p2.z as f32, p3.z as f32],
                                 colors: vertex_colors,
@@ -1273,7 +1326,7 @@ impl K3dengine {
                                 );
                                 color = Self::add_tint(color, self.light_tint_at(wc));
                             }
-                            callback(DrawPrimitive::ColoredTriangleWithDepth {
+                            emit(DrawPrimitive::ColoredTriangleWithDepth {
                                 points: [p1.xy(), p2.xy(), p3.xy()],
                                 depths: [p1.z as f32, p2.z as f32, p3.z as f32],
                                 color,
@@ -1367,7 +1420,7 @@ impl K3dengine {
                                 color =
                                     Self::add_tint(color, self.light_tint_at(face_center_world));
                             }
-                            callback(DrawPrimitive::ColoredTriangleWithDepth {
+                            emit(DrawPrimitive::ColoredTriangleWithDepth {
                                 points: [p1.xy(), p2.xy(), p3.xy()],
                                 depths: [p1.z as f32, p2.z as f32, p3.z as f32],
                                 color,
@@ -1568,7 +1621,7 @@ impl K3dengine {
                     if geometry.normals.is_empty() {
                         for face in geometry.faces.iter() {
                             if let Some((points, ws)) = tf_face_w(face) {
-                                callback(DrawPrimitive::TexturedTriangleWithDepth {
+                                emit(DrawPrimitive::TexturedTriangleWithDepth {
                                     points: [points[0].xy(), points[1].xy(), points[2].xy()],
                                     depths: [
                                         points[0].z as f32,
@@ -1598,7 +1651,7 @@ impl K3dengine {
                                 continue;
                             }
                             if let Some((points, ws)) = tf_face_w(face) {
-                                callback(DrawPrimitive::TexturedTriangleWithDepth {
+                                emit(DrawPrimitive::TexturedTriangleWithDepth {
                                     points: [points[0].xy(), points[1].xy(), points[2].xy()],
                                     depths: [
                                         points[0].z as f32,
@@ -1636,7 +1689,7 @@ impl K3dengine {
                         for face in geometry.faces.iter() {
                             if let Some((points, ws)) = tf_face_w(face) {
                                 let vertex_colors = [mesh.color, mesh.color, mesh.color];
-                                callback(DrawPrimitive::TexturedGouraudTriangleWithDepth {
+                                emit(DrawPrimitive::TexturedGouraudTriangleWithDepth {
                                     points: [points[0].xy(), points[1].xy(), points[2].xy()],
                                     depths: [
                                         points[0].z as f32,
@@ -1698,7 +1751,7 @@ impl K3dengine {
                                     vc
                                 });
 
-                                callback(DrawPrimitive::TexturedGouraudTriangleWithDepth {
+                                emit(DrawPrimitive::TexturedGouraudTriangleWithDepth {
                                     points: [points[0].xy(), points[1].xy(), points[2].xy()],
                                     depths: [
                                         points[0].z as f32,
@@ -1795,7 +1848,7 @@ impl K3dengine {
                                 uvs[i] = [u, v];
                             }
 
-                            callback(DrawPrimitive::TexturedTriangleWithDepth {
+                            emit(DrawPrimitive::TexturedTriangleWithDepth {
                                 points: [points[0].xy(), points[1].xy(), points[2].xy()],
                                 depths: [
                                     points[0].z as f32,
@@ -1892,7 +1945,6 @@ impl K3dengine {
         MS: IntoIterator<Item = &'a K3dMesh<'a>>,
     {
         use crate::command_buffer::RenderCommand;
-        use crate::error::{BudgetKind, RenderError};
 
         commands.clear();
         commands.push(RenderCommand::ClearDepth(crate::Z_MAX_VALUE))?;
@@ -1905,70 +1957,61 @@ impl K3dengine {
         let mut used_texture_ids: heapless::Vec<u32, 64> = heapless::Vec::new();
         let mut meshes_total = 0usize;
 
-        for mesh in meshes {
-            meshes_total += 1;
-            if mesh.geometry.vertices.is_empty() {
-                continue;
-            }
-            if self.should_cull_mesh(mesh) {
-                continue;
-            }
-
-            let distance = (mesh.get_position() - self.camera.position).norm();
-            let geometry = mesh.select_lod(distance);
-
-            if let Some(caps) = self.caps {
-                visible_meshes += 1;
-                if visible_meshes > caps.max_meshes_per_frame {
-                    return Err(RenderError::OutOfBudget(BudgetKind::MeshesPerFrame {
-                        attempted: visible_meshes,
-                        max: caps.max_meshes_per_frame,
-                    }));
+        #[cfg(feature = "record-sort")]
+        {
+            let mut sorted: heapless::Vec<(u8, i32, &K3dMesh<'a>), 256> = heapless::Vec::new();
+            for mesh in meshes {
+                meshes_total += 1;
+                if mesh.geometry.vertices.is_empty() {
+                    continue;
                 }
-
-                if geometry.vertices.len() > caps.max_vertices_per_mesh {
-                    return Err(RenderError::OutOfBudget(BudgetKind::VerticesPerMesh {
-                        attempted: geometry.vertices.len(),
-                        max: caps.max_vertices_per_mesh,
-                    }));
+                if self.should_cull_mesh(mesh) {
+                    continue;
                 }
-
-                if geometry.faces.len() > caps.max_triangles_per_mesh {
-                    return Err(RenderError::OutOfBudget(BudgetKind::TrianglesPerMesh {
-                        attempted: geometry.faces.len(),
-                        max: caps.max_triangles_per_mesh,
-                    }));
-                }
-
-                if let Some(texture_id) = geometry.texture_id
-                    && !used_texture_ids.contains(&texture_id)
-                {
-                    let attempted = used_texture_ids.len() + 1;
-                    if attempted > caps.max_textures {
-                        return Err(RenderError::OutOfBudget(BudgetKind::Textures {
-                            attempted,
-                            max: caps.max_textures,
-                        }));
-                    }
-
-                    if used_texture_ids.push(texture_id).is_err() {
-                        return Err(RenderError::OutOfBudget(BudgetKind::Textures {
-                            attempted,
-                            max: caps.max_textures,
-                        }));
-                    }
+                let distance = (mesh.get_position() - self.camera.position).norm();
+                let dist_key = (distance * 1000.0) as i32;
+                if sorted.push((mesh.priority, dist_key, mesh)).is_err() {
+                    break;
                 }
             }
+            sorted.sort_unstable_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
 
-            self.render(core::iter::once(mesh), |primitive| {
-                if first_error.is_none()
-                    && let Err(e) = commands.push(RenderCommand::Draw(primitive))
-                {
-                    first_error = Some(e);
+            for &(_, _, mesh) in sorted.iter() {
+                Self::record_one_mesh(
+                    self,
+                    mesh,
+                    commands,
+                    &mut first_error,
+                    &mut visible_meshes,
+                    &mut used_texture_ids,
+                )?;
+                if let Some(err) = first_error.take() {
+                    return Err(err);
                 }
-            });
-            if let Some(err) = first_error {
-                return Err(err);
+            }
+        }
+
+        #[cfg(not(feature = "record-sort"))]
+        {
+            for mesh in meshes {
+                meshes_total += 1;
+                if mesh.geometry.vertices.is_empty() {
+                    continue;
+                }
+                if self.should_cull_mesh(mesh) {
+                    continue;
+                }
+                Self::record_one_mesh(
+                    self,
+                    mesh,
+                    commands,
+                    &mut first_error,
+                    &mut visible_meshes,
+                    &mut used_texture_ids,
+                )?;
+                if let Some(err) = first_error.take() {
+                    return Err(err);
+                }
             }
         }
 
@@ -1985,6 +2028,129 @@ impl K3dengine {
             t.dropped_meshes = 0;
         }
 
+        Ok(())
+    }
+
+    fn record_one_mesh<'a, const MAX: usize>(
+        &self,
+        mesh: &'a K3dMesh<'a>,
+        commands: &mut crate::command_buffer::CommandBuffer<MAX>,
+        first_error: &mut Option<crate::error::RenderError>,
+        visible_meshes: &mut usize,
+        used_texture_ids: &mut heapless::Vec<u32, 64>,
+    ) -> Result<(), crate::error::RenderError> {
+        use crate::command_buffer::RenderCommand;
+        use crate::error::{BudgetKind, RenderError};
+
+        let distance = (mesh.get_position() - self.camera.position).norm();
+        let geometry = mesh.select_lod(distance);
+
+        if let Some(caps) = self.caps {
+            *visible_meshes += 1;
+            if *visible_meshes > caps.max_meshes_per_frame {
+                return Err(RenderError::OutOfBudget(BudgetKind::MeshesPerFrame {
+                    attempted: *visible_meshes,
+                    max: caps.max_meshes_per_frame,
+                }));
+            }
+
+            if geometry.vertices.len() > caps.max_vertices_per_mesh {
+                return Err(RenderError::OutOfBudget(BudgetKind::VerticesPerMesh {
+                    attempted: geometry.vertices.len(),
+                    max: caps.max_vertices_per_mesh,
+                }));
+            }
+
+            if geometry.faces.len() > caps.max_triangles_per_mesh {
+                return Err(RenderError::OutOfBudget(BudgetKind::TrianglesPerMesh {
+                    attempted: geometry.faces.len(),
+                    max: caps.max_triangles_per_mesh,
+                }));
+            }
+
+            if let Some(texture_id) = geometry.texture_id
+                && !used_texture_ids.contains(&texture_id)
+            {
+                let attempted = used_texture_ids.len() + 1;
+                if attempted > caps.max_textures {
+                    return Err(RenderError::OutOfBudget(BudgetKind::Textures {
+                        attempted,
+                        max: caps.max_textures,
+                    }));
+                }
+
+                if used_texture_ids.push(texture_id).is_err() {
+                    return Err(RenderError::OutOfBudget(BudgetKind::Textures {
+                        attempted,
+                        max: caps.max_textures,
+                    }));
+                }
+            }
+        } else {
+            *visible_meshes += 1;
+        }
+
+        let mut push_draw = |primitive: DrawPrimitive, first_error: &mut Option<RenderError>| {
+            if first_error.is_none()
+                && let Err(e) = commands.push(RenderCommand::Draw(primitive))
+            {
+                *first_error = Some(e);
+            }
+        };
+
+        #[cfg(feature = "lod-crossfade")]
+        {
+            match mesh.select_lod_pick(distance) {
+                mesh::LodPick::Single(_) => {
+                    mesh.lod_force.set(None);
+                    mesh.draw_alpha.set(None);
+                    self.render(core::iter::once(mesh), |primitive| {
+                        push_draw(primitive, first_error);
+                    });
+                }
+                mesh::LodPick::Crossfade { near, far, t } => {
+                    let near_lvl = mesh.lod_level_of(near);
+                    let far_lvl = mesh.lod_level_of(far);
+                    if t < 0.5 {
+                        mesh.lod_force.set(Some(near_lvl));
+                        mesh.draw_alpha.set(None);
+                        self.render(core::iter::once(mesh), |primitive| {
+                            push_draw(primitive, first_error);
+                        });
+                        let a = (t * 255.0) as u8;
+                        if a > 16 {
+                            mesh.lod_force.set(Some(far_lvl));
+                            mesh.draw_alpha.set(Some(a));
+                            self.render(core::iter::once(mesh), |primitive| {
+                                push_draw(primitive, first_error);
+                            });
+                        }
+                    } else {
+                        mesh.lod_force.set(Some(far_lvl));
+                        mesh.draw_alpha.set(None);
+                        self.render(core::iter::once(mesh), |primitive| {
+                            push_draw(primitive, first_error);
+                        });
+                        let a = ((1.0 - t) * 255.0) as u8;
+                        if a > 16 {
+                            mesh.lod_force.set(Some(near_lvl));
+                            mesh.draw_alpha.set(Some(a));
+                            self.render(core::iter::once(mesh), |primitive| {
+                                push_draw(primitive, first_error);
+                            });
+                        }
+                    }
+                    mesh.lod_force.set(None);
+                    mesh.draw_alpha.set(None);
+                }
+            }
+        }
+        #[cfg(not(feature = "lod-crossfade"))]
+        {
+            self.render(core::iter::once(mesh), |primitive| {
+                push_draw(primitive, first_error);
+            });
+        }
         Ok(())
     }
 
@@ -2271,6 +2437,61 @@ impl K3dengine {
             [camera_dir.x, camera_dir.y, camera_dir.z],
         )
     }
+
+    /// Emit a model-space AABB wireframe into a command buffer (debug).
+    #[cfg(feature = "gizmos")]
+    pub fn record_aabb_gizmo<const MAX: usize>(
+        &self,
+        aabb: &crate::bounds::Aabb,
+        model_matrix: &Matrix4<f32>,
+        color: Rgb565,
+        commands: &mut crate::command_buffer::CommandBuffer<MAX>,
+    ) -> Result<(), crate::error::RenderError> {
+        let mut err = None;
+        crate::gizmos::emit_aabb_wireframe_projected(
+            aabb,
+            model_matrix,
+            |p| self.transform_point(&p, self.camera.vp_matrix),
+            color,
+            |prim| {
+                if err.is_none()
+                    && let Err(e) = commands.push(crate::command_buffer::RenderCommand::Draw(prim))
+                {
+                    err = Some(e);
+                }
+            },
+        );
+        match err {
+            Some(e) => Err(e),
+            None => Ok(()),
+        }
+    }
+
+    /// Emit the camera frustum wireframe into a command buffer (debug).
+    #[cfg(feature = "gizmos")]
+    pub fn record_frustum_gizmo<const MAX: usize>(
+        &self,
+        color: Rgb565,
+        commands: &mut crate::command_buffer::CommandBuffer<MAX>,
+    ) -> Result<(), crate::error::RenderError> {
+        let mut err = None;
+        crate::gizmos::emit_frustum_wireframe(
+            &self.camera,
+            |p| self.transform_point(&p, self.camera.vp_matrix),
+            color,
+            |prim| {
+                if err.is_none()
+                    && let Err(e) = commands.push(crate::command_buffer::RenderCommand::Draw(prim))
+                {
+                    err = Some(e);
+                }
+            },
+        );
+        match err {
+            Some(e) => Err(e),
+            None => Ok(()),
+        }
+    }
 }
 
 /// Result of a ray cast against triangle geometry.
@@ -2288,11 +2509,65 @@ pub struct MeshRayCastHit {
     pub uv: [f32; 2],
 }
 
+/// Convert opaque depth triangles to translucent for LOD crossfade.
+#[cfg(feature = "lod-crossfade")]
+fn apply_draw_alpha(prim: DrawPrimitive, alpha: u8) -> DrawPrimitive {
+    match prim {
+        DrawPrimitive::ColoredTriangleWithDepth {
+            points,
+            depths,
+            color,
+        } => DrawPrimitive::TranslucentTriangleWithDepth {
+            points,
+            depths,
+            color,
+            alpha,
+        },
+        DrawPrimitive::TranslucentTriangleWithDepth {
+            points,
+            depths,
+            color,
+            alpha: prev,
+        } => DrawPrimitive::TranslucentTriangleWithDepth {
+            points,
+            depths,
+            color,
+            alpha: ((prev as u16 * alpha as u16) / 255) as u8,
+        },
+        other => other,
+    }
+}
+
 /// Ray-cast against triangle geometry using Möller–Trumbore intersection.
 ///
 /// `ray_origin` and `ray_dir` are in world space. `model_matrix` transforms mesh
 /// vertices to world space. Returns the closest hit within `max_distance`, or `None`.
 pub fn mesh_ray_cast(
+    ray_origin: Vector3<f32>,
+    ray_dir: Vector3<f32>,
+    geometry: &mesh::Geometry<'_>,
+    model_matrix: &Matrix4<f32>,
+    max_distance: f32,
+) -> Option<MeshRayCastHit> {
+    #[cfg(feature = "aabb-cull")]
+    {
+        return mesh_ray_cast_bounded(
+            ray_origin,
+            ray_dir,
+            geometry,
+            model_matrix,
+            max_distance,
+            None,
+        );
+    }
+    #[cfg(not(feature = "aabb-cull"))]
+    {
+        mesh_ray_cast_world(ray_origin, ray_dir, geometry, model_matrix, max_distance)
+    }
+}
+
+#[cfg(not(feature = "aabb-cull"))]
+fn mesh_ray_cast_world(
     ray_origin: Vector3<f32>,
     ray_dir: Vector3<f32>,
     geometry: &mesh::Geometry<'_>,
@@ -2307,7 +2582,6 @@ pub fn mesh_ray_cast(
         let raw_v1 = geometry.vertices[face[1]];
         let raw_v2 = geometry.vertices[face[2]];
 
-        // Transform vertices to world space
         let v0 = model_matrix
             .transform_point(&Point3::new(raw_v0[0], raw_v0[1], raw_v0[2]))
             .coords;
@@ -2318,42 +2592,139 @@ pub fn mesh_ray_cast(
             .transform_point(&Point3::new(raw_v2[0], raw_v2[1], raw_v2[2]))
             .coords;
 
-        // Möller–Trumbore
         let edge1 = v1 - v0;
         let edge2 = v2 - v0;
         let h = ray_dir.cross(&edge2);
         let det = edge1.dot(&h);
-
-        // Parallel ray: skip
         if det.abs() < 1e-6 {
             continue;
         }
-
         let inv_det = 1.0 / det;
         let s = ray_origin - v0;
         let bary_u = inv_det * s.dot(&h);
         if !(0.0..=1.0).contains(&bary_u) {
             continue;
         }
-
         let q = s.cross(&edge1);
         let bary_v = inv_det * ray_dir.dot(&q);
         if bary_v < 0.0 || bary_u + bary_v > 1.0 {
             continue;
         }
-
         let t = inv_det * edge2.dot(&q);
         if t <= 0.0 || t >= min_dist {
             continue;
         }
-
-        // Face normal from edge cross product
         let normal = edge1.cross(&edge2).normalize();
-
-        // Barycentric weights: w0 = 1 - u - v, w1 = u, w2 = v
         let bary_w = 1.0 - bary_u - bary_v;
+        let uv = if geometry.uvs.len() > face[0]
+            && geometry.uvs.len() > face[1]
+            && geometry.uvs.len() > face[2]
+        {
+            let uv0 = geometry.uvs[face[0]];
+            let uv1 = geometry.uvs[face[1]];
+            let uv2 = geometry.uvs[face[2]];
+            [
+                bary_w * uv0[0] + bary_u * uv1[0] + bary_v * uv2[0],
+                bary_w * uv0[1] + bary_u * uv1[1] + bary_v * uv2[1],
+            ]
+        } else {
+            [0.0, 0.0]
+        };
+        let point = ray_origin + ray_dir * t;
+        min_dist = t;
+        nearest = Some(MeshRayCastHit {
+            distance: t,
+            point,
+            normal,
+            face_index,
+            uv,
+        });
+    }
+    nearest
+}
 
-        // Interpolate UV if available
+/// Like [`mesh_ray_cast`], with an optional model-space AABB broadphase.
+/// Requires the `aabb-cull` feature.
+#[cfg(feature = "aabb-cull")]
+pub fn mesh_ray_cast_bounded(
+    ray_origin: Vector3<f32>,
+    ray_dir: Vector3<f32>,
+    geometry: &mesh::Geometry<'_>,
+    model_matrix: &Matrix4<f32>,
+    max_distance: f32,
+    model_aabb: Option<&Aabb>,
+) -> Option<MeshRayCastHit> {
+    let inv = model_matrix.try_inverse()?;
+    let origin4 = inv * Vector4::new(ray_origin.x, ray_origin.y, ray_origin.z, 1.0);
+    let dir4 = inv * Vector4::new(ray_dir.x, ray_dir.y, ray_dir.z, 0.0);
+    if origin4.w.abs() < 1e-8 {
+        return None;
+    }
+    let local_origin = Vector3::new(origin4.x, origin4.y, origin4.z) / origin4.w;
+    let local_dir = Vector3::new(dir4.x, dir4.y, dir4.z);
+    let dir_len = local_dir.norm();
+    if dir_len < 1e-8 {
+        return None;
+    }
+    let local_dir_n = local_dir / dir_len;
+    let local_max = max_distance * dir_len;
+
+    if let Some(aabb) = model_aabb
+        && aabb
+            .intersect_ray(local_origin, local_dir_n, local_max)
+            .is_none()
+    {
+        return None;
+    }
+
+    let mut nearest: Option<MeshRayCastHit> = None;
+    let mut min_dist = local_max;
+
+    for (face_index, face) in geometry.faces.iter().enumerate() {
+        let v0 = Vector3::new(
+            geometry.vertices[face[0]][0],
+            geometry.vertices[face[0]][1],
+            geometry.vertices[face[0]][2],
+        );
+        let v1 = Vector3::new(
+            geometry.vertices[face[1]][0],
+            geometry.vertices[face[1]][1],
+            geometry.vertices[face[1]][2],
+        );
+        let v2 = Vector3::new(
+            geometry.vertices[face[2]][0],
+            geometry.vertices[face[2]][1],
+            geometry.vertices[face[2]][2],
+        );
+
+        let edge1 = v1 - v0;
+        let edge2 = v2 - v0;
+        let h = local_dir_n.cross(&edge2);
+        let det = edge1.dot(&h);
+        if det.abs() < 1e-6 {
+            continue;
+        }
+        let inv_det = 1.0 / det;
+        let s = local_origin - v0;
+        let bary_u = inv_det * s.dot(&h);
+        if !(0.0..=1.0).contains(&bary_u) {
+            continue;
+        }
+        let q = s.cross(&edge1);
+        let bary_v = inv_det * local_dir_n.dot(&q);
+        if bary_v < 0.0 || bary_u + bary_v > 1.0 {
+            continue;
+        }
+        let t_local = inv_det * edge2.dot(&q);
+        if t_local <= 0.0 || t_local >= min_dist {
+            continue;
+        }
+
+        let normal_local = edge1.cross(&edge2).normalize();
+        let rot = model_matrix.fixed_view::<3, 3>(0, 0);
+        let normal = (rot * normal_local).normalize();
+
+        let bary_w = 1.0 - bary_u - bary_v;
         let uv = if geometry.uvs.len() > face[0]
             && geometry.uvs.len() > face[1]
             && geometry.uvs.len() > face[2]
@@ -2369,11 +2740,19 @@ pub fn mesh_ray_cast(
             [0.0, 0.0]
         };
 
-        let point = ray_origin + ray_dir * t;
-        min_dist = t;
+        let local_hit = local_origin + local_dir_n * t_local;
+        let world_hit = model_matrix
+            .transform_point(&Point3::from(local_hit))
+            .coords;
+        let world_t = (world_hit - ray_origin).norm();
+        if world_t >= max_distance {
+            continue;
+        }
+
+        min_dist = t_local;
         nearest = Some(MeshRayCastHit {
-            distance: t,
-            point,
+            distance: world_t,
+            point: world_hit,
             normal,
             face_index,
             uv,
@@ -2381,6 +2760,27 @@ pub fn mesh_ray_cast(
     }
 
     nearest
+}
+
+/// Convenience: ray-cast a [`K3dMesh`] using its model matrix and cached AABB.
+#[cfg(feature = "aabb-cull")]
+pub fn mesh_ray_cast_mesh(
+    ray_origin: Vector3<f32>,
+    ray_dir: Vector3<f32>,
+    mesh: &K3dMesh<'_>,
+    max_distance: f32,
+) -> Option<MeshRayCastHit> {
+    let distance = (mesh.get_position() - Point3::from(ray_origin)).norm();
+    let geometry = mesh.select_lod(distance);
+    let aabb = mesh.model_aabb();
+    mesh_ray_cast_bounded(
+        ray_origin,
+        ray_dir,
+        geometry,
+        &mesh.model_matrix,
+        max_distance,
+        Some(&aabb),
+    )
 }
 
 #[cfg(feature = "dma2d")]

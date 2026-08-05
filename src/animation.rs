@@ -73,19 +73,15 @@ impl<'a> VertexAnimation<'a> {
             time.clamp(0.0, duration)
         };
 
-        // Find the two keyframes to interpolate between
-        let mut kf1_idx = 0;
-        let mut kf2_idx = 0;
-
-        for (i, kf) in self.keyframes.iter().enumerate() {
-            if kf.time <= t {
-                kf1_idx = i;
-            }
-            if kf.time >= t {
-                kf2_idx = i;
-                break;
-            }
+        // Find the two keyframes to interpolate between (binary search).
+        let mut kf1_idx = self
+            .keyframes
+            .partition_point(|kf| kf.time <= t)
+            .saturating_sub(1);
+        if self.keyframes[kf1_idx].time > t {
+            kf1_idx = 0;
         }
+        let kf2_idx = (kf1_idx + 1).min(self.keyframes.len() - 1);
 
         // If we're at or past the last keyframe
         if kf1_idx == self.keyframes.len() - 1 {

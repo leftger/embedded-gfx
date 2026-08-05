@@ -16,6 +16,31 @@ A `no_std` 3D graphics and physics engine for embedded systems, optimized for re
   - The legacy `to_fp`/`from_fp`/`mul_fp`/`div_fp` aliases are gone — use the canonical `to_q16`/`from_q16`/`mul_q16`/`div_q16` names instead.
   - No rendering behavior change — verified bit-identical output against the prior implementation.
 
+## Optional scene extras (opt-in features)
+
+These are **off by default** so MCU binaries stay lean. Enable only what you need:
+
+| Feature | What you get |
+|---------|----------------|
+| `aabb-cull` | Cached mesh AABB, two-stage frustum cull, mesh-space raycast broadphase |
+| `render-layers` | `RenderLayers` bitmasks on camera + mesh |
+| `record-sort` | Priority/distance sort during `record` |
+| `lod-crossfade` | `LODLevels::fade_margin` translucent LOD blends |
+| `anim-blend` | `AnimClip` blending, `Bone::slerp_rotation`, skinned AABBs (+ quat slerp in `transform_anim`) |
+| `gizmos` | `record_aabb_gizmo` / `record_frustum_gizmo` |
+| `visibility-extras` | `aabb-cull` + `render-layers` + `record-sort` + `lod-crossfade` |
+| `scene-extras` | All of the above |
+
+```toml
+embedded-3dgfx = { version = "0.4", default-features = false, features = ["aabb-cull", "render-layers"] }
+# or
+embedded-3dgfx = { version = "0.4", features = ["std", "scene-extras"] }
+```
+
+```bash
+cargo test --test scene_extras --features "std,scene-extras"
+```
+
 ## What's new in 0.3.2
 
 - **Object-Level 6-Plane Frustum Culling** — Upgraded bounding sphere culling to perform full camera frustum side-plane checks using the Gribb-Hartmann method. Completely skips off-screen meshes before they reach the projection phase, yielding a 50-90% reduction in geometry overhead.

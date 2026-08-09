@@ -7,10 +7,13 @@
 //! - [`AsEgPoint`] / [`AsNalgebraPoint`] — zero-cost conversions between
 //!   `embedded_graphics_core::geometry::Point` and `nalgebra::Point2<i32>`.
 //! - [`nalgebra_to_eg`] / [`eg_to_nalgebra`] — free-function equivalents.
-//! - `ReadPixel` impl for `FrameBuf<Rgb565, B>` (enabled with the `aa`
-//!   feature) so anti-aliased rasterization works without boilerplate.
 //! - [`render_drawable_to_buffer`] — rasterize any `Drawable<Color = Rgb565>`
 //!   into a `&mut [Rgb565]` slice so it can be used as a 3D texture.
+//!
+//! Readback for `FrameBuf` is no longer implemented here: `embedded-draw-target`
+//! provides `PixelRead` for it, which satisfies `ReadPixel` through this
+//! crate's blanket impl, so anti-aliased rasterization still works on a plain
+//! `FrameBuf` without boilerplate.
 
 use core::fmt::Debug;
 use core::marker::PhantomData;
@@ -25,11 +28,7 @@ use embedded_graphics_core::{
 use embedded_graphics_framebuf::{FrameBuf, backends::FrameBufferBackend};
 
 use crate::DrawPrimitive;
-#[cfg(feature = "aa")]
-use crate::draw::ReadPixel;
 use crate::draw::draw;
-#[cfg(feature = "aa")]
-use embedded_graphics_core::pixelcolor::RgbColor;
 
 // ── 1. Color adapter ─────────────────────────────────────────────────────────
 
@@ -138,29 +137,7 @@ impl AsNalgebraPoint for Point {
     }
 }
 
-// ── 3. ReadPixel for FrameBuf ────────────────────────────────────────────────
-
-/// Implements [`ReadPixel`] for any `FrameBuf<Rgb565, B>`.
-///
-/// Required for anti-aliased rasterization (`aa-heuristic` / `aa-coverage`
-/// features).  Because `FrameBuf` already holds the pixel data in RAM, the
-/// implementation is a direct indexed lookup — no extra memory needed.
-#[cfg(feature = "aa")]
-impl<B> ReadPixel for FrameBuf<Rgb565, B>
-where
-    B: FrameBufferBackend<Color = Rgb565>,
-{
-    fn read_pixel(&self, point: Point) -> Rgb565 {
-        let w = self.width() as i32;
-        let h = self.height() as i32;
-        if point.x < 0 || point.x >= w || point.y < 0 || point.y >= h {
-            return <Rgb565 as RgbColor>::BLACK;
-        }
-        self.get_color_at(point)
-    }
-}
-
-// ── 4. Drawable → texture buffer helper ──────────────────────────────────────
+// ── 3. Drawable → texture buffer helper ──────────────────────────────────────
 
 struct SliceBackend<'a>(pub &'a mut [Rgb565]);
 

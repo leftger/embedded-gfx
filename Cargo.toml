@@ -1,7 +1,7 @@
 workspace = { members = ["load_stl", "asset_cli"] }
 [package]
 name = "embedded-3dgfx"
-version = "0.4.1"
+version = "0.4.2"
 edition = "2024"
 authors = ["Gerzain Mata <leftger@gmail.com>"]
 license = "MIT OR Apache-2.0"
@@ -36,7 +36,7 @@ row_width_96 = []
 row_width_160 = []
 row_width_240 = []
 row_width_320 = []
-# AA infrastructure: ReadPixel trait + Wu's anti-aliased line algorithm.
+# AA infrastructure: ReadPixel/PixelRead readback + Wu's anti-aliased lines.
 # Enabled automatically by either of the triangle-AA features below.
 aa = []
 # Heuristic analytical edge-AA for triangles. Cheaper than aa-coverage
@@ -88,6 +88,7 @@ scene-extras = ["visibility-extras", "anim-blend", "gizmos"]
 
 [dependencies]
 embedded-graphics-core = "0.4.1"
+embedded-draw-target = { version = "0.1", features = ["framebuf"] }
 embedded-graphics-framebuf = "0.3"
 critical-section = "1.1"
 log = "0.4"

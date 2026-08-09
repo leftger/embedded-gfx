@@ -42,9 +42,32 @@ use crate::retro::{PaletteMode, ScreenTint, StippleMode, TextureMapping};
 /// anti-aliased line endpoints with the existing framebuffer contents.
 /// Implementers should return the most recently written color at `point`,
 /// or `Rgb565::BLACK` for out-of-bounds reads.
+///
+/// Prefer implementing [`PixelRead`], re-exported from
+/// [`embedded_draw_target`]: it is the same trait `embedded-gui` and the wider
+/// ecosystem use, so one buffer can serve this crate's rasterizers, a GUI
+/// library's alpha compositor, and plain `embedded-graphics` drawing at once.
+/// Every `PixelRead<Color = Rgb565>` target satisfies `ReadPixel` through the
+/// blanket impl below, so both work everywhere this crate asks for readback.
 #[cfg(feature = "aa")]
 pub trait ReadPixel {
+    /// Returns the color currently stored at `point`.
     fn read_pixel(&self, point: Point) -> Rgb565;
+}
+
+/// Readback capability shared with the rest of the ecosystem.
+///
+/// Implementing this is the recommended way to satisfy the AA rasterizers'
+/// [`ReadPixel`] bound; `ReadPixel` itself remains for existing implementors
+/// and is slated for removal in 0.5.
+pub use embedded_draw_target::PixelRead;
+
+#[cfg(feature = "aa")]
+impl<T: PixelRead<Color = Rgb565>> ReadPixel for T {
+    #[inline]
+    fn read_pixel(&self, point: Point) -> Rgb565 {
+        self.get_pixel(point)
+    }
 }
 
 /// Fast RGB565 alpha blending.
@@ -934,7 +957,7 @@ pub fn draw_zbuffered<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::
 /// Inner pixels of each scanline use the same fast path as `draw_zbuffered`.
 /// Lines use Wu's algorithm.
 ///
-/// Requires `ReadPixel` on the framebuffer for the boundary blends.
+/// Requires `PixelRead` on the framebuffer for the boundary blends.
 #[cfg(feature = "aa-heuristic")]
 #[inline]
 pub fn draw_zbuffered_aa<D>(

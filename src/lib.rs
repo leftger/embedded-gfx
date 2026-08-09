@@ -124,6 +124,7 @@ pub use embedded_graphics_framebuf::{
     backends::{DMACapableFrameBufferBackend, EndianCorrectedBuffer, EndianCorrection},
 };
 
+pub use draw::PixelRead;
 #[cfg(feature = "aa")]
 pub use draw::ReadPixel;
 

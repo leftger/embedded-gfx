@@ -357,7 +357,7 @@ fn test_billboard_fast_transform_matches_manual() {
 use embedded_3dgfx::DrawPrimitive;
 use nalgebra::Point2;
 
-/// A minimal ReadPixel + DrawTarget framebuffer for testing 2xSSAA.
+/// A minimal PixelRead + DrawTarget framebuffer for testing 2xSSAA.
 struct MockFb {
     pixels: std::vec::Vec<Rgb565>,
     width: u32,
@@ -399,9 +399,8 @@ impl embedded_graphics_core::draw_target::DrawTarget for MockFb {
     }
 }
 
-#[cfg(feature = "aa")]
-impl embedded_3dgfx::draw::ReadPixel for MockFb {
-    fn read_pixel(&self, pt: embedded_graphics_core::prelude::Point) -> Rgb565 {
+impl embedded_3dgfx::PixelRead for MockFb {
+    fn get_pixel(&self, pt: embedded_graphics_core::prelude::Point) -> Rgb565 {
         if pt.x >= 0 && pt.y >= 0 && (pt.x as u32) < self.width && (pt.y as u32) < self.height {
             self.pixels[(pt.y as u32 * self.width + pt.x as u32) as usize]
         } else {

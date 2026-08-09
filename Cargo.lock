@@ -169,11 +169,12 @@ dependencies = [
 
 [[package]]
 name = "embedded-3dgfx"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "critical-section",
  "embassy-sync",
  "embassy-time",
+ "embedded-draw-target",
  "embedded-dsp",
  "embedded-graphics",
  "embedded-graphics-core",
@@ -197,6 +198,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "994f7e5b5cb23521c22304927195f236813053eb9c065dd2226a32ba64695446"
 dependencies = [
  "stable_deref_trait",
+]
+
+[[package]]
+name = "embedded-draw-target"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "29cb26853ecba889c81873ed55d2de01ccab0a32fdd19826c9abe5fc00e1118d"
+dependencies = [
+ "embedded-graphics-core",
+ "embedded-graphics-framebuf",
 ]
 
 [[package]]

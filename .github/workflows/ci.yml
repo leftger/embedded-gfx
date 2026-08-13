@@ -24,7 +24,8 @@ env:
   DOCS_ARGS: "--lib --no-deps --all-features"
   CHECK_ARGS: "--lib --all-features"
   CI_UNIT_TEST_ARGS: "--lib"
-  CI_INTEGRATION_TEST_ARGS: "-- --test-threads=1"
+  # lighting/textured needed so cfg-gated golden (gouraud) and textured tests run.
+  CI_INTEGRATION_TEST_ARGS: "--features lighting,textured -- --test-threads=1"
   CI_INTEGRATION_CHECK: "true"
   CI_INTEGRATION_CHECK_CMD: "cargo build --examples --all-features"
   # Default unit tests run without opt-in content features; exercise them here.

@@ -13,8 +13,7 @@
 //! - Sorting cost increases with triangle count
 //! - Best for scenes with ~1000-5000 triangles
 //!
-//! Note: This module is only available when building with std (examples, tests)
-//! as it requires Vec for dynamic triangle collection.
+//! Note: callers supply a fixed triangle scratch buffer; no heap allocation is required.
 
 use crate::mesh::{K3dMesh, RenderMode};
 use crate::{DrawPrimitive, K3dengine};
@@ -315,13 +314,13 @@ impl K3dengine {
 mod tests {
 
     use super::*;
+    use core::cmp::Ordering;
     use embedded_graphics_core::pixelcolor::Rgb565;
     use nalgebra::Point3;
-    use std::cmp::Ordering;
 
     #[test]
     fn test_sorting_by_depth() {
-        let mut triangles = std::vec![
+        let mut triangles = [
             DepthSortedTriangle {
                 primitive: DrawPrimitive::Line(
                     [nalgebra::Point2::new(0, 0), nalgebra::Point2::new(1, 1)],
@@ -383,9 +382,9 @@ mod tests {
         mesh.set_render_mode(crate::mesh::RenderMode::Solid);
         mesh.set_color(Rgb565::new(31, 0, 0));
 
-        let mut triangles = std::vec![DepthSortedTriangle::DUMMY; 256];
+        let mut triangles = [DepthSortedTriangle::DUMMY; 256];
         let count =
-            engine.render_painters_algorithm(std::iter::once(&mesh), &mut triangles, |_| {});
+            engine.render_painters_algorithm(core::iter::once(&mesh), &mut triangles, |_| {});
 
         // Regression guard: painter mode must clip partially off-screen faces
         // instead of dropping them entirely.
@@ -418,9 +417,9 @@ mod tests {
         mesh.set_render_mode(crate::mesh::RenderMode::Solid);
         mesh.set_color(Rgb565::new(0, 63, 0));
 
-        let mut triangles = std::vec![DepthSortedTriangle::DUMMY; 256];
+        let mut triangles = [DepthSortedTriangle::DUMMY; 256];
         let count =
-            engine.render_painters_algorithm(std::iter::once(&mesh), &mut triangles, |_| {});
+            engine.render_painters_algorithm(core::iter::once(&mesh), &mut triangles, |_| {});
         assert!(count > 0);
         let first = triangles[0].avg_depth;
         assert!(

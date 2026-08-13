@@ -1,6 +1,6 @@
 //! Tests for embedded-dsp integration in embedded-3dgfx.
 
-#[cfg(feature = "dsp")]
+#[cfg(all(feature = "dsp", feature = "scene"))]
 #[test]
 fn test_dsp_skeleton_slerp() {
     use embedded_3dgfx::skeleton::Bone;

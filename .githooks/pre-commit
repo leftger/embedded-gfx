@@ -49,7 +49,7 @@ echo "pre-commit: cargo check (no_std target)"
 rustup target add thumbv7em-none-eabihf 2>/dev/null || true
 cargo check --lib --no-default-features --features row_width_240 --target thumbv7em-none-eabihf
 
-echo "pre-commit: running cargo test"
-cargo test
+echo "pre-commit: running cargo test (--all-features)"
+cargo test --all-features
 
 echo "pre-commit: ok"

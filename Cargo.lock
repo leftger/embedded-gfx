@@ -169,7 +169,7 @@ dependencies = [
 
 [[package]]
 name = "embedded-3dgfx"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "critical-section",
  "embassy-sync",

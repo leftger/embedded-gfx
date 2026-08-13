@@ -18,15 +18,19 @@ pub enum RenderMode {
     Points,
     Lines,
     Solid,
+    #[cfg(feature = "lighting")]
     SolidLightDir(Vector3<f32>),
+    #[cfg(feature = "lighting")]
     BlinnPhong {
         light_dir: Vector3<f32>,
         specular_intensity: f32,
         shininess: f32,
     },
+    #[cfg(feature = "lighting")]
     GouraudLightDir(Vector3<f32>),
     /// Flat-shaded with a uniform brightness level (0=black, 255=full color).
     /// Used for Doom-style sector-based lighting.
+    #[cfg(feature = "lighting")]
     SectorBright(u8),
     /// Flat, unlit, texture-sampled -- the `Solid` mode's texture-mapped
     /// counterpart. Requires `geometry.uvs` (one per vertex) and
@@ -34,14 +38,18 @@ pub enum RenderMode {
     /// missing. Must be drawn via [`crate::K3dengine::execute_with_textures`]
     /// (plain [`crate::K3dengine::execute`] can't resolve `texture_id`
     /// without a [`crate::texture::TextureManager`]).
+    #[cfg(feature = "textured")]
     Textured,
     /// Textured surface combined with Gouraud lighting.
+    #[cfg(feature = "textured")]
     TexturedGouraud(Vector3<f32>),
     /// Spherical Environment Mapping (MatCap) shading. Procedurally generates
     /// UV coordinates based on camera-space normals. Uses the mesh's
     /// `geometry.texture_id` as the MatCap sphere map.
+    #[cfg(feature = "textured")]
     MatCap,
     /// Toon cel-shading with a light direction and number of discrete shading bands.
+    #[cfg(feature = "lighting")]
     Toon(Vector3<f32>, u8),
 }
 #[derive(Debug, Default, Copy, Clone)]
@@ -813,8 +821,11 @@ mod tests {
         mesh.set_render_mode(RenderMode::Solid);
         assert_eq!(mesh.render_mode, RenderMode::Solid);
 
-        mesh.set_render_mode(RenderMode::SolidLightDir(Vector3::new(0.0, 1.0, 0.0)));
-        assert!(matches!(mesh.render_mode, RenderMode::SolidLightDir(_)));
+        #[cfg(feature = "lighting")]
+        {
+            mesh.set_render_mode(RenderMode::SolidLightDir(Vector3::new(0.0, 1.0, 0.0)));
+            assert!(matches!(mesh.render_mode, RenderMode::SolidLightDir(_)));
+        }
     }
 
     #[test]

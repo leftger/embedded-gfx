@@ -1,7 +1,7 @@
 workspace = { members = ["load_stl", "asset_cli"] }
 [package]
 name = "embedded-3dgfx"
-version = "0.4.2"
+version = "0.5.0"
 edition = "2024"
 authors = ["Gerzain Mata <leftger@gmail.com>"]
 license = "MIT OR Apache-2.0"
@@ -25,7 +25,8 @@ categories = [
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["row_width_240", "std", "aa-heuristic", "aa-coverage"]
+# Slim default for MCU consumers. Desktop examples should opt into `std` / AA explicitly.
+default = ["row_width_240"]
 std = ["perfcounter"]
 physics = []
 dma2d = []
@@ -36,6 +37,20 @@ row_width_96 = []
 row_width_160 = []
 row_width_240 = []
 row_width_320 = []
+# --- Shading / content feature gates (0.5) ---
+# Directional / Gouraud / Blinn / Toon / sector lighting paths + lights module.
+lighting = []
+# Texture sampling modes + texture manager. Implies lighting for TexturedGouraud.
+textured = ["lighting"]
+# Doom-style 2D raycaster, BSP helpers, sector lights.
+raycast = []
+# Skeletal / particle / billboard / animation / scene stream stack.
+scene = []
+# HUD helpers.
+hud = []
+# Fog / dither helpers (`painters` module). `retro` type defs stay in core
+# because the draw path references them.
+painters = []
 # AA infrastructure: ReadPixel/PixelRead readback + Wu's anti-aliased lines.
 # Enabled automatically by either of the triangle-AA features below.
 aa = []
@@ -78,7 +93,7 @@ record-sort = []
 lod-crossfade = []
 # Skeletal AnimClip blending, Bone::slerp_rotation, joint/skinned AABBs.
 # Also enables quaternion slerp in transform_anim sampling.
-anim-blend = ["aabb-cull"]
+anim-blend = ["aabb-cull", "scene"]
 # Debug AABB / frustum wireframe helpers (record_*_gizmo).
 gizmos = ["aabb-cull"]
 # Visibility-oriented extras without animation/gizmos.
@@ -117,56 +132,148 @@ sdl2 = { version = "0.38", features = ["use-pkgconfig"] }
 png = "0.17"
 
 [[example]]
+name = "basic_rendering"
+required-features = ["std"]
+
+[[example]]
+name = "billboard_demo"
+required-features = ["std", "scene"]
+
+[[example]]
+name = "blinn_phong_demo"
+required-features = ["std", "lighting"]
+
+[[example]]
+name = "boot_menu"
+required-features = ["std", "scene", "textured"]
+
+[[example]]
+name = "bsp_builder_demo"
+required-features = ["std", "raycast", "textured"]
+
+[[example]]
+name = "capsule_physics_demo"
+required-features = ["std", "physics", "lighting"]
+
+[[example]]
+name = "cloth_simulation"
+required-features = ["std", "physics"]
+
+[[example]]
+name = "dma_rendering_demo"
+required-features = ["std", "lighting"]
+
+[[example]]
+name = "fog_dithering_demo"
+required-features = ["std"]
+
+[[example]]
+name = "freedoom1_bsp"
+required-features = ["std", "raycast", "textured"]
+
+[[example]]
+name = "freedoom_runtime_demo"
+required-features = ["std", "raycast", "textured", "lighting"]
+
+[[example]]
+name = "gouraud_demo"
+required-features = ["std", "lighting"]
+
+[[example]]
+name = "jelly_cube_demo"
+required-features = ["std", "physics"]
+
+[[example]]
+name = "lighting_demo"
+required-features = ["std", "lighting"]
+
+[[example]]
+name = "lod_demo"
+required-features = ["std"]
+
+[[example]]
+name = "mesh_texture_demo"
+required-features = ["std", "textured"]
+
+[[example]]
+name = "painters_algorithm_demo"
+required-features = ["std", "painters", "lighting", "textured"]
+
+[[example]]
 name = "physics_bouncing_balls"
-required-features = ["physics"]
+required-features = ["std", "physics", "lighting"]
 
 [[example]]
 name = "physics_demo"
-required-features = ["physics"]
+required-features = ["std", "physics", "lighting"]
+
+[[example]]
+name = "physics_domino_chain"
+required-features = ["std", "physics", "lighting"]
+
+[[example]]
+name = "physics_newtons_cradle"
+required-features = ["std", "physics", "lighting"]
+
+[[example]]
+name = "physics_pendulum"
+required-features = ["std", "physics", "lighting"]
+
+[[example]]
+name = "physics_rolling_ball"
+required-features = ["std", "physics", "lighting"]
+
+[[example]]
+name = "physics_stack_tower"
+required-features = ["std", "physics", "lighting"]
+
+[[example]]
+name = "physics_wrecking_ball"
+required-features = ["std", "physics", "lighting"]
+
+[[example]]
+name = "raycast_demo"
+required-features = ["std", "physics"]
+
+[[example]]
+name = "retro_presets_demo"
+required-features = ["std"]
+
+[[example]]
+name = "rotating_cube"
+required-features = ["std"]
+
+[[example]]
+name = "scene_viewer"
+required-features = ["std"]
+
+[[example]]
+name = "screenshots"
+required-features = ["std", "lighting", "textured", "raycast", "scene", "physics"]
+
+[[example]]
+name = "skeletal_animation_demo"
+required-features = ["std", "scene"]
+
+[[example]]
+name = "stl_viewer"
+required-features = ["std", "lighting"]
+
+[[example]]
+name = "texture_mapping_demo"
+required-features = ["std", "textured"]
+
+[[example]]
+name = "vertex_animation_demo"
+required-features = ["std", "scene"]
+
+[[example]]
+name = "walkable_demo"
+required-features = ["std", "lighting", "scene"]
 
 [[bench]]
 name = "raster_benchmark"
 harness = false
-
-[[example]]
-name = "physics_domino_chain"
-required-features = ["physics"]
-
-[[example]]
-name = "physics_newtons_cradle"
-required-features = ["physics"]
-
-[[example]]
-name = "physics_pendulum"
-required-features = ["physics"]
-
-[[example]]
-name = "physics_rolling_ball"
-required-features = ["physics"]
-
-[[example]]
-name = "physics_stack_tower"
-required-features = ["physics"]
-
-[[example]]
-name = "physics_wrecking_ball"
-required-features = ["physics"]
-
-[[example]]
-name = "capsule_physics_demo"
-required-features = ["physics"]
-
-[[example]]
-name = "cloth_simulation"
-required-features = ["physics"]
-
-[[example]]
-name = "jelly_cube_demo"
-required-features = ["physics"]
-
-[[example]]
-name = "raycast_demo"
-required-features = ["physics"]
 
 [[test]]
 name = "scene_extras"

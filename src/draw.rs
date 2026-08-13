@@ -33,6 +33,7 @@ use embedded_graphics_core::prelude::Point;
 use heapless::Vec;
 
 use crate::DrawPrimitive;
+#[cfg(feature = "textured")]
 use crate::retro::{PaletteMode, ScreenTint, StippleMode, TextureMapping};
 
 /// Framebuffer that supports reading back pixel values.
@@ -727,6 +728,7 @@ pub fn draw<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
             let [p1, p2, p3] = buf.into_array().unwrap();
             fill_triangle_screen_clipped(p1, p2, p3, color, fb);
         }
+        #[cfg(feature = "lighting")]
         DrawPrimitive::GouraudTriangle {
             mut points,
             mut colors,
@@ -785,6 +787,7 @@ pub fn draw<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
                 fill_top_flat_gouraud(p2, p4, p3, c2, c4, c3, fb);
             }
         }
+        #[cfg(feature = "lighting")]
         DrawPrimitive::GouraudTriangleWithDepth {
             points,
             depths: _,
@@ -795,6 +798,7 @@ pub fn draw<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
             let prim = DrawPrimitive::GouraudTriangle { points, colors };
             draw(prim, fb);
         }
+        #[cfg(feature = "textured")]
         DrawPrimitive::TexturedTriangle { .. }
         | DrawPrimitive::TexturedTriangleWithDepth { .. }
         | DrawPrimitive::TexturedGouraudTriangleWithDepth { .. }
@@ -805,6 +809,7 @@ pub fn draw<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
     }
 }
 
+#[cfg(feature = "lighting")]
 // Interpolate between two colors
 #[inline]
 fn interpolate_color(
@@ -827,6 +832,7 @@ fn interpolate_color(
     embedded_graphics_core::pixelcolor::Rgb565::new(r, g, b)
 }
 
+#[cfg(feature = "lighting")]
 // Gouraud shading - bottom flat triangle with color interpolation
 fn fill_bottom_flat_gouraud<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
     p1: Point,
@@ -865,6 +871,7 @@ fn fill_bottom_flat_gouraud<D: DrawTarget<Color = embedded_graphics_core::pixelc
     }
 }
 
+#[cfg(feature = "lighting")]
 // Gouraud shading - top flat triangle with color interpolation
 fn fill_top_flat_gouraud<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
     p1: Point,
@@ -904,6 +911,7 @@ fn fill_top_flat_gouraud<D: DrawTarget<Color = embedded_graphics_core::pixelcolo
     }
 }
 
+#[cfg(feature = "lighting")]
 // Draw a horizontal line with color interpolation (Gouraud)
 fn draw_horizontal_line_gouraud<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
     p1: Point,
@@ -2085,7 +2093,6 @@ where
 }
 
 // Z-buffered drawing function with optional fog and dithering effects
-// Requires a TextureManager for textured primitives
 #[inline]
 pub fn draw_zbuffered_with_effects<
     D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>,
@@ -2194,6 +2201,7 @@ pub fn draw_zbuffered_with_effects<
                 p1, p2, p3, z1, z2, z3, color, alpha, fb, zbuffer, width,
             );
         }
+        #[cfg(feature = "lighting")]
         DrawPrimitive::GouraudTriangleWithDepth {
             mut points,
             mut depths,
@@ -2254,6 +2262,7 @@ pub fn draw_zbuffered_with_effects<
             );
         }
         // Textured / lightmapped triangles require a texture manager.
+        #[cfg(feature = "textured")]
         DrawPrimitive::TexturedTriangle { .. }
         | DrawPrimitive::TexturedTriangleWithDepth { .. }
         | DrawPrimitive::TexturedGouraudTriangleWithDepth { .. }
@@ -2265,6 +2274,7 @@ pub fn draw_zbuffered_with_effects<
     }
 }
 
+#[cfg(feature = "textured")]
 #[inline(always)]
 fn interpolate_uv(
     t: f32,
@@ -2291,11 +2301,13 @@ fn interpolate_uv(
     }
 }
 
+#[cfg(feature = "textured")]
 #[inline(always)]
 fn should_skip_stipple(x: i32, y: i32, stipple_mode: StippleMode) -> bool {
     matches!(stipple_mode, StippleMode::Checkerboard) && ((x ^ y) & 1) != 0
 }
 
+#[cfg(feature = "textured")]
 // Z-buffered drawing function with textures, fog, and dithering effects
 #[inline]
 pub fn draw_zbuffered_with_textures<
@@ -2327,6 +2339,7 @@ pub fn draw_zbuffered_with_textures<
     );
 }
 
+#[cfg(feature = "textured")]
 #[inline]
 pub fn draw_zbuffered_with_textures_mapped<
     D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>,
@@ -2347,6 +2360,7 @@ pub fn draw_zbuffered_with_textures_mapped<
     <D as DrawTarget>::Error: Debug,
 {
     match primitive {
+        #[cfg(feature = "textured")]
         DrawPrimitive::TexturedTriangleWithDepth {
             mut points,
             mut depths,
@@ -2423,6 +2437,7 @@ pub fn draw_zbuffered_with_textures_mapped<
                 );
             }
         }
+        #[cfg(feature = "textured")]
         DrawPrimitive::TexturedGouraudTriangleWithDepth {
             mut points,
             mut depths,
@@ -2509,6 +2524,7 @@ pub fn draw_zbuffered_with_textures_mapped<
     }
 }
 
+#[cfg(feature = "textured")]
 // ---------------------------------------------------------------------------
 // Lightmapped triangle (M6)
 // ---------------------------------------------------------------------------
@@ -2565,6 +2581,7 @@ pub fn draw_zbuffered_lightmapped<
     );
 }
 
+#[cfg(feature = "textured")]
 pub fn draw_zbuffered_lightmapped_mapped<
     D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>,
     const N: usize,
@@ -2785,6 +2802,7 @@ pub fn draw_zbuffered_lightmapped_mapped<
     }
 }
 
+#[cfg(feature = "textured")]
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]
 fn fill_lm_bottom_flat<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
@@ -2879,6 +2897,7 @@ fn fill_lm_bottom_flat<D: DrawTarget<Color = embedded_graphics_core::pixelcolor:
     }
 }
 
+#[cfg(feature = "textured")]
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]
 fn fill_lm_top_flat<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
@@ -2973,6 +2992,7 @@ fn fill_lm_top_flat<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rg
     }
 }
 
+#[cfg(feature = "textured")]
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]
 fn draw_scanline_lm<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
@@ -3102,6 +3122,7 @@ fn draw_scanline_lm<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rg
     }
 }
 
+#[cfg(all(feature = "textured", feature = "raycast"))]
 // ---------------------------------------------------------------------------
 // Coverage-based BSP rasteriser (M5 — no z-buffer)
 // ---------------------------------------------------------------------------
@@ -3411,6 +3432,7 @@ fn fill_triangle_zbuffered<D: DrawTarget<Color = embedded_graphics_core::pixelco
     }
 }
 
+#[cfg(feature = "lighting")]
 // Gouraud-shaded triangle with z-buffering
 #[inline(always)]
 fn fill_triangle_zbuffered_gouraud<
@@ -3673,6 +3695,7 @@ fn fill_top_flat_triangle_zbuffered<
     }
 }
 
+#[cfg(feature = "lighting")]
 // Gouraud shaded bottom-flat triangle with z-buffering
 #[inline(always)]
 fn fill_bottom_flat_triangle_zbuffered_gouraud<
@@ -3746,6 +3769,7 @@ fn fill_bottom_flat_triangle_zbuffered_gouraud<
     }
 }
 
+#[cfg(feature = "lighting")]
 // Gouraud shaded top-flat triangle with z-buffering
 #[inline(always)]
 fn fill_top_flat_triangle_zbuffered_gouraud<
@@ -3819,6 +3843,7 @@ fn fill_top_flat_triangle_zbuffered_gouraud<
     }
 }
 
+#[cfg(feature = "lighting")]
 // Draw scanline with Gouraud shading and z-buffering
 #[inline(always)]
 fn draw_scanline_zbuffered_gouraud<
@@ -3969,6 +3994,7 @@ fn draw_scanline_zbuffered<D: DrawTarget<Color = embedded_graphics_core::pixelco
     }
 }
 
+#[cfg(feature = "textured")]
 // Textured triangle rendering with z-buffering
 #[inline(always)]
 fn fill_triangle_zbuffered_textured<
@@ -4127,6 +4153,7 @@ fn fill_triangle_zbuffered_textured<
     }
 }
 
+#[cfg(feature = "textured")]
 // Textured bottom-flat triangle with z-buffering
 #[inline(always)]
 fn fill_bottom_flat_triangle_zbuffered_textured<
@@ -4225,6 +4252,7 @@ fn fill_bottom_flat_triangle_zbuffered_textured<
     }
 }
 
+#[cfg(feature = "textured")]
 // Textured top-flat triangle with z-buffering
 #[inline(always)]
 fn fill_top_flat_triangle_zbuffered_textured<
@@ -4323,6 +4351,7 @@ fn fill_top_flat_triangle_zbuffered_textured<
     }
 }
 
+#[cfg(feature = "textured")]
 // Draw scanline with texture mapping and z-buffering
 #[inline(always)]
 fn draw_scanline_zbuffered_textured<
@@ -4642,6 +4671,7 @@ fn fill_top_flat_translucent<D: DrawTarget<Color = Rgb565>>(
     }
 }
 
+#[cfg(feature = "textured")]
 pub fn fill_triangle_zbuffered_textured_gouraud<
     D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>,
 >(
@@ -4808,6 +4838,7 @@ pub fn fill_triangle_zbuffered_textured_gouraud<
     }
 }
 
+#[cfg(feature = "textured")]
 fn fill_bottom_flat_triangle_zbuffered_textured_gouraud<
     D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>,
 >(
@@ -4909,6 +4940,7 @@ fn fill_bottom_flat_triangle_zbuffered_textured_gouraud<
     }
 }
 
+#[cfg(feature = "textured")]
 fn fill_top_flat_triangle_zbuffered_textured_gouraud<
     D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>,
 >(
@@ -5010,6 +5042,7 @@ fn fill_top_flat_triangle_zbuffered_textured_gouraud<
     }
 }
 
+#[cfg(feature = "textured")]
 fn draw_scanline_zbuffered_textured_gouraud<
     D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>,
 >(

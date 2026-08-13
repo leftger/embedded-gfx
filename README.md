@@ -38,15 +38,26 @@ cargo run --example screenshots --features std
 
 ```toml
 [dependencies]
-# Embedded (no_std)
-embedded-3dgfx = { version = "0.4", default-features = false }
+# Embedded (no_std) — slim 0.5 default is just `row_width_240`
+embedded-3dgfx = { version = "0.5", default-features = false, features = ["row_width_320", "depth-u16"] }
 
-# With physics
-embedded-3dgfx = { version = "0.4", features = ["physics"] }
+# Orientation-style lit meshes
+embedded-3dgfx = { version = "0.5", default-features = false, features = ["row_width_320", "depth-u16", "lighting"] }
 
 # Desktop / simulator
-embedded-3dgfx = { version = "0.4", features = ["std", "physics"] }
+embedded-3dgfx = { version = "0.5", features = ["std", "physics"] }
 ```
+
+### MCU feature recipes
+
+| Recipe | Features |
+| :--- | :--- |
+| Minimal wireframe / solid | `default-features = false`, `row_width_320`, `depth-u16` |
+| Lit mesh (Gouraud / Blinn / Toon) | add `lighting` |
+| Doom-style | `lighting`, `textured`, `raycast`, `hud` |
+| Physics demo | add `physics` |
+
+**0.5 breaking change:** `std`, `aa-heuristic`, and `aa-coverage` are no longer in the default feature set. Desktop apps should opt into `std` (and AA) explicitly.
 
 ## Quick start
 
@@ -72,10 +83,16 @@ More patterns (particles, lights, fog, physics, skeleton, soft body, async prese
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `std` | on | Painter's algorithm helpers, `perfcounter` |
-| `physics` | off | Rigid body, soft body, physics raycast |
-| `aa-heuristic` / `aa-coverage` | on | Triangle edge AA (coverage needs a W×H buffer) |
 | `row_width_*` | `240` | Row-buffer width (`96` / `160` / `240` / `320`, mutually exclusive) |
+| `std` | off | Desktop helpers / `perfcounter` |
+| `lighting` | off | `SolidLightDir` / Gouraud / Blinn / Toon / `SectorBright` + `lights` |
+| `textured` | off | Texture modes + `texture` module (implies `lighting`) |
+| `raycast` | off | Doom-style raycaster, BSP helpers, `sector_lights` |
+| `scene` | off | Skeleton, character, particles, billboard, animation / scene stream |
+| `hud` | off | HUD helpers |
+| `painters` | off | Painter's algorithm helpers (`painters` module) |
+| `physics` | off | Rigid body, soft body, physics raycast |
+| `aa-heuristic` / `aa-coverage` | off | Triangle edge AA (coverage needs a W×H buffer) |
 | `dsp` / `fixed-transform` / `fixed-raster` | off | Shared Q16.16 / quat path via [`embedded-dsp`](https://crates.io/crates/embedded-dsp) |
 | `triple-buffering` / `embassy` / `dma2d` | off | Swapchain / Embassy / DMA2D hooks |
 | `perfcounter` / `dwt-profiler` / `rtt-trace` / `itm-trace` | off | Timing / trace sinks |
@@ -88,13 +105,13 @@ More patterns (particles, lights, fog, physics, skeleton, soft body, async prese
 | `render-layers` | Camera ↔ mesh layer bitmasks |
 | `record-sort` | Priority / distance sort in `record` |
 | `lod-crossfade` | LOD fade margins |
-| `anim-blend` | Clip blending, bone slerp, skinned AABBs |
+| `anim-blend` | Clip blending, bone slerp, skinned AABBs (also enables `scene`) |
 | `gizmos` | AABB / frustum debug wireframes |
 | `visibility-extras` | `aabb-cull` + `render-layers` + `record-sort` + `lod-crossfade` |
 | `scene-extras` | All of the above |
 
 ```toml
-embedded-3dgfx = { version = "0.4", features = ["std", "scene-extras"] }
+embedded-3dgfx = { version = "0.5", features = ["std", "scene-extras"] }
 ```
 
 ```bash
@@ -104,8 +121,11 @@ cargo test --test scene_extras --features "std,scene-extras"
 ## Examples
 
 ```bash
-cargo run --example <name> --features std
-# physics demos also need: --features "std,physics"
+cargo run --example rotating_cube --features std
+cargo run --example lighting_demo --features "std,lighting"
+cargo run --example texture_mapping_demo --features "std,textured"
+cargo run --example skeletal_animation_demo --features "std,scene"
+# physics demos also need: --features "std,physics" (many also want lighting)
 ```
 
 Rendering: `basic_rendering`, `rotating_cube`, `scene_viewer`, `lighting_demo`, `gouraud_demo`, `blinn_phong_demo`, `fog_dithering_demo`, `texture_mapping_demo`, `mesh_texture_demo`, `retro_presets_demo`, `bsp_builder_demo`, `dma_rendering_demo`, `billboard_demo`, `lod_demo`, `vertex_animation_demo`, `painters_algorithm_demo`, `boot_menu`, `stl_viewer`, …

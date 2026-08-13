@@ -26,10 +26,24 @@ fn primitive_bounds(primitive: &DrawPrimitive) -> (i32, i32, i32, i32) {
         DrawPrimitive::Line([a, b], _) => (a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y)),
         DrawPrimitive::ColoredTriangle(points, _)
         | DrawPrimitive::ColoredTriangleWithDepth { points, .. }
-        | DrawPrimitive::TranslucentTriangleWithDepth { points, .. }
-        | DrawPrimitive::GouraudTriangle { points, .. }
-        | DrawPrimitive::GouraudTriangleWithDepth { points, .. }
-        | DrawPrimitive::TexturedTriangle { points, .. }
+        | DrawPrimitive::TranslucentTriangleWithDepth { points, .. } => {
+            let min_x = points.iter().map(|p| p.x).min().unwrap_or(0);
+            let min_y = points.iter().map(|p| p.y).min().unwrap_or(0);
+            let max_x = points.iter().map(|p| p.x).max().unwrap_or(0);
+            let max_y = points.iter().map(|p| p.y).max().unwrap_or(0);
+            (min_x, min_y, max_x, max_y)
+        }
+        #[cfg(feature = "lighting")]
+        DrawPrimitive::GouraudTriangle { points, .. }
+        | DrawPrimitive::GouraudTriangleWithDepth { points, .. } => {
+            let min_x = points.iter().map(|p| p.x).min().unwrap_or(0);
+            let min_y = points.iter().map(|p| p.y).min().unwrap_or(0);
+            let max_x = points.iter().map(|p| p.x).max().unwrap_or(0);
+            let max_y = points.iter().map(|p| p.y).max().unwrap_or(0);
+            (min_x, min_y, max_x, max_y)
+        }
+        #[cfg(feature = "textured")]
+        DrawPrimitive::TexturedTriangle { points, .. }
         | DrawPrimitive::TexturedTriangleWithDepth { points, .. }
         | DrawPrimitive::TexturedGouraudTriangleWithDepth { points, .. }
         | DrawPrimitive::LightmappedTriangle { points, .. } => {

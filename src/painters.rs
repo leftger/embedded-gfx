@@ -95,11 +95,18 @@ impl K3dengine {
             let render_mode = self.resolve_render_mode(&mesh.render_mode);
 
             // Only collect renderable triangles (solid-style modes)
-            match render_mode {
+            #[cfg(feature = "lighting")]
+            let solidish = matches!(
+                render_mode,
                 RenderMode::Solid
-                | RenderMode::SolidLightDir(_)
-                | RenderMode::BlinnPhong { .. }
-                | RenderMode::SectorBright(_) => {
+                    | RenderMode::SolidLightDir(_)
+                    | RenderMode::BlinnPhong { .. }
+                    | RenderMode::SectorBright(_)
+            );
+            #[cfg(not(feature = "lighting"))]
+            let solidish = matches!(render_mode, RenderMode::Solid);
+            match render_mode {
+                _ if solidish => {
                     for (face_idx, face) in geometry.faces.iter().enumerate() {
                         let v = geometry.vertices;
                         if face[0] >= v.len() || face[1] >= v.len() || face[2] >= v.len() {
@@ -165,6 +172,7 @@ impl K3dengine {
                         };
 
                         // Determine flat color based on render mode.
+                        #[cfg(feature = "lighting")]
                         let mut color = match render_mode {
                             RenderMode::SolidLightDir(light_dir) => {
                                 let adjusted_dir =
@@ -192,7 +200,10 @@ impl K3dengine {
                             RenderMode::BlinnPhong { .. } | RenderMode::Solid => mesh.color,
                             _ => mesh.color,
                         };
+                        #[cfg(not(feature = "lighting"))]
+                        let mut color = mesh.color;
 
+                        #[cfg(feature = "lighting")]
                         if !self.point_lights.is_empty() {
                             let wc =
                                 Self::face_world_center(face, geometry.vertices, mesh.model_matrix);

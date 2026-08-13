@@ -8,6 +8,7 @@ use embedded_3dgfx::error::{BudgetKind, RecoveryAction, RenderError};
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
 use embedded_3dgfx::renderer::FrameCtx;
 use embedded_3dgfx::telemetry::{ExecuteTelemetry, RecordTelemetry};
+#[cfg(feature = "textured")]
 use embedded_3dgfx::texture::{Texture, TextureManager};
 use embedded_3dgfx::{K3dengine, RetroStyle, Z_MAX_VALUE};
 use embedded_graphics_core::pixelcolor::Rgb565;
@@ -246,6 +247,7 @@ fn test_full_rendering_pipeline_solid() {
     assert!(fb.pixel_count() > 50);
 }
 
+#[cfg(feature = "textured")]
 #[test]
 fn test_textured_quad_record_and_execute_with_textures() {
     // End-to-end coverage for `RenderMode::Textured`: `record()` must emit
@@ -329,6 +331,7 @@ fn test_textured_quad_record_and_execute_with_textures() {
     }
 }
 
+#[cfg(feature = "textured")]
 #[test]
 fn test_textured_mode_without_uvs_or_texture_id_renders_nothing() {
     // `RenderMode::Textured` requires both `geometry.uvs` and
@@ -620,6 +623,7 @@ fn test_out_of_view_culling() {
     assert_eq!(fb.pixel_count(), 0);
 }
 
+#[cfg(feature = "lighting")]
 #[test]
 fn test_lighting_mode() {
     let engine = K3dengine::new(640, 480);
@@ -1548,6 +1552,7 @@ fn test_golden_hash_solid_scene_record_execute() {
     assert_eq!(digest, 14695981039346656037);
 }
 
+#[cfg(feature = "lighting")]
 #[test]
 fn test_golden_hash_gouraud_scene_record_execute() {
     let mut engine = K3dengine::new(640, 480);
@@ -2194,6 +2199,7 @@ fn test_degradation_policy_returns_recoverable_when_exhausted() {
     ));
 }
 
+#[cfg(feature = "textured")]
 #[test]
 fn test_matcap_record_and_execute_with_textures() {
     let engine = K3dengine::new(640, 480);
@@ -2257,6 +2263,7 @@ fn test_matcap_record_and_execute_with_textures() {
     assert!(fb.pixel_count() > 50, "MatCap quad should rasterize pixels");
 }
 
+#[cfg(feature = "textured")]
 #[test]
 fn test_palettized_textures() {
     use embedded_3dgfx::texture::Texture;
@@ -2287,6 +2294,7 @@ fn test_palettized_textures() {
     assert_eq!(tex_4.sample(0.9, 0.9), Rgb565::CSS_WHITE);
 }
 
+#[cfg(feature = "textured")]
 #[test]
 fn test_textured_gouraud_rendering() {
     let engine = K3dengine::new(640, 480);
@@ -2404,6 +2412,7 @@ fn test_drop_shadow_recording_and_execution() {
     );
 }
 
+#[cfg(feature = "lighting")]
 #[test]
 fn test_toon_shading_and_outline_rendering() {
     let mut engine = K3dengine::new(640, 480);

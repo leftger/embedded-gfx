@@ -97,6 +97,8 @@ More patterns (particles, lights, fog, physics, skeleton, soft body, async prese
 | `triple-buffering` / `embassy` / `dma2d` | off | Swapchain / Embassy / DMA2D hooks |
 | `perfcounter` / `dwt-profiler` / `rtt-trace` / `itm-trace` | off | Timing / trace sinks |
 
+Flash impact of the slim recipes is tracked in [`docs/feature-size.md`](docs/feature-size.md) (`size_harness` + CI budget).
+
 ### Optional scene extras *(off by default — keeps MCU binaries lean)*
 
 | Feature | What you get |
@@ -137,6 +139,7 @@ Physics: `physics_rolling_ball`, `physics_bouncing_balls`, `physics_pendulum`, `
 | Doc | Topic |
 |-----|-------|
 | [`docs/caps-and-telemetry.md`](docs/caps-and-telemetry.md) | Caps, telemetry, CI budgets |
+| [`docs/feature-size.md`](docs/feature-size.md) | Slim vs full flash (`.text`) budgets |
 | [`docs/backend-integration.md`](docs/backend-integration.md) | Board bring-up, memory sizing |
 | [`docs/asset-pipeline.md`](docs/asset-pipeline.md) | Offline assets / scene streaming |
 

@@ -155,6 +155,25 @@ jobs:
       - name: Constrained telemetry budget guard
         run: cargo test --test integration_tests test_ci_telemetry_snapshot_ --no-default-features --features ${{ matrix.row_width_feature }} -- --nocapture 2>&1 | .github/scripts/check_telemetry_budget.py
 
+  minimal-feature-guard:
+    name: Minimal Feature Guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: thumbv7em-none-eabihf
+      - uses: Swatinem/rust-cache@v2
+      - name: Install binutils (arm-none-eabi-size)
+        run: sudo apt-get update && sudo apt-get install -y binutils-arm-none-eabi
+      - name: Minimal / lighting check recipes
+        run: |
+          cargo check --lib --no-default-features --features row_width_320,depth-u16
+          cargo check --lib --no-default-features --features row_width_320,depth-u16,lighting
+          cargo check --lib --features std,physics
+      - name: Flash size budget (size-harness)
+        run: ./.github/scripts/measure_feature_size.sh --check
+
   profile-budget:
     name: Profile Budget (${{ matrix.caps_profile }})
     runs-on: ubuntu-latest

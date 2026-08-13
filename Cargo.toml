@@ -1,4 +1,4 @@
-workspace = { members = ["load_stl", "asset_cli"] }
+workspace = { members = ["load_stl", "asset_cli", "size_harness"] }
 [package]
 name = "embedded-3dgfx"
 version = "0.5.0"

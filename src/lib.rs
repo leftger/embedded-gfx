@@ -57,6 +57,7 @@ pub fn clear_zbuffer(zbuffer: &mut [ZDepth], value: ZDepth) {
 
 use camera::Camera;
 use embedded_graphics_core::pixelcolor::Rgb565;
+#[cfg(feature = "lighting")]
 use embedded_graphics_core::pixelcolor::RgbColor;
 use mesh::K3dMesh;
 use mesh::RenderMode;
@@ -71,13 +72,17 @@ use nalgebra::Vector4;
 #[allow(unused_imports)]
 use nalgebra::ComplexField;
 
+#[cfg(feature = "scene")]
 pub mod animation;
+#[cfg(feature = "scene")]
 pub mod billboard;
 #[cfg(feature = "aabb-cull")]
 pub mod bounds;
 pub mod bridge;
+#[cfg(feature = "raycast")]
 pub mod bsp;
 pub mod camera;
+#[cfg(feature = "scene")]
 pub mod character;
 pub mod command_buffer;
 pub mod completion;
@@ -90,32 +95,46 @@ pub mod error;
 #[cfg(feature = "gizmos")]
 pub mod gizmos;
 pub mod hardware_profile;
+#[cfg(feature = "hud")]
 pub mod hud;
 pub mod input;
+#[cfg(feature = "lighting")]
 pub mod lights;
 pub mod mesh;
+#[cfg(feature = "painters")]
 pub mod painters;
+#[cfg(feature = "scene")]
 pub mod particles;
 #[cfg(feature = "perfcounter")]
 pub mod perfcounter;
 #[cfg(feature = "physics")]
 pub mod physics;
+#[cfg(feature = "raycast")]
 pub mod raycast;
 #[cfg(feature = "render-layers")]
 pub mod render_layers;
 pub mod renderer;
+// retro types (palette/tint/stipple) are used by the always-on draw path;
+// the heavier `painters` helpers stay opt-in.
 pub mod retro;
+#[cfg(feature = "scene")]
 pub mod scene_format;
+#[cfg(feature = "scene")]
 pub mod scene_stream;
+#[cfg(feature = "raycast")]
 pub mod sector_lights;
+#[cfg(feature = "scene")]
 pub mod skeleton;
 #[cfg(feature = "physics")]
 pub mod softbody;
 pub mod swapchain;
 pub mod telemetry;
+#[cfg(feature = "textured")]
 pub mod texture;
 pub mod tilebin;
+#[cfg(feature = "scene")]
 pub mod transform_anim;
+#[cfg(feature = "scene")]
 pub mod tween;
 
 // Re-export framebuffer types from external crate for user convenience
@@ -133,6 +152,7 @@ pub use bounds::Aabb;
 pub use bridge::{
     AsEgPoint, AsNalgebraPoint, draw_to, eg_to_nalgebra, nalgebra_to_eg, render_drawable_to_buffer,
 };
+#[cfg(feature = "scene")]
 pub use character::CharacterController;
 pub use completion::{CompletionSlot, WaitTransfer, WaitTransferFuture};
 pub use display_backend::{
@@ -160,7 +180,9 @@ pub use embedded_dsp::fixed_point::{
     q31_to_q16, qadd_q16, qsub_q16, recip_q16, to_i16_q16, to_q16,
 };
 pub use input::InputState;
+#[cfg(feature = "lighting")]
 pub use lights::{PointLight, PointLightSet};
+#[cfg(feature = "scene")]
 pub use particles::{ParticleSpawn, ParticleSystem};
 #[cfg(feature = "render-layers")]
 pub use render_layers::RenderLayers;
@@ -168,9 +190,12 @@ pub use renderer::{DirtyRegion, FrameCtx};
 pub use retro::{
     LightLevels, PaletteMode, RetroStyle, ScreenTint, SkyConfig, StippleMode, TextureMapping,
 };
+#[cfg(feature = "raycast")]
 pub use sector_lights::{LightEffectKind, SectorLight, light_level_at, light_level_u8_at};
 pub use tilebin::{TileBinStats, TileConfig};
+#[cfg(feature = "scene")]
 pub use transform_anim::{AnimationPlayer, SampledTransform, TransformKeyframe, TransformTrack};
+#[cfg(feature = "scene")]
 pub use tween::{Easing, Tween, Tween3, apply_easing, lerp, lerp3, scale_rgb565};
 
 #[derive(Debug, Clone)]
@@ -189,20 +214,24 @@ pub enum DrawPrimitive {
         color: Rgb565,
         alpha: u8,
     },
+    #[cfg(feature = "lighting")]
     GouraudTriangle {
         points: [Point2<i32>; 3],
         colors: [Rgb565; 3],
     },
+    #[cfg(feature = "lighting")]
     GouraudTriangleWithDepth {
         points: [Point2<i32>; 3],
         depths: [f32; 3],
         colors: [Rgb565; 3],
     },
+    #[cfg(feature = "textured")]
     TexturedTriangle {
         points: [Point2<i32>; 3],
         uvs: [[f32; 2]; 3],
         texture_id: u32,
     },
+    #[cfg(feature = "textured")]
     TexturedTriangleWithDepth {
         points: [Point2<i32>; 3],
         depths: [f32; 3],
@@ -210,6 +239,7 @@ pub enum DrawPrimitive {
         uvs: [[f32; 2]; 3],
         texture_id: u32,
     },
+    #[cfg(feature = "textured")]
     TexturedGouraudTriangleWithDepth {
         points: [Point2<i32>; 3],
         depths: [f32; 3],
@@ -225,6 +255,7 @@ pub enum DrawPrimitive {
     /// where `×` is per-channel normalised multiply.
     /// Set `lightmap_id = u32::MAX` to fall back to full-bright surface colour.
     /// Set `dynamic_tint = Rgb565::new(0,0,0)` for no dynamic lighting.
+    #[cfg(feature = "textured")]
     LightmappedTriangle {
         points: [Point2<i32>; 3],
         depths: [f32; 3],
@@ -267,6 +298,7 @@ pub struct K3dengine {
     sky: Option<crate::retro::SkyConfig>,
     /// Runtime point lights (max 16).  Applied at face-centre granularity
     /// during `record` for mesh geometry and at face level for BSP.
+    #[cfg(feature = "lighting")]
     point_lights: heapless::Vec<crate::lights::PointLight, 16>,
 }
 
@@ -303,6 +335,7 @@ impl K3dengine {
             screen_tint: None,
             palette_mode: crate::retro::PaletteMode::Off,
             sky: None,
+            #[cfg(feature = "lighting")]
             point_lights: heapless::Vec::new(),
         }
     }
@@ -387,17 +420,20 @@ impl K3dengine {
 
     /// Add a dynamic point light.  Returns `false` when the 16-light limit
     /// is reached.
+    #[cfg(feature = "lighting")]
     pub fn add_point_light(&mut self, light: crate::lights::PointLight) -> bool {
         self.point_lights.push(light).is_ok()
     }
 
     /// Remove all dynamic point lights.
+    #[cfg(feature = "lighting")]
     pub fn clear_point_lights(&mut self) {
         self.point_lights.clear();
     }
 
     /// Compute the summed additive RGB565 tint from all registered point
     /// lights at `world_pos`.
+    #[cfg(feature = "lighting")]
     #[inline]
     fn light_tint_at(&self, world_pos: Point3<f32>) -> Rgb565 {
         let mut r = 0u32;
@@ -413,6 +449,7 @@ impl K3dengine {
     }
 
     /// Additively blend `tint` into `base`, saturating per channel.
+    #[cfg(feature = "lighting")]
     #[inline]
     fn add_tint(base: Rgb565, tint: Rgb565) -> Rgb565 {
         Rgb565::new(
@@ -423,11 +460,13 @@ impl K3dengine {
     }
 
     /// Non-linear 32-level light ramp for Doom-style sector attenuation.
+    #[cfg(feature = "lighting")]
     const DOOM_LIGHT_TABLE: [u8; 32] = [
         8, 12, 16, 20, 24, 28, 34, 40, 48, 56, 64, 72, 82, 92, 102, 112, 124, 136, 148, 160, 172,
         184, 196, 206, 216, 224, 232, 238, 244, 248, 252, 255,
     ];
 
+    #[cfg(feature = "lighting")]
     #[inline]
     fn sector_shaded_color(
         &self,
@@ -456,6 +495,7 @@ impl K3dengine {
     }
 
     /// Compute the world-space centroid of a triangle face.
+    #[cfg(feature = "lighting")]
     #[inline]
     fn face_world_center(
         face: &[usize; 3],
@@ -494,35 +534,44 @@ impl K3dengine {
     }
 
     fn resolve_render_mode(&self, mode: &RenderMode) -> RenderMode {
-        use crate::config::{MaterialProfile, QualityTier};
-        match self.quality_tier {
-            QualityTier::Fastest => match mode {
-                RenderMode::BlinnPhong { .. }
-                | RenderMode::GouraudLightDir(_)
-                | RenderMode::Toon(_, _)
-                | RenderMode::SolidLightDir(_) => RenderMode::Solid,
-                _ => mode.clone(),
-            },
-            QualityTier::Balanced => match (self.material_profile, mode) {
-                (MaterialProfile::Unlit, RenderMode::BlinnPhong { .. })
-                | (MaterialProfile::Unlit, RenderMode::GouraudLightDir(_))
-                | (MaterialProfile::Unlit, RenderMode::Toon(_, _))
-                | (MaterialProfile::Unlit, RenderMode::SolidLightDir(_)) => RenderMode::Solid,
-                (MaterialProfile::Lambert, RenderMode::BlinnPhong { light_dir, .. }) => {
-                    RenderMode::SolidLightDir(*light_dir)
-                }
-                _ => mode.clone(),
-            },
-            QualityTier::Quality => match (self.material_profile, mode) {
-                (MaterialProfile::Unlit, RenderMode::BlinnPhong { .. })
-                | (MaterialProfile::Unlit, RenderMode::GouraudLightDir(_))
-                | (MaterialProfile::Unlit, RenderMode::Toon(_, _))
-                | (MaterialProfile::Unlit, RenderMode::SolidLightDir(_)) => RenderMode::Solid,
-                (MaterialProfile::Lambert, RenderMode::BlinnPhong { light_dir, .. }) => {
-                    RenderMode::SolidLightDir(*light_dir)
-                }
-                _ => mode.clone(),
-            },
+        #[cfg(not(feature = "lighting"))]
+        {
+            let _ = self;
+            mode.clone()
+        }
+        #[cfg(feature = "lighting")]
+        {
+            use crate::config::{MaterialProfile, QualityTier};
+            match self.quality_tier {
+                QualityTier::Fastest => match mode {
+                    #[cfg(feature = "lighting")]
+                    RenderMode::BlinnPhong { .. }
+                    | RenderMode::GouraudLightDir(_)
+                    | RenderMode::Toon(_, _)
+                    | RenderMode::SolidLightDir(_) => RenderMode::Solid,
+                    _ => mode.clone(),
+                },
+                QualityTier::Balanced => match (self.material_profile, mode) {
+                    (MaterialProfile::Unlit, RenderMode::BlinnPhong { .. })
+                    | (MaterialProfile::Unlit, RenderMode::GouraudLightDir(_))
+                    | (MaterialProfile::Unlit, RenderMode::Toon(_, _))
+                    | (MaterialProfile::Unlit, RenderMode::SolidLightDir(_)) => RenderMode::Solid,
+                    (MaterialProfile::Lambert, RenderMode::BlinnPhong { light_dir, .. }) => {
+                        RenderMode::SolidLightDir(*light_dir)
+                    }
+                    _ => mode.clone(),
+                },
+                QualityTier::Quality => match (self.material_profile, mode) {
+                    (MaterialProfile::Unlit, RenderMode::BlinnPhong { .. })
+                    | (MaterialProfile::Unlit, RenderMode::GouraudLightDir(_))
+                    | (MaterialProfile::Unlit, RenderMode::Toon(_, _))
+                    | (MaterialProfile::Unlit, RenderMode::SolidLightDir(_)) => RenderMode::Solid,
+                    (MaterialProfile::Lambert, RenderMode::BlinnPhong { light_dir, .. }) => {
+                        RenderMode::SolidLightDir(*light_dir)
+                    }
+                    _ => mode.clone(),
+                },
+            }
         }
     }
 
@@ -1009,17 +1058,21 @@ impl K3dengine {
 
             let transform_matrix = self.camera.vp_matrix * mesh.model_matrix;
 
-            let render_mode = self.resolve_render_mode(&mesh.render_mode);
+            #[cfg(feature = "textured")]
             let is_textured = matches!(
-                render_mode,
+                self.resolve_render_mode(&mesh.render_mode),
                 RenderMode::Textured | RenderMode::TexturedGouraud(_) | RenderMode::MatCap
             );
+            #[cfg(not(feature = "textured"))]
+            let is_textured = false;
 
             let mut v_cache_plain: [Option<Point3<i32>>; 256] = [None; 256];
+            #[cfg(feature = "textured")]
             let mut v_cache_w: [Option<(Point3<i32>, f32)>; 256] = [None; 256];
 
             let cache_limit = geometry.vertices.len().min(256);
             if is_textured {
+                #[cfg(feature = "textured")]
                 for i in 0..cache_limit {
                     v_cache_w[i] =
                         self.transform_point_with_w(&geometry.vertices[i], transform_matrix);
@@ -1039,6 +1092,7 @@ impl K3dengine {
                 }
             };
 
+            #[cfg(feature = "textured")]
             let get_pt_w = |idx: usize| -> Option<(Point3<i32>, f32)> {
                 if idx < 256 {
                     v_cache_w[idx]
@@ -1051,6 +1105,7 @@ impl K3dengine {
                 Some([get_pt(face[0])?, get_pt(face[1])?, get_pt(face[2])?])
             };
 
+            #[cfg(feature = "textured")]
             let tf_face_w = |face: &[usize; 3]| -> Option<([Point3<i32>; 3], [f32; 3])> {
                 let (p0, w0) = get_pt_w(face[0])?;
                 let (p1, w1) = get_pt_w(face[1])?;
@@ -1172,6 +1227,7 @@ impl K3dengine {
 
                 RenderMode::Lines => {}
 
+                #[cfg(feature = "lighting")]
                 RenderMode::SolidLightDir(direction) => {
                     let color_as_float = Vector3::new(
                         mesh.color.r() as f32 / 32.0,
@@ -1223,6 +1279,7 @@ impl K3dengine {
                     }
                 }
 
+                #[cfg(feature = "lighting")]
                 RenderMode::GouraudLightDir(direction) => {
                     let color_as_float = Vector3::new(
                         mesh.color.r() as f32 / 32.0,
@@ -1281,6 +1338,7 @@ impl K3dengine {
                     }
                 }
 
+                #[cfg(feature = "lighting")]
                 RenderMode::Toon(direction, bands) => {
                     let color_as_float = Vector3::new(
                         mesh.color.r() as f32 / 32.0,
@@ -1336,6 +1394,7 @@ impl K3dengine {
                     }
                 }
 
+                #[cfg(feature = "lighting")]
                 RenderMode::BlinnPhong {
                     light_dir,
                     specular_intensity,
@@ -1433,6 +1492,7 @@ impl K3dengine {
                 RenderMode::Solid => {
                     if geometry.normals.is_empty() {
                         for face in geometry.faces.iter() {
+                            #[cfg(feature = "lighting")]
                             let color = if !self.point_lights.is_empty() {
                                 let wc = Self::face_world_center(
                                     face,
@@ -1443,6 +1503,8 @@ impl K3dengine {
                             } else {
                                 mesh.color
                             };
+                            #[cfg(not(feature = "lighting"))]
+                            let color = mesh.color;
                             let v = &geometry.vertices;
                             let clip = [
                                 transform_matrix
@@ -1481,6 +1543,7 @@ impl K3dengine {
                             ) {
                                 continue;
                             }
+                            #[cfg(feature = "lighting")]
                             let color = if !self.point_lights.is_empty() {
                                 let wc = Self::face_world_center(
                                     face,
@@ -1491,6 +1554,8 @@ impl K3dengine {
                             } else {
                                 mesh.color
                             };
+                            #[cfg(not(feature = "lighting"))]
+                            let color = mesh.color;
                             let v = &geometry.vertices;
                             let clip = [
                                 transform_matrix
@@ -1520,6 +1585,7 @@ impl K3dengine {
                     }
                 }
 
+                #[cfg(feature = "lighting")]
                 RenderMode::SectorBright(brightness) => {
                     if geometry.normals.is_empty() {
                         for face in geometry.faces.iter() {
@@ -1602,6 +1668,7 @@ impl K3dengine {
                     }
                 }
 
+                #[cfg(feature = "textured")]
                 RenderMode::Textured => {
                     // Requires both a texture and per-vertex UVs; silently
                     // skip the mesh (move to the next one) if either is
@@ -1671,6 +1738,7 @@ impl K3dengine {
                         }
                     }
                 }
+                #[cfg(feature = "textured")]
                 RenderMode::TexturedGouraud(direction) => {
                     let Some(texture_id) = geometry.texture_id else {
                         continue;
@@ -1772,6 +1840,7 @@ impl K3dengine {
                         }
                     }
                 }
+                #[cfg(feature = "textured")]
                 RenderMode::MatCap => {
                     let Some(texture_id) = geometry.texture_id else {
                         continue;
@@ -2367,6 +2436,7 @@ impl K3dengine {
     /// `record()` call -- only `execute()` needs to change to
     /// `execute_with_textures()` once any mesh in the batch uses
     /// `RenderMode::Textured`.
+    #[cfg(feature = "textured")]
     pub fn execute_with_textures<D, const MAX: usize, const N: usize>(
         &self,
         fb: &mut D,
@@ -3039,6 +3109,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "lighting")]
     fn test_render_gouraud_light_dir() {
         let mut engine = K3dengine::new(640, 480);
         engine.camera.set_position(Point3::new(0.0, 0.0, -10.0));

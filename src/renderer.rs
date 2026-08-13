@@ -62,10 +62,24 @@ fn primitive_bounds(primitive: &DrawPrimitive) -> (i32, i32, i32, i32) {
         DrawPrimitive::Line([a, b], _) => (a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y)),
         DrawPrimitive::ColoredTriangle(points, _)
         | DrawPrimitive::ColoredTriangleWithDepth { points, .. }
-        | DrawPrimitive::TranslucentTriangleWithDepth { points, .. }
-        | DrawPrimitive::GouraudTriangle { points, .. }
-        | DrawPrimitive::GouraudTriangleWithDepth { points, .. }
-        | DrawPrimitive::TexturedTriangle { points, .. }
+        | DrawPrimitive::TranslucentTriangleWithDepth { points, .. } => {
+            let min_x = points.iter().map(|p| p.x).min().unwrap_or(0);
+            let min_y = points.iter().map(|p| p.y).min().unwrap_or(0);
+            let max_x = points.iter().map(|p| p.x).max().unwrap_or(0);
+            let max_y = points.iter().map(|p| p.y).max().unwrap_or(0);
+            (min_x, min_y, max_x, max_y)
+        }
+        #[cfg(feature = "lighting")]
+        DrawPrimitive::GouraudTriangle { points, .. }
+        | DrawPrimitive::GouraudTriangleWithDepth { points, .. } => {
+            let min_x = points.iter().map(|p| p.x).min().unwrap_or(0);
+            let min_y = points.iter().map(|p| p.y).min().unwrap_or(0);
+            let max_x = points.iter().map(|p| p.x).max().unwrap_or(0);
+            let max_y = points.iter().map(|p| p.y).max().unwrap_or(0);
+            (min_x, min_y, max_x, max_y)
+        }
+        #[cfg(feature = "textured")]
+        DrawPrimitive::TexturedTriangle { points, .. }
         | DrawPrimitive::TexturedTriangleWithDepth { points, .. }
         | DrawPrimitive::TexturedGouraudTriangleWithDepth { points, .. }
         | DrawPrimitive::LightmappedTriangle { points, .. } => {
@@ -143,6 +157,7 @@ fn tint_primitive(
             color: apply_post(color, tint, palette_mode),
             alpha,
         },
+        #[cfg(feature = "lighting")]
         DrawPrimitive::GouraudTriangle { points, colors } => DrawPrimitive::GouraudTriangle {
             points,
             colors: [
@@ -151,6 +166,7 @@ fn tint_primitive(
                 apply_post(colors[2], tint, palette_mode),
             ],
         },
+        #[cfg(feature = "lighting")]
         DrawPrimitive::GouraudTriangleWithDepth {
             points,
             depths,
@@ -164,6 +180,7 @@ fn tint_primitive(
                 apply_post(colors[2], tint, palette_mode),
             ],
         },
+        #[cfg(feature = "textured")]
         DrawPrimitive::LightmappedTriangle {
             points,
             depths,
@@ -185,6 +202,7 @@ fn tint_primitive(
             brightness,
             dynamic_tint: apply_post(dynamic_tint, tint, palette_mode),
         },
+        #[cfg(feature = "textured")]
         DrawPrimitive::TexturedGouraudTriangleWithDepth {
             points,
             depths,
@@ -204,6 +222,7 @@ fn tint_primitive(
             ],
             texture_id,
         },
+        #[cfg(feature = "textured")]
         other => other,
     }
 }
@@ -449,6 +468,7 @@ where
 /// flat-colored meshes in one scene keeps consistent tint/palette
 /// behavior.
 #[allow(clippy::too_many_arguments)]
+#[cfg(feature = "textured")]
 pub fn execute_commands_with_dirty_region_effects_textured<D, const MAX: usize, const N: usize>(
     fb: &mut D,
     frame: &mut FrameCtx<'_>,
@@ -509,6 +529,7 @@ where
             }
             RenderCommand::Draw(primitive) => {
                 match primitive {
+                    #[cfg(feature = "textured")]
                     DrawPrimitive::LightmappedTriangle {
                         points,
                         depths,
@@ -541,6 +562,7 @@ where
                             palette_mode,
                         );
                     }
+                    #[cfg(feature = "textured")]
                     DrawPrimitive::TexturedTriangle { .. }
                     | DrawPrimitive::TexturedTriangleWithDepth { .. }
                     | DrawPrimitive::TexturedGouraudTriangleWithDepth { .. } => {

@@ -17,20 +17,20 @@ env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: "0"
   CARGO_BUILD_JOBS: "1"
-  MSRV: "1.88"
+  MSRV: "1.89"
   NO_STD_TARGET: thumbv7em-none-eabihf
   NO_STD_CARGO_ARGS: "--no-default-features --features row_width_240"
   CLIPPY_ARGS: "--lib --all-features"
   DOCS_ARGS: "--lib --no-deps --all-features"
   CHECK_ARGS: "--lib --all-features"
   CI_UNIT_TEST_ARGS: "--lib"
-  CI_INTEGRATION_TEST_ARGS: "-- --test-threads=1"
+  # lighting/textured needed so cfg-gated golden (gouraud) and textured tests run.
+  CI_INTEGRATION_TEST_ARGS: "--features lighting,textured -- --test-threads=1"
   CI_INTEGRATION_CHECK: "true"
-  CI_INTEGRATION_CHECK_CMD: "cargo build --examples"
-  # Default unit tests run without the opt-in scene extras, so exercise the
-  # gated modules and their cfg'd code paths in a second pass.
+  CI_INTEGRATION_CHECK_CMD: "cargo build --examples --all-features"
+  # Default unit tests run without opt-in content features; exercise them here.
   CI_EXTRA_TEST_COMMANDS: |
-    cargo test --lib --features scene-extras
+    cargo test --lib --features "scene-extras,textured,lighting,raycast,hud,painters,physics"
   TELEMETRY_MAX_RECORD_DRAW_COMMANDS: "3"
   TELEMETRY_MAX_EXECUTE_COMMANDS_TOTAL: "4"
   TELEMETRY_MAX_EXECUTE_DRAW_COMMANDS: "3"
@@ -154,6 +154,25 @@ jobs:
         run: cargo clippy --lib --no-default-features --features ${{ matrix.row_width_feature }} -- -W clippy::all
       - name: Constrained telemetry budget guard
         run: cargo test --test integration_tests test_ci_telemetry_snapshot_ --no-default-features --features ${{ matrix.row_width_feature }} -- --nocapture 2>&1 | .github/scripts/check_telemetry_budget.py
+
+  minimal-feature-guard:
+    name: Minimal Feature Guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: thumbv7em-none-eabihf
+      - uses: Swatinem/rust-cache@v2
+      - name: Install binutils (arm-none-eabi-size)
+        run: sudo apt-get update && sudo apt-get install -y binutils-arm-none-eabi
+      - name: Minimal / lighting check recipes
+        run: |
+          cargo check --lib --no-default-features --features row_width_320,depth-u16
+          cargo check --lib --no-default-features --features row_width_320,depth-u16,lighting
+          cargo check --lib --features std,physics
+      - name: Flash size budget (size-harness)
+        run: ./.github/scripts/measure_feature_size.sh --check
 
   profile-budget:
     name: Profile Budget (${{ matrix.caps_profile }})

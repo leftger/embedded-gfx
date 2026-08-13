@@ -1,0 +1,32 @@
+[package]
+name = "size-harness"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+embedded-3dgfx = { path = "..", default-features = false }
+embedded-graphics-core = "0.4"
+cortex-m = "0.7"
+cortex-m-rt = "0.7"
+panic-halt = "1.0"
+nalgebra = { version = "0.35", default-features = false, features = ["libm"] }
+
+[features]
+default = ["row_width_320", "depth-u16"]
+row_width_320 = ["embedded-3dgfx/row_width_320"]
+depth-u16 = ["embedded-3dgfx/depth-u16"]
+lighting = ["embedded-3dgfx/lighting"]
+full = [
+    "lighting",
+    "embedded-3dgfx/textured",
+    "embedded-3dgfx/raycast",
+    "embedded-3dgfx/scene",
+    "embedded-3dgfx/hud",
+    "embedded-3dgfx/painters",
+    "embedded-3dgfx/physics",
+]
+
+[[bin]]
+name = "size-harness"
+path = "src/main.rs"

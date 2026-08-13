@@ -1,4 +1,5 @@
 /// Re-export BSP telemetry from the bsp module for ergonomic imports.
+#[cfg(feature = "raycast")]
 pub use crate::bsp::BspTelemetry;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

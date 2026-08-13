@@ -9,6 +9,7 @@
 extern crate std;
 
 use embedded_3dgfx::draw::{fast_blend_rgb565, fast_blend_rgba8888, fast_blend_rgba8888_to_rgb565};
+#[cfg(feature = "textured")]
 use embedded_3dgfx::texture::Texture;
 use embedded_graphics_core::pixelcolor::{Rgb565, RgbColor, WebColors};
 
@@ -166,6 +167,7 @@ static CHECKER_DATA: [Rgb565; 64] = {
 static SOLID_RED: [Rgb565; 64] = [Rgb565::CSS_RED; 64];
 static SOLID_GREEN: [Rgb565; 64] = [Rgb565::CSS_GREEN; 64];
 
+#[cfg(feature = "textured")]
 #[test]
 fn test_affine_q16_sample_top_left() {
     let tex = Texture::new(&CHECKER_DATA, 8, 8);
@@ -174,6 +176,7 @@ fn test_affine_q16_sample_top_left() {
     assert_eq!(pixel, Rgb565::CSS_BLACK, "top-left pixel should be black");
 }
 
+#[cfg(feature = "textured")]
 #[test]
 fn test_affine_q16_sample_center() {
     let tex = Texture::new(&CHECKER_DATA, 8, 8);
@@ -182,6 +185,7 @@ fn test_affine_q16_sample_center() {
     assert_eq!(pixel, Rgb565::CSS_BLACK, "center pixel (4,4) is black");
 }
 
+#[cfg(feature = "textured")]
 #[test]
 fn test_affine_q16_sample_wrapping() {
     let tex = Texture::new(&SOLID_RED, 8, 8);
@@ -191,6 +195,7 @@ fn test_affine_q16_sample_wrapping() {
     assert_eq!(p0, p1, "coordinates should wrap (repeat mode)");
 }
 
+#[cfg(feature = "textured")]
 #[test]
 fn test_affine_scanline_q16_step_across_solid() {
     let tex = Texture::new(&SOLID_RED, 8, 8);
@@ -206,6 +211,7 @@ fn test_affine_scanline_q16_step_across_solid() {
     }
 }
 
+#[cfg(feature = "textured")]
 #[test]
 fn test_affine_scanline_q16_step_vertical() {
     // Stepping v only (horizontal axis = 0) should sweep vertically
@@ -220,6 +226,7 @@ fn test_affine_scanline_q16_step_vertical() {
     assert_eq!(scanline[2], Rgb565::CSS_BLACK, "row 2, col 0 = black");
 }
 
+#[cfg(feature = "textured")]
 #[test]
 fn test_affine_q16_full_texture_traversal() {
     let tex = Texture::new(&CHECKER_DATA, 8, 8);
@@ -249,6 +256,7 @@ fn test_affine_q16_full_texture_traversal() {
     );
 }
 
+#[cfg(feature = "textured")]
 #[test]
 fn test_affine_scanline_q16_two_textures() {
     // Confirm different textures return different scanline results
@@ -269,9 +277,11 @@ fn test_affine_scanline_q16_two_textures() {
 // 3. BILLBOARD Q16.16 AFFINE UV MAPPING  (arm_2d_transform.h port)
 // ─────────────────────────────────────────────────────────────────────────────
 
+#[cfg(feature = "scene")]
 use embedded_3dgfx::billboard::{Billboard, BillboardQ16};
 use nalgebra::{Point3, Vector3};
 
+#[cfg(feature = "scene")]
 #[test]
 fn test_billboard_default_uv_q16_corners() {
     let uvs = Billboard::default_uv_q16();
@@ -282,6 +292,7 @@ fn test_billboard_default_uv_q16_corners() {
     assert_eq!(uvs[3], [0, 65536], "TL = (0, 1.0) in Q16");
 }
 
+#[cfg(feature = "scene")]
 #[test]
 fn test_billboard_custom_uv_q16() {
     let pos = Point3::new(0.0, 0.0, 0.0);
@@ -295,6 +306,7 @@ fn test_billboard_custom_uv_q16() {
     assert_eq!(uvs[3], [0, 32768]);
 }
 
+#[cfg(feature = "scene")]
 #[test]
 fn test_billboard_textured_quad_q16_layout() {
     let pos = Point3::new(0.0, 0.0, 0.0);
@@ -310,6 +322,7 @@ fn test_billboard_textured_quad_q16_layout() {
     assert_eq!(uvs[2], [65536, 65536]);
 }
 
+#[cfg(feature = "scene")]
 #[test]
 fn test_billboard_q16_from_float_position_scale() {
     let pos = Point3::new(2.0, 3.0, -1.0);
@@ -320,6 +333,7 @@ fn test_billboard_q16_from_float_position_scale() {
     assert_eq!(bq.size_q16, 32768, "size=0.5 → 32768 in Q16.16");
 }
 
+#[cfg(feature = "scene")]
 #[test]
 fn test_billboard_q16_uv_from_default() {
     let pos = Point3::new(0.0, 0.0, 0.0);
@@ -331,6 +345,7 @@ fn test_billboard_q16_uv_from_default() {
     assert_eq!(bq.uv_q16[3], [0, 65536]);
 }
 
+#[cfg(feature = "scene")]
 #[test]
 fn test_billboard_fast_transform_matches_manual() {
     let pos = Point3::new(0.0, 0.0, 0.0);
@@ -577,6 +592,7 @@ fn test_reverse_color_rgba8888() {
     );
 }
 
+#[cfg(feature = "textured")]
 #[test]
 fn test_2xssaa_texture_sampling() {
     static RAW: [Rgb565; 4] = [

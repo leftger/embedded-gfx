@@ -5,11 +5,53 @@ use crate::{
     error::{BudgetKind, RenderError},
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PrimitiveHeader {
+    pub min_x: i32,
+    pub min_y: i32,
+    pub max_x: i32,
+    pub max_y: i32,
+}
+
+impl PrimitiveHeader {
+    pub fn new(min_x: i32, min_y: i32, max_x: i32, max_y: i32) -> Self {
+        Self {
+            min_x,
+            min_y,
+            max_x,
+            max_y,
+        }
+    }
+
+    pub fn from_primitive(primitive: &DrawPrimitive) -> Self {
+        let (min_x, min_y, max_x, max_y) = primitive.bounds();
+        Self {
+            min_x,
+            min_y,
+            max_x,
+            max_y,
+        }
+    }
+
+    pub fn bounds(&self) -> (i32, i32, i32, i32) {
+        (self.min_x, self.min_y, self.max_x, self.max_y)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum RenderCommand {
     ClearColor(embedded_graphics_core::pixelcolor::Rgb565),
     ClearDepth(crate::ZDepth),
     Draw(DrawPrimitive),
+}
+
+impl RenderCommand {
+    pub fn bounds(&self) -> Option<(i32, i32, i32, i32)> {
+        match self {
+            RenderCommand::Draw(primitive) => Some(primitive.bounds()),
+            _ => None,
+        }
+    }
 }
 
 pub struct CommandBuffer<const MAX: usize> {

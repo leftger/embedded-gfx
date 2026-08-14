@@ -38,6 +38,47 @@ impl DisplayRegion {
     }
 }
 
+/// Trait for offloading 2D/3D fill, blit, and clear operations to silicon acceleration units (e.g. DMA2D / Chrom-ART).
+pub trait HardwareAccelerator {
+    /// Accelerated fill of a rectangular area with a solid color.
+    fn fill_rect(&mut self, x: u16, y: u16, w: u16, h: u16, color: Rgb565) -> bool;
+
+    /// Accelerated memory copy / blit from source to destination buffer.
+    fn blit(
+        &mut self,
+        src: &[Rgb565],
+        src_stride: usize,
+        dst_x: u16,
+        dst_y: u16,
+        w: u16,
+        h: u16,
+    ) -> bool;
+}
+
+/// Default CPU-fallback implementation of `HardwareAccelerator`.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct CpuAccelerator;
+
+impl HardwareAccelerator for CpuAccelerator {
+    #[inline(always)]
+    fn fill_rect(&mut self, _x: u16, _y: u16, _w: u16, _h: u16, _color: Rgb565) -> bool {
+        false // Fallback to software rasterizer
+    }
+
+    #[inline(always)]
+    fn blit(
+        &mut self,
+        _src: &[Rgb565],
+        _src_stride: usize,
+        _dst_x: u16,
+        _dst_y: u16,
+        _w: u16,
+        _h: u16,
+    ) -> bool {
+        false // Fallback to software rasterizer
+    }
+}
+
 /// Error types for display backend operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DisplayError {

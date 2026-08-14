@@ -766,26 +766,9 @@ impl K3dengine {
 // Primitive bounding box helper (mirrors renderer.rs::primitive_bounds)
 // ---------------------------------------------------------------------------
 
+#[inline(always)]
 fn prim_bounds(p: &DrawPrimitive) -> (i32, i32, i32, i32) {
-    match p {
-        DrawPrimitive::ColoredPoint(pt, _) => (pt.x, pt.y, pt.x, pt.y),
-        DrawPrimitive::Line([a, b], _) => (a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y)),
-        DrawPrimitive::ColoredTriangle(pts, _)
-        | DrawPrimitive::ColoredTriangleWithDepth { points: pts, .. }
-        | DrawPrimitive::TranslucentTriangleWithDepth { points: pts, .. }
-        | DrawPrimitive::GouraudTriangle { points: pts, .. }
-        | DrawPrimitive::GouraudTriangleWithDepth { points: pts, .. }
-        | DrawPrimitive::TexturedTriangle { points: pts, .. }
-        | DrawPrimitive::TexturedTriangleWithDepth { points: pts, .. }
-        | DrawPrimitive::TexturedGouraudTriangleWithDepth { points: pts, .. }
-        | DrawPrimitive::LightmappedTriangle { points: pts, .. } => {
-            let min_x = pts.iter().map(|p| p.x).min().unwrap_or(0);
-            let min_y = pts.iter().map(|p| p.y).min().unwrap_or(0);
-            let max_x = pts.iter().map(|p| p.x).max().unwrap_or(0);
-            let max_y = pts.iter().map(|p| p.y).max().unwrap_or(0);
-            (min_x, min_y, max_x, max_y)
-        }
-    }
+    p.bounds()
 }
 
 // ---------------------------------------------------------------------------

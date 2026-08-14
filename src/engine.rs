@@ -1,20 +1,15 @@
 use core::fmt::Debug;
-use embedded_graphics_core::draw_target::DrawTarget;
-use embedded_graphics_core::pixelcolor::{Rgb565, RgbColor};
-use embedded_graphics_core::prelude::Point;
-use nalgebra::{ComplexField, Matrix4, Point2, Point3, Vector3, Vector4};
+use embedded_graphics_core::pixelcolor::Rgb565;
+#[allow(unused_imports)]
+use embedded_graphics_core::pixelcolor::RgbColor;
+
+#[allow(unused_imports)]
+use nalgebra::ComplexField;
+use nalgebra::{Matrix4, Point3, Vector3, Vector4};
 
 use crate::camera::Camera;
-use crate::command_buffer::{CommandBuffer, RenderCommand};
-use crate::config::{MaterialProfile, ProfileCaps, QualityTier};
-use crate::draw::{DitherConfig, FogConfig};
-use crate::error::{BudgetKind, RenderError};
-use crate::mesh::{self, K3dMesh, RenderMode};
+use crate::mesh::{K3dMesh, RenderMode};
 use crate::primitive::DrawPrimitive;
-use crate::renderer::{DirtyRegion, FrameCtx};
-use crate::retro::{LightLevels, PaletteMode, ScreenTint, SkyConfig, StippleMode, TextureMapping};
-use crate::tilebin::TileConfig;
-use crate::{ZDepth, clear_zbuffer, to_zdepth};
 
 pub struct K3dengine {
     pub camera: Camera,
@@ -206,6 +201,7 @@ impl K3dengine {
     }
 
     /// Additively blend `tint` into `base`, saturating per channel.
+    #[cfg(feature = "lighting")]
     #[inline]
     pub(crate) fn add_tint(base: Rgb565, tint: Rgb565) -> Rgb565 {
         Rgb565::new(
@@ -437,7 +433,11 @@ impl K3dengine {
     }
 
     #[inline(always)]
-    fn transform_point(&self, point: &[f32; 3], model_matrix: Matrix4<f32>) -> Option<Point3<i32>> {
+    pub(crate) fn transform_point(
+        &self,
+        point: &[f32; 3],
+        model_matrix: Matrix4<f32>,
+    ) -> Option<Point3<i32>> {
         #[cfg(feature = "fixed-transform")]
         {
             return self.transform_point_fixed(point, model_matrix);
@@ -776,7 +776,7 @@ impl K3dengine {
         }
     }
 
-    fn render<'a, MS, F>(&self, meshes: MS, mut callback: F)
+    pub(crate) fn render<'a, MS, F>(&self, meshes: MS, mut callback: F)
     where
         MS: IntoIterator<Item = &'a K3dMesh<'a>>,
         F: FnMut(DrawPrimitive),
@@ -1927,14 +1927,14 @@ impl K3dengine {
         #[cfg(feature = "lod-crossfade")]
         {
             match mesh.select_lod_pick(distance) {
-                mesh::LodPick::Single(_) => {
+                crate::mesh::LodPick::Single(_) => {
                     mesh.lod_force.set(None);
                     mesh.draw_alpha.set(None);
                     self.render(core::iter::once(mesh), |primitive| {
                         push_draw(primitive, first_error);
                     });
                 }
-                mesh::LodPick::Crossfade { near, far, t } => {
+                crate::mesh::LodPick::Crossfade { near, far, t } => {
                     let near_lvl = mesh.lod_level_of(near);
                     let far_lvl = mesh.lod_level_of(far);
                     if t < 0.5 {

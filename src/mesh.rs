@@ -11,6 +11,7 @@ use log::error;
 use nalgebra::{Point3, Similarity3, UnitQuaternion, Vector3};
 
 #[cfg(not(feature = "std"))]
+#[allow(unused_imports)]
 use micromath::F32Ext;
 
 #[derive(Debug, PartialEq, Clone)]

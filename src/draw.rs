@@ -393,7 +393,7 @@ impl EdgeStepper {
     }
 }
 
-#[inline(always)]
+#[inline]
 pub fn fill_triangle<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
     p1: Point,
     p2: Point,
@@ -403,15 +403,30 @@ pub fn fill_triangle<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::R
 ) where
     <D as DrawTarget>::Error: Debug,
 {
+    let bounds = fb.bounding_box();
+    let min_x = bounds.top_left.x;
+    let max_x = bounds.bottom_right().unwrap().x;
+    fill_triangle_core(p1, p2, p3, color, min_x, max_x, |chunk| {
+        fb.draw_iter(chunk.iter().copied()).unwrap();
+    });
+}
+
+fn fill_triangle_core<F>(
+    p1: Point,
+    p2: Point,
+    p3: Point,
+    color: embedded_graphics_core::pixelcolor::Rgb565,
+    min_x: i32,
+    max_x: i32,
+    mut emit_chunk: F,
+) where
+    F: FnMut(&[embedded_graphics_core::Pixel<embedded_graphics_core::pixelcolor::Rgb565>]),
+{
     let area = (p2.x - p1.x) * (p3.y - p1.y) - (p2.y - p1.y) * (p3.x - p1.x);
     if area == 0 {
         // Degenerate triangle (all points collinear)
         return;
     }
-
-    let bounds = fb.bounding_box();
-    let min_x = bounds.top_left.x;
-    let max_x = bounds.bottom_right().unwrap().x;
 
     let mut pixel_row: [embedded_graphics_core::Pixel<embedded_graphics_core::pixelcolor::Rgb565>;
         MAX_ROW_WIDTH] = [embedded_graphics_core::Pixel(
@@ -438,7 +453,7 @@ pub fn fill_triangle<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::R
                     pixel_row[i] = embedded_graphics_core::Pixel(Point::new(sx, y), color);
                     i += 1;
                 }
-                fb.draw_iter(pixel_row[..i].iter().copied()).unwrap();
+                emit_chunk(&pixel_row[..i]);
                 x = chunk_end + 1;
             }
             a.advance();
@@ -465,7 +480,7 @@ pub fn fill_triangle<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::R
                     pixel_row[i] = embedded_graphics_core::Pixel(Point::new(sx, y), color);
                     i += 1;
                 }
-                fb.draw_iter(pixel_row[..i].iter().copied()).unwrap();
+                emit_chunk(&pixel_row[..i]);
                 x = chunk_end + 1;
             }
             a.advance();
@@ -474,76 +489,8 @@ pub fn fill_triangle<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::R
     }
 }
 
-#[allow(dead_code)]
-fn fill_bottom_flat_triangle<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
-    p1: Point,
-    p2: Point,
-    p3: Point,
-    color: embedded_graphics_core::pixelcolor::Rgb565,
-    fb: &mut D,
-) where
-    <D as DrawTarget>::Error: Debug,
-{
-    let mut edge1 = EdgeStepper::new(p1, p2, p1.y);
-    let mut edge2 = EdgeStepper::new(p1, p3, p1.y);
-
-    for scanline_y in p1.y..=p2.y {
-        draw_horizontal_line(
-            Point::new(edge1.current_x(), scanline_y),
-            Point::new(edge2.current_x(), scanline_y),
-            color,
-            fb,
-        );
-        edge1.advance();
-        edge2.advance();
-    }
-}
-
-#[allow(dead_code)]
-fn fill_top_flat_triangle<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
-    p1: Point,
-    p2: Point,
-    p3: Point,
-    color: embedded_graphics_core::pixelcolor::Rgb565,
-    fb: &mut D,
-) where
-    <D as DrawTarget>::Error: Debug,
-{
-    // p1.y == p2.y (top flat), p3 is the bottom vertex; iterate top-down.
-    let mut edge1 = EdgeStepper::new(p1, p3, p1.y);
-    let mut edge2 = EdgeStepper::new(p2, p3, p1.y);
-
-    for scanline_y in p1.y..=p3.y {
-        draw_horizontal_line(
-            Point::new(edge1.current_x(), scanline_y),
-            Point::new(edge2.current_x(), scanline_y),
-            color,
-            fb,
-        );
-        edge1.advance();
-        edge2.advance();
-    }
-}
-
-#[allow(dead_code)]
-fn draw_horizontal_line<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
-    p1: Point,
-    p2: Point,
-    color: embedded_graphics_core::pixelcolor::Rgb565,
-    fb: &mut D,
-) where
-    <D as DrawTarget>::Error: Debug,
-{
-    let start = p1.x.min(p2.x);
-    let end = p1.x.max(p2.x);
-
-    for x in start..=end {
-        fb.draw_iter([embedded_graphics_core::Pixel(Point::new(x, p1.y), color)])
-            .unwrap();
-    }
-}
-
 #[derive(Clone, Copy, Default)]
+
 struct ScreenVert {
     x: f32,
     y: f32,
@@ -675,11 +622,12 @@ pub fn draw<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
     match primitive {
         DrawPrimitive::Line([p1, p2], color) => {
             fb.draw_iter(
-                line_drawing::Bresenham::new((p1.x, p1.y), (p2.x, p2.y))
+                crate::raster::Bresenham::new((p1.x, p1.y), (p2.x, p2.y))
                     .map(|(x, y)| embedded_graphics_core::Pixel(Point::new(x, y), color)),
             )
             .unwrap();
         }
+
         DrawPrimitive::ColoredPoint(p, c) => {
             let p = embedded_graphics_core::geometry::Point::new(p.x, p.y);
 
@@ -1083,7 +1031,7 @@ pub fn draw_zbuffered_2xssaa<D>(
 }
 
 #[cfg(feature = "aa")]
-#[inline(always)]
+#[inline]
 fn fill_triangle_zbuffered_2xssaa<D>(
     p1: nalgebra::Point2<i32>,
     p2: nalgebra::Point2<i32>,
@@ -1132,7 +1080,7 @@ fn fill_triangle_zbuffered_2xssaa<D>(
 }
 
 #[cfg(feature = "aa")]
-#[inline(always)]
+#[inline]
 fn fill_bottom_flat_2xssaa<D>(
     p1: Point,
     p2: Point,
@@ -1173,7 +1121,7 @@ fn fill_bottom_flat_2xssaa<D>(
 }
 
 #[cfg(feature = "aa")]
-#[inline(always)]
+#[inline]
 fn fill_top_flat_2xssaa<D>(
     p1: Point,
     p2: Point,
@@ -1214,7 +1162,7 @@ fn fill_top_flat_2xssaa<D>(
 }
 
 #[cfg(feature = "aa")]
-#[inline(always)]
+#[inline]
 fn ssaa2x_scanline<D>(
     cx1: i32,
     cx2: i32,
@@ -1278,7 +1226,7 @@ fn ssaa2x_scanline<D>(
 }
 
 #[cfg(feature = "aa-heuristic")]
-#[inline(always)]
+#[inline]
 fn fill_triangle_zbuffered_aa<D>(
     p1: nalgebra::Point2<i32>,
     p2: nalgebra::Point2<i32>,
@@ -1327,7 +1275,7 @@ fn fill_triangle_zbuffered_aa<D>(
 }
 
 #[cfg(feature = "aa-heuristic")]
-#[inline(always)]
+#[inline]
 fn fill_bottom_flat_aa<D>(
     p1: Point,
     p2: Point,
@@ -1368,7 +1316,7 @@ fn fill_bottom_flat_aa<D>(
 }
 
 #[cfg(feature = "aa-heuristic")]
-#[inline(always)]
+#[inline]
 fn fill_top_flat_aa<D>(
     p1: Point,
     p2: Point,
@@ -1414,7 +1362,7 @@ fn fill_top_flat_aa<D>(
 /// give us per-edge sub-pixel coverage; the integer span between them is
 /// rendered with the existing fully-opaque fast path.
 #[cfg(feature = "aa-heuristic")]
-#[inline(always)]
+#[inline]
 fn aa_scanline<D>(
     cx1: i32,
     cx2: i32,
@@ -1803,7 +1751,7 @@ fn aa_pixel_cov<D>(
 }
 
 #[cfg(feature = "aa-coverage")]
-#[inline(always)]
+#[inline]
 fn fill_triangle_zbuffered_aa_cov<D>(
     p1: nalgebra::Point2<i32>,
     p2: nalgebra::Point2<i32>,
@@ -1853,7 +1801,7 @@ fn fill_triangle_zbuffered_aa_cov<D>(
 }
 
 #[cfg(feature = "aa-coverage")]
-#[inline(always)]
+#[inline]
 fn fill_bottom_flat_aa_cov<D>(
     p1: Point,
     p2: Point,
@@ -1895,7 +1843,7 @@ fn fill_bottom_flat_aa_cov<D>(
 }
 
 #[cfg(feature = "aa-coverage")]
-#[inline(always)]
+#[inline]
 fn fill_top_flat_aa_cov<D>(
     p1: Point,
     p2: Point,
@@ -1937,7 +1885,7 @@ fn fill_top_flat_aa_cov<D>(
 }
 
 #[cfg(feature = "aa-coverage")]
-#[inline(always)]
+#[inline]
 fn aa_scanline_cov<D>(
     cx1: i32,
     cx2: i32,
@@ -2803,7 +2751,7 @@ pub fn draw_zbuffered_lightmapped_mapped<
 }
 
 #[cfg(feature = "textured")]
-#[inline(always)]
+#[inline]
 #[allow(clippy::too_many_arguments)]
 fn fill_lm_bottom_flat<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
     p1: nalgebra::Point2<i32>,
@@ -2898,7 +2846,7 @@ fn fill_lm_bottom_flat<D: DrawTarget<Color = embedded_graphics_core::pixelcolor:
 }
 
 #[cfg(feature = "textured")]
-#[inline(always)]
+#[inline]
 #[allow(clippy::too_many_arguments)]
 fn fill_lm_top_flat<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
     p1: nalgebra::Point2<i32>,
@@ -2960,7 +2908,7 @@ fn fill_lm_top_flat<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rg
         ];
         let luvr = [
             luv2[0] + t * (luv3[0] - luv2[0]),
-            luv2[1] + t * (luv3[1] - luv2[1]),
+            luv2[1] + t * (luv3[0] - luv2[1]),
         ];
         draw_scanline_lm(
             curx1 >> 16,
@@ -2993,10 +2941,11 @@ fn fill_lm_top_flat<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rg
 }
 
 #[cfg(feature = "textured")]
-#[inline(always)]
+#[inline]
 #[allow(clippy::too_many_arguments)]
 fn draw_scanline_lm<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
     x1: i32,
+
     x2: i32,
     y: i32,
     z1: u32,
@@ -3333,7 +3282,7 @@ pub fn draw_bsp_coverage<
     }
 }
 
-#[inline(always)]
+#[inline]
 fn fill_triangle_zbuffered<D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>>(
     p1: nalgebra::Point2<i32>,
     p2: nalgebra::Point2<i32>,
@@ -3434,7 +3383,7 @@ fn fill_triangle_zbuffered<D: DrawTarget<Color = embedded_graphics_core::pixelco
 
 #[cfg(feature = "lighting")]
 // Gouraud-shaded triangle with z-buffering
-#[inline(always)]
+#[inline]
 fn fill_triangle_zbuffered_gouraud<
     D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>,
 >(
@@ -3545,7 +3494,7 @@ fn fill_triangle_zbuffered_gouraud<
     }
 }
 
-#[inline(always)]
+#[inline]
 fn fill_bottom_flat_triangle_zbuffered<
     D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>,
 >(
@@ -3619,7 +3568,7 @@ fn fill_bottom_flat_triangle_zbuffered<
     }
 }
 
-#[inline(always)]
+#[inline]
 fn fill_top_flat_triangle_zbuffered<
     D: DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>,
 >(

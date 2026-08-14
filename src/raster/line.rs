@@ -92,3 +92,120 @@ where
         intery += gradient;
     }
 }
+
+struct Octant {
+    value: u8,
+}
+
+impl Octant {
+    #[inline]
+    fn new(start: (i32, i32), end: (i32, i32)) -> Self {
+        let mut value = 0u8;
+        let mut dx = end.0 - start.0;
+        let mut dy = end.1 - start.1;
+
+        if dy < 0 {
+            dx = -dx;
+            dy = -dy;
+            value += 4;
+        }
+        if dx < 0 {
+            let tmp = dx;
+            dx = dy;
+            dy = -tmp;
+            value += 2;
+        }
+        if dx < dy {
+            value += 1;
+        }
+
+        Self { value }
+    }
+
+    #[inline]
+    fn to(&self, point: (i32, i32)) -> (i32, i32) {
+        match self.value {
+            0 => (point.0, point.1),
+            1 => (point.1, point.0),
+            2 => (point.1, -point.0),
+            3 => (-point.0, point.1),
+            4 => (-point.0, -point.1),
+            5 => (-point.1, -point.0),
+            6 => (-point.1, point.0),
+            7 => (point.0, -point.1),
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline]
+    fn from(&self, point: (i32, i32)) -> (i32, i32) {
+        match self.value {
+            0 => (point.0, point.1),
+            1 => (point.1, point.0),
+            2 => (-point.1, point.0),
+            3 => (-point.0, point.1),
+            4 => (-point.0, -point.1),
+            5 => (-point.1, -point.0),
+            6 => (point.1, -point.0),
+            7 => (point.0, -point.1),
+            _ => unreachable!(),
+        }
+    }
+}
+
+/// Standard 2D Bresenham line iterator with octant transformation.
+#[derive(Clone, Debug)]
+pub struct Bresenham {
+    point: (i32, i32),
+    end_x: i32,
+    delta_x: i32,
+    delta_y: i32,
+    error: i32,
+    octant_value: u8,
+}
+
+impl Bresenham {
+    pub fn new(start: (i32, i32), end: (i32, i32)) -> Self {
+        let octant = Octant::new(start, end);
+        let start_oct = octant.to(start);
+        let end_oct = octant.to(end);
+
+        let delta_x = end_oct.0 - start_oct.0;
+        let delta_y = end_oct.1 - start_oct.1;
+
+        Self {
+            delta_x,
+            delta_y,
+            octant_value: octant.value,
+            point: start_oct,
+            end_x: end_oct.0,
+            error: delta_y - delta_x,
+        }
+    }
+}
+
+impl Iterator for Bresenham {
+    type Item = (i32, i32);
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.point.0 <= self.end_x {
+            let octant = Octant {
+                value: self.octant_value,
+            };
+            let point = octant.from(self.point);
+
+            if self.error >= 0 {
+                self.point.1 += 1;
+                self.error -= self.delta_x;
+            }
+
+            self.point.0 += 1;
+            self.error += self.delta_y;
+
+            Some(point)
+        } else {
+            None
+        }
+    }
+}

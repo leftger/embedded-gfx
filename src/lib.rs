@@ -55,8 +55,11 @@ pub fn clear_zbuffer(zbuffer: &mut [ZDepth], value: ZDepth) {
     }
 }
 
-use mesh::K3dMesh;
-use nalgebra::{Matrix4, Point3, Vector3, Vector4};
+#[allow(unused_imports)]
+use crate::mesh::K3dMesh;
+#[allow(unused_imports)]
+use nalgebra::Vector4;
+use nalgebra::{Matrix4, Point3, Vector3};
 
 // ComplexField provides sqrt() for f32 in no_std via libm
 // It appears "unused" in tests because tests use std, but it's required for no_std builds

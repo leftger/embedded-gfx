@@ -45,9 +45,12 @@ def extract_block(content: str, fn_name: str) -> str:
 
 
 def main() -> int:
-    lib = Path("src/lib.rs")
-    text = lib.read_text(encoding="utf-8")
+    text = ""
+    for path in (Path("src/engine.rs"), Path("src/lib.rs")):
+        if path.exists():
+            text += path.read_text(encoding="utf-8") + "\n"
     failures: list[str] = []
+
     for fn_name in FRAME_FUNCS:
         block = extract_block(text, fn_name)
         if not block:

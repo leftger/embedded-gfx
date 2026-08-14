@@ -46,7 +46,8 @@ def extract_block(content: str, fn_name: str) -> str:
 
 def main() -> int:
     text = ""
-    for path in (Path("src/engine.rs"), Path("src/lib.rs")):
+    paths = [Path("src/engine.rs"), Path("src/engine/mod.rs"), Path("src/engine/recording.rs"), Path("src/lib.rs")]
+    for path in paths:
         if path.exists():
             text += path.read_text(encoding="utf-8") + "\n"
     failures: list[str] = []

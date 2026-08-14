@@ -11,11 +11,14 @@ A `no_std` 3D graphics and physics engine for embedded systems: software rasteri
 
 ## Highlights
 
-- **Record / execute** — traverse once, rasterize from a fixed-capacity command buffer (optional tiled / textured execute)
+- **Modular Submodule Architecture** *(v0.5.1)* — explicit `embedded_3dgfx::raster::*` and `embedded_3dgfx::shader::*` namespaces
+- **Zero-Cost `FragmentShader` Pipeline** — composable decorator shaders (`FogShader`, `DitherShader`, `ScreenTintShader`, `PaletteShader`, or custom materials)
+- **Record / execute** — traverse once, rasterize from a fixed-capacity command buffer (`PrimitiveHeader` + packed typed descriptors for low RAM footprint)
 - **Rendering** — MVP + frustum/backface cull, Z-buffer, flat/Gouraud/Blinn-Phong, perspective-correct textures, fog, point lights, particles, LOD, HUD
 - **Physics** *(feature `physics`)* — rigid bodies, joints, soft body, raycast with UV
 - **Animation** — skeletal LBS, vertex morphs, transform tracks / tweens
-- **Embedded-friendly** — `heapless` caps, async-agnostic swapchain present, optional DMA2D / Embassy hooks
+- **Embedded-friendly** — `heapless` caps, async-agnostic swapchain present, silicon hardware offloading hooks (`HardwareAccelerator`)
+
 
 ## Screenshots
 
@@ -124,11 +127,13 @@ cargo test --test scene_extras --features "std,scene-extras"
 
 ```bash
 cargo run --example rotating_cube --features std
+cargo run --example custom_material_demo --features std
 cargo run --example lighting_demo --features "std,lighting"
 cargo run --example texture_mapping_demo --features "std,textured"
 cargo run --example skeletal_animation_demo --features "std,scene"
 # physics demos also need: --features "std,physics" (many also want lighting)
 ```
+
 
 Rendering: `basic_rendering`, `rotating_cube`, `scene_viewer`, `lighting_demo`, `gouraud_demo`, `blinn_phong_demo`, `fog_dithering_demo`, `texture_mapping_demo`, `mesh_texture_demo`, `retro_presets_demo`, `bsp_builder_demo`, `dma_rendering_demo`, `billboard_demo`, `lod_demo`, `vertex_animation_demo`, `painters_algorithm_demo`, `boot_menu`, `stl_viewer`, …
 

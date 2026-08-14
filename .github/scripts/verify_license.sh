@@ -6,6 +6,11 @@ test -f LICENSE-MIT
 test -f LICENSE-APACHE
 grep -q 'MIT OR Apache-2.0' Cargo.toml
 
+if ! command -v licensee >/dev/null 2>&1; then
+  echo "licensee is not installed; skipping licensee detection."
+  exit 0
+fi
+
 OUT="$(mktemp)"
 trap 'rm -f "$OUT"' EXIT
 

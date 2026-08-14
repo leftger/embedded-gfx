@@ -3,6 +3,9 @@ use embedded_graphics_core::pixelcolor::{Rgb565, RgbColor};
 #[allow(unused_imports)]
 use nalgebra::{Matrix4, Point3, Vector3, Vector4};
 
+#[allow(unused_imports)]
+use micromath::F32Ext;
+
 use super::K3dengine;
 #[allow(unused_imports)]
 use super::transform::{transform_point, transform_point_with_w};

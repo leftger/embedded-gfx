@@ -181,15 +181,18 @@ fn transform_point_fixed(
 
     let x_fp = div_checked(to_q16(point.x), to_q16(point.w))?;
     let y_fp = div_checked(to_q16(point.y), to_q16(point.w))?;
-    let z_ndc = from_q16(div_checked(to_q16(point.z), to_q16(point.w))?);
+    let z_fp = div_checked(to_q16(point.z), to_q16(point.w))?;
 
-    let x = ((1.0 + from_q16(x_fp)) * 0.5 * width as f32) as i32;
-    let y = ((1.0 - from_q16(y_fp)) * 0.5 * height as f32) as i32;
+    let half_w = (width as i32) << 15;
+    let half_h = (height as i32) << 15;
+    let x = (half_w + ((x_fp as i64 * half_w as i64) >> 16) as i32) >> 16;
+    let y = (half_h - ((y_fp as i64 * half_h as i64) >> 16) as i32) >> 16;
 
     if x < 0 || x >= width as i32 || y < 0 || y >= height as i32 {
         return None;
     }
 
+    let z_ndc = from_q16(z_fp);
     Some(Point3::new(
         x,
         y,

@@ -453,8 +453,8 @@ pub(crate) fn fill_bottom_flat_triangle_zbuffered<D: DrawTarget<Color = Rgb565>>
     let invslope1 = ((p2.x - p1.x) << 16) / height;
     let invslope2 = ((p3.x - p1.x) << 16) / height;
 
-    let mut curx1 = p1.x << 16;
-    let mut curx2 = p1.x << 16;
+    let mut curx1 = (p1.x << 16) + (1 << 15);
+    let mut curx2 = (p1.x << 16) + (1 << 15);
 
     let scr_h = (zbuffer.len() / width) as i32;
     let y_skip = (0_i32 - p1.y).max(0);
@@ -520,8 +520,8 @@ pub(crate) fn fill_top_flat_triangle_zbuffered<D: DrawTarget<Color = Rgb565>>(
     let invslope1 = ((p3.x - p1.x) << 16) / height;
     let invslope2 = ((p3.x - p2.x) << 16) / height;
 
-    let mut curx1 = p3.x << 16;
-    let mut curx2 = p3.x << 16;
+    let mut curx1 = (p3.x << 16) + (1 << 15);
+    let mut curx2 = (p3.x << 16) + (1 << 15);
 
     let scr_h = (zbuffer.len() / width) as i32;
     let y_skip_bot = (p3.y - (scr_h - 1)).max(0);
@@ -590,8 +590,8 @@ fn fill_bottom_flat_triangle_zbuffered_gouraud<D: DrawTarget<Color = Rgb565>>(
     let invslope1 = ((p2.x - p1.x) << 16) / height;
     let invslope2 = ((p3.x - p1.x) << 16) / height;
 
-    let mut curx1 = p1.x << 16;
-    let mut curx2 = p1.x << 16;
+    let mut curx1 = (p1.x << 16) + (1 << 15);
+    let mut curx2 = (p1.x << 16) + (1 << 15);
 
     for scanline_y in p1.y..=p2.y {
         let dy = scanline_y - p1.y;
@@ -659,8 +659,8 @@ fn fill_top_flat_triangle_zbuffered_gouraud<D: DrawTarget<Color = Rgb565>>(
     let invslope1 = ((p3.x - p1.x) << 16) / height;
     let invslope2 = ((p3.x - p2.x) << 16) / height;
 
-    let mut curx1 = p3.x << 16;
-    let mut curx2 = p3.x << 16;
+    let mut curx1 = (p3.x << 16) + (1 << 15);
+    let mut curx2 = (p3.x << 16) + (1 << 15);
 
     for scanline_y in (p1.y..=p3.y).rev() {
         let dy = scanline_y - p1.y;
@@ -966,8 +966,8 @@ fn fill_bottom_flat_translucent<D: DrawTarget<Color = Rgb565>>(
     let invslope1 = ((p2.x - p1.x) << 16) / height;
     let invslope2 = ((p3.x - p1.x) << 16) / height;
 
-    let mut curx1 = p1.x << 16;
-    let mut curx2 = p1.x << 16;
+    let mut curx1 = (p1.x << 16) + (1 << 15);
+    let mut curx2 = (p1.x << 16) + (1 << 15);
 
     for scanline_y in p1.y..=p2.y {
         let dy = scanline_y - p1.y;
@@ -1036,8 +1036,8 @@ fn fill_top_flat_translucent<D: DrawTarget<Color = Rgb565>>(
     let invslope1 = ((p3.x - p1.x) << 16) / height;
     let invslope2 = ((p3.x - p2.x) << 16) / height;
 
-    let mut curx1 = p3.x << 16;
-    let mut curx2 = p3.x << 16;
+    let mut curx1 = (p3.x << 16) + (1 << 15);
+    let mut curx2 = (p3.x << 16) + (1 << 15);
 
     for scanline_y in (p1.y..=p3.y).rev() {
         let dy = scanline_y - p1.y;

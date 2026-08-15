@@ -1,4 +1,20 @@
 #![no_std]
+#![allow(
+    clippy::too_many_arguments,
+    clippy::type_complexity,
+    clippy::needless_range_loop,
+    clippy::result_unit_err,
+    clippy::manual_div_ceil,
+    clippy::manual_is_multiple_of,
+    clippy::explicit_counter_loop,
+    clippy::needless_return,
+    clippy::useless_conversion,
+    clippy::manual_checked_ops,
+    clippy::collapsible_if,
+    clippy::new_without_default,
+    clippy::doc_overindented_list_items,
+    clippy::unnecessary_cast
+)]
 #[cfg(feature = "std")]
 extern crate std;
 

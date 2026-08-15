@@ -73,6 +73,6 @@ impl<'a, S: super::FragmentShader> super::FragmentShader for FogShader<'a, S> {
     #[inline(always)]
     fn shade(&self, x: i32, y: i32, z: crate::ZDepth, interps: Self::Interpolants) -> Rgb565 {
         let base = self.inner.shade(x, y, z, interps);
-        self.fog.apply(base, z as u32)
+        self.fog.apply(base, u32::from(z))
     }
 }

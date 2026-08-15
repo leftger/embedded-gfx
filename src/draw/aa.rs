@@ -132,7 +132,7 @@ pub fn draw_zbuffered_2xssaa<D: DrawTarget<Color = Rgb565>>(
                 let suby = (pt.y % 2) as usize;
                 let idx = gy * width + gx;
                 if idx < grid.len() {
-                    let entry = grid[idx].get_or_insert_with(|| [(Rgb565::BLACK, false); 4]);
+                    let entry = grid[idx].get_or_insert([(Rgb565::BLACK, false); 4]);
                     entry[suby * 2 + subx] = (c, true);
                 }
             }

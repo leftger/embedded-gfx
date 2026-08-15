@@ -263,6 +263,8 @@ dependencies = [
 [[package]]
 name = "embedded-draw-target"
 version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "748264a4284c70371da5e8cc0fdcf4b5ef5cedff75ac132eee228f133633fd7b"
 dependencies = [
  "critical-section",
  "embedded-graphics-core",

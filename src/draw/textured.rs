@@ -1352,7 +1352,7 @@ fn fill_top_flat_triangle_zbuffered_textured<D: DrawTarget<Color = Rgb565>>(
 }
 
 #[inline(always)]
-fn draw_scanline_zbuffered_textured<D: DrawTarget<Color = Rgb565>>(
+pub(crate) fn draw_scanline_zbuffered_textured<D: DrawTarget<Color = Rgb565>>(
     x1: i32,
     x2: i32,
     y: i32,

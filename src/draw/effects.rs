@@ -108,3 +108,73 @@ impl DitherConfig {
         Rgb565::new(r, g, b)
     }
 }
+
+/// Strategy for depth interpolation during triangle rasterization.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DepthInterpolationMode {
+    /// Full per-pixel linear depth interpolation along scanlines (default).
+    #[default]
+    Exact,
+    /// Uniform per-triangle depth using the arithmetic average of vertex depths.
+    FastAverage,
+    /// Uniform per-triangle depth using the maximum (farthest) vertex depth.
+    FastMax,
+}
+
+impl DepthInterpolationMode {
+    /// Pre-process vertex depths according to the interpolation mode.
+    #[inline(always)]
+    pub fn process_depths(&self, z1: f32, z2: f32, z3: f32) -> (f32, f32, f32) {
+        match self {
+            Self::Exact => (z1, z2, z3),
+            Self::FastAverage => {
+                let avg = (z1 + z2 + z3) * (1.0 / 3.0);
+                (avg, avg, avg)
+            }
+            Self::FastMax => {
+                let max_z = if z1 >= z2 && z1 >= z3 {
+                    z1
+                } else if z2 >= z3 {
+                    z2
+                } else {
+                    z3
+                };
+                (max_z, max_z, max_z)
+            }
+        }
+    }
+}
+
+/// Field interlace mode for temporal scanline-interlaced rendering.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum InterlaceField {
+    /// Progressive rendering: all scanlines drawn (default).
+    #[default]
+    Progressive,
+    /// Even field: draws only scanlines with even y (0, 2, 4, ...).
+    Even,
+    /// Odd field: draws only scanlines with odd y (1, 3, 5, ...).
+    Odd,
+}
+
+impl InterlaceField {
+    /// Returns true if scanline `y` should be rendered in this field.
+    #[inline(always)]
+    pub fn includes_scanline(&self, y: i32) -> bool {
+        match self {
+            Self::Progressive => true,
+            Self::Even => (y & 1) == 0,
+            Self::Odd => (y & 1) != 0,
+        }
+    }
+
+    /// Toggles between Even and Odd field for successive frames.
+    #[inline]
+    pub fn toggle(&self) -> Self {
+        match self {
+            Self::Progressive => Self::Progressive,
+            Self::Even => Self::Odd,
+            Self::Odd => Self::Even,
+        }
+    }
+}

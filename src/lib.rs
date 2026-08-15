@@ -182,7 +182,8 @@ pub use draw::ReadPixel;
 #[cfg(feature = "aabb-cull")]
 pub use bounds::Aabb;
 pub use bridge::{
-    AsEgPoint, AsNalgebraPoint, draw_to, eg_to_nalgebra, nalgebra_to_eg, render_drawable_to_buffer,
+    AsEgPoint, AsNalgebraPoint, HalfWidthDrawTargetAdapter, draw_to, eg_to_nalgebra,
+    nalgebra_to_eg, render_drawable_to_buffer, scanout_half_width_buffer, scanout_half_width_row,
 };
 pub use camera::{Camera, Ray};
 #[cfg(feature = "scene")]
@@ -195,8 +196,9 @@ pub use display_backend::{
 #[cfg(feature = "aa")]
 pub use draw::draw_zbuffered_2xssaa;
 pub use draw::{
-    DitherConfig, FogConfig, fast_blend_rgb565, fast_blend_rgba8888, fast_blend_rgba8888_to_rgb565,
-    reverse_color_rgb565, reverse_color_rgba8888,
+    DepthInterpolationMode, DitherConfig, FogConfig, InterlaceField, draw_zbuffered_with_options,
+    fast_blend_rgb565, fast_blend_rgba8888, fast_blend_rgba8888_to_rgb565, reverse_color_rgb565,
+    reverse_color_rgba8888,
 };
 #[cfg(feature = "embassy")]
 pub use embassy::{EmbassyWaitTransfer, EmbassyWaitTransferFuture, FrameClock};
@@ -212,6 +214,8 @@ pub use embedded_dsp::fixed_point::{
     div_q16, from_i16_q16, from_q16, lerp_q16, mul_f_q16, mul_n_q16, mul_q16, q16_to_q31,
     q31_to_q16, qadd_q16, qsub_q16, recip_q16, to_i16_q16, to_q16,
 };
+#[cfg(feature = "hud")]
+pub use hud::{HudElement, HudLayer, Sprite2D, SpriteBlendMode};
 pub use input::InputState;
 #[cfg(feature = "lighting")]
 pub use lights::{PointLight, PointLightSet};
@@ -219,12 +223,14 @@ pub use lights::{PointLight, PointLightSet};
 pub use particles::{ParticleSpawn, ParticleSystem};
 #[cfg(feature = "render-layers")]
 pub use render_layers::RenderLayers;
-pub use renderer::{DirtyRegion, FrameCtx};
+pub use renderer::{DirtyRegion, FrameCtx, PickQuery, PickResult, execute_commands_with_picking};
 pub use retro::{
-    LightLevels, PaletteMode, RetroStyle, ScreenTint, SkyConfig, StippleMode, TextureMapping,
+    AnimatedPalette, LightLevels, PaletteMode, RetroStyle, ScreenTint, SkyConfig, StippleMode,
+    TextureLodConfig, TextureMapping,
 };
 #[cfg(feature = "raycast")]
 pub use sector_lights::{LightEffectKind, SectorLight, light_level_at, light_level_u8_at};
+pub use shader::{WaterReflectConfig, WaterReflectShader};
 pub use tilebin::{TileBinStats, TileConfig};
 #[cfg(feature = "scene")]
 pub use transform_anim::{AnimationPlayer, SampledTransform, TransformKeyframe, TransformTrack};

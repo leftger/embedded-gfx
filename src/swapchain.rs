@@ -229,6 +229,16 @@ where
         }
     }
 
+    /// Returns the active [`crate::draw::InterlaceField`] (`Even` or `Odd`) for the current frame count.
+    #[inline]
+    pub fn current_interlace_field(&self) -> crate::draw::InterlaceField {
+        if (self.frame_count & 1) == 0 {
+            crate::draw::InterlaceField::Even
+        } else {
+            crate::draw::InterlaceField::Odd
+        }
+    }
+
     /// Wait for the current DMA transfer to complete asynchronously.
     pub async fn wait_for_vsync_async(&mut self)
     where
@@ -722,6 +732,25 @@ mod tests {
         // SimulatorBackend transfer is always done immediately
         sc.present().unwrap();
         assert!(sc.is_ready());
+    }
+
+    #[test]
+    fn test_swapchain_interlace_field() {
+        let mut sc = make_swap_chain(SimulatorBackend::new());
+        assert_eq!(
+            sc.current_interlace_field(),
+            crate::draw::InterlaceField::Even
+        );
+        sc.present().unwrap();
+        assert_eq!(
+            sc.current_interlace_field(),
+            crate::draw::InterlaceField::Odd
+        );
+        sc.present().unwrap();
+        assert_eq!(
+            sc.current_interlace_field(),
+            crate::draw::InterlaceField::Even
+        );
     }
 
     // ── TripleSwapChain tests ─────────────────────────────────────────────────

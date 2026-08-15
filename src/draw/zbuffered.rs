@@ -6,7 +6,7 @@ use embedded_graphics_core::pixelcolor::{Rgb565, RgbColor};
 use embedded_graphics_core::prelude::Point;
 
 use super::blend::fast_blend_rgb565;
-use super::effects::{DitherConfig, FogConfig};
+use super::effects::{DepthInterpolationMode, DitherConfig, FogConfig};
 #[cfg(feature = "lighting")]
 use super::fill::interpolate_color;
 use crate::DrawPrimitive;
@@ -21,10 +21,19 @@ pub fn draw_zbuffered<D: DrawTarget<Color = Rgb565>>(
 ) where
     <D as DrawTarget>::Error: Debug,
 {
-    draw_zbuffered_with_effects(primitive, fb, zbuffer, width, None, None);
+    draw_zbuffered_with_options(
+        primitive,
+        fb,
+        zbuffer,
+        width,
+        None,
+        None,
+        DepthInterpolationMode::Exact,
+    );
 }
 
 /// Render primitives with Z-buffering and optional fog / dithering post-processing.
+#[inline]
 pub fn draw_zbuffered_with_effects<D: DrawTarget<Color = Rgb565>>(
     primitive: DrawPrimitive,
     fb: &mut D,
@@ -32,6 +41,29 @@ pub fn draw_zbuffered_with_effects<D: DrawTarget<Color = Rgb565>>(
     width: usize,
     fog_config: Option<&FogConfig>,
     dither_config: Option<&DitherConfig>,
+) where
+    <D as DrawTarget>::Error: Debug,
+{
+    draw_zbuffered_with_options(
+        primitive,
+        fb,
+        zbuffer,
+        width,
+        fog_config,
+        dither_config,
+        DepthInterpolationMode::Exact,
+    );
+}
+
+/// Render primitives with Z-buffering, effects, and configurable depth interpolation mode.
+pub fn draw_zbuffered_with_options<D: DrawTarget<Color = Rgb565>>(
+    primitive: DrawPrimitive,
+    fb: &mut D,
+    zbuffer: &mut [crate::ZDepth],
+    width: usize,
+    fog_config: Option<&FogConfig>,
+    dither_config: Option<&DitherConfig>,
+    depth_mode: DepthInterpolationMode,
 ) where
     <D as DrawTarget>::Error: Debug,
 {
@@ -55,7 +87,8 @@ pub fn draw_zbuffered_with_effects<D: DrawTarget<Color = Rgb565>>(
             }
 
             let [p1, p2, p3] = points;
-            let [z1, z2, z3] = raw_depths;
+            let (z1, z2, z3) =
+                depth_mode.process_depths(raw_depths[0], raw_depths[1], raw_depths[2]);
 
             let scr_w = width as i32;
             let scr_h = (zbuffer.len() / width) as i32;
@@ -108,7 +141,8 @@ pub fn draw_zbuffered_with_effects<D: DrawTarget<Color = Rgb565>>(
             }
 
             let [p1, p2, p3] = points;
-            let [z1, z2, z3] = raw_depths;
+            let (z1, z2, z3) =
+                depth_mode.process_depths(raw_depths[0], raw_depths[1], raw_depths[2]);
 
             let scr_w = width as i32;
             let scr_h = (zbuffer.len() / width) as i32;
@@ -153,7 +187,8 @@ pub fn draw_zbuffered_with_effects<D: DrawTarget<Color = Rgb565>>(
             }
 
             let [p1, p2, p3] = points;
-            let [z1, z2, z3] = raw_depths;
+            let (z1, z2, z3) =
+                depth_mode.process_depths(raw_depths[0], raw_depths[1], raw_depths[2]);
             let [c1, c2, c3] = colors;
 
             let scr_w = width as i32;
@@ -704,7 +739,6 @@ fn draw_scanline_zbuffered_gouraud<D: DrawTarget<Color = Rgb565>>(
     }
 
     let span = right_x - left_x;
-    let inv_span = if span > 0 { 1.0 / span as f32 } else { 0.0 };
     let z_step = if span > 0 {
         (((z_right as i64 - z_left as i64) << 16) / span as i64) as i32
     } else {
@@ -712,19 +746,43 @@ fn draw_scanline_zbuffered_gouraud<D: DrawTarget<Color = Rgb565>>(
     };
 
     let left_clip = start_x - left_x;
+    let r_step = if span > 0 {
+        ((c_right.r() as i32 - c_left.r() as i32) << 16) / span
+    } else {
+        0
+    };
+    let g_step = if span > 0 {
+        ((c_right.g() as i32 - c_left.g() as i32) << 16) / span
+    } else {
+        0
+    };
+    let b_step = if span > 0 {
+        ((c_right.b() as i32 - c_left.b() as i32) << 16) / span
+    } else {
+        0
+    };
+
     let mut z_curr = ((z_left as i64) << 16) + (left_clip as i64 * z_step as i64);
+    let mut r_curr = ((c_left.r() as i32) << 16) + left_clip * r_step;
+    let mut g_curr = ((c_left.g() as i32) << 16) + left_clip * g_step;
+    let mut b_curr = ((c_left.b() as i32) << 16) + left_clip * b_step;
     let mut zbuf_idx = y as usize * width + start_x as usize;
 
     for x in start_x..=end_x {
         let z = (z_curr >> 16) as u32;
+        let r = (r_curr >> 16).clamp(0, 31) as u8;
+        let g = (g_curr >> 16).clamp(0, 63) as u8;
+        let b = (b_curr >> 16).clamp(0, 31) as u8;
         z_curr += z_step as i64;
+        r_curr += r_step;
+        g_curr += g_step;
+        b_curr += b_step;
         let z_depth = crate::to_zdepth(z);
 
         if z_depth < zbuffer[zbuf_idx].saturating_add(crate::DEPTH_EPSILON) {
             zbuffer[zbuf_idx] = z_depth;
 
-            let t = (x - left_x) as f32 * inv_span;
-            let mut final_color = interpolate_color(c_left, c_right, t);
+            let mut final_color = Rgb565::new(r, g, b);
 
             if let Some(fog) = fog_config {
                 final_color = fog.apply(final_color, z);
@@ -784,9 +842,33 @@ pub(crate) fn draw_scanline_zbuffered<D: DrawTarget<Color = Rgb565>>(
         0
     };
 
+    let mut zbuf_idx = y as usize * width + start_x as usize;
+
+    if z_step == 0 {
+        let z = z_left;
+        let z_depth = crate::to_zdepth(z);
+        let mut base_color = color;
+        if let Some(fog) = fog_config {
+            base_color = fog.apply(base_color, z);
+        }
+        for x in start_x..=end_x {
+            if z_depth < zbuffer[zbuf_idx].saturating_add(crate::DEPTH_EPSILON) {
+                zbuffer[zbuf_idx] = z_depth;
+                let final_color = if let Some(dither) = dither_config {
+                    dither.apply(base_color, x, y)
+                } else {
+                    base_color
+                };
+                fb.draw_iter([embedded_graphics_core::Pixel(Point::new(x, y), final_color)])
+                    .unwrap();
+            }
+            zbuf_idx += 1;
+        }
+        return;
+    }
+
     let left_clip = start_x - left_x;
     let mut z_curr = ((z_left as i64) << 16) + (left_clip as i64 * z_step as i64);
-    let mut zbuf_idx = y as usize * width + start_x as usize;
 
     for x in start_x..=end_x {
         let z = (z_curr >> 16) as u32;

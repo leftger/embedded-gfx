@@ -136,6 +136,66 @@ impl Geometry<'_> {
         }
         set.iter().copied().collect()
     }
+
+    /// Calculate the outward unit normal for a single triangular face from 3 vertex positions.
+    #[inline]
+    pub fn calculate_face_normal(v0: &[f32; 3], v1: &[f32; 3], v2: &[f32; 3]) -> [f32; 3] {
+        let edge1 = Vector3::new(v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]);
+        let edge2 = Vector3::new(v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]);
+        let cross = edge1.cross(&edge2);
+        let norm_sq = cross.norm_squared();
+        if norm_sq > 1e-12 {
+            let inv_len = 1.0 / nalgebra::ComplexField::sqrt(norm_sq);
+            [cross.x * inv_len, cross.y * inv_len, cross.z * inv_len]
+        } else {
+            [0.0, 1.0, 0.0]
+        }
+    }
+
+    /// Compute face normals for a set of vertices and faces into a caller-provided slice buffer.
+    ///
+    /// The `out_normals` slice should have at least `faces.len()` elements.
+    /// Returns the number of normals written.
+    pub fn compute_face_normals_into(
+        vertices: &[[f32; 3]],
+        faces: &[[usize; 3]],
+        out_normals: &mut [[f32; 3]],
+    ) -> usize {
+        let count = faces.len().min(out_normals.len());
+        for (i, face) in faces.iter().take(count).enumerate() {
+            if face[0] < vertices.len() && face[1] < vertices.len() && face[2] < vertices.len() {
+                out_normals[i] = Self::calculate_face_normal(
+                    &vertices[face[0]],
+                    &vertices[face[1]],
+                    &vertices[face[2]],
+                );
+            } else {
+                out_normals[i] = [0.0, 1.0, 0.0];
+            }
+        }
+        count
+    }
+
+    /// Helper for computing and allocating face normals as a standard `Vec` (available when `std` feature is enabled).
+    #[cfg(feature = "std")]
+    pub fn compute_face_normals(
+        vertices: &[[f32; 3]],
+        faces: &[[usize; 3]],
+    ) -> std::vec::Vec<[f32; 3]> {
+        let mut normals = std::vec::Vec::with_capacity(faces.len());
+        for face in faces {
+            if face[0] < vertices.len() && face[1] < vertices.len() && face[2] < vertices.len() {
+                normals.push(Self::calculate_face_normal(
+                    &vertices[face[0]],
+                    &vertices[face[1]],
+                    &vertices[face[2]],
+                ));
+            } else {
+                normals.push([0.0, 1.0, 0.0]);
+            }
+        }
+        normals
+    }
 }
 
 /// Level of Detail configuration for a mesh
@@ -954,5 +1014,19 @@ mod tests {
         let aabb = mesh.aabb.expect("cached");
         assert!((aabb.half_extents.x - 2.0).abs() < 1e-5);
         assert!((aabb.half_extents.y - 1.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_compute_face_normals() {
+        let vertices = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
+        let faces = [[0usize, 1, 2]];
+        let mut normals = [[0.0f32; 3]; 1];
+
+        let written = Geometry::compute_face_normals_into(&vertices, &faces, &mut normals);
+        assert_eq!(written, 1);
+        // Face (0,0,0) -> (1,0,0) -> (0,1,0) has outward normal pointing in +Z (0, 0, 1)
+        assert!((normals[0][0] - 0.0).abs() < 1e-5);
+        assert!((normals[0][1] - 0.0).abs() < 1e-5);
+        assert!((normals[0][2] - 1.0).abs() < 1e-5);
     }
 }

@@ -99,9 +99,116 @@ pub fn format_u16_dec(mut value: u16, buf: &mut [u8], digits: usize) -> &str {
     core::str::from_utf8(&buf[start..]).unwrap_or("")
 }
 
+/// Blend and transparency mode for 2D sprite blitting.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum SpriteBlendMode {
+    /// Direct overwrite of destination pixels (default).
+    #[default]
+    Normal,
+    /// Transparent color-key (pixels matching the key color are skipped).
+    ColorKey(Rgb565),
+    /// Alpha blended with 8-bit alpha (0 = transparent, 255 = fully opaque).
+    Alpha(u8),
+    /// Saturating additive blend (src + dst), ideal for neon glow, particles, and flares.
+    Additive,
+}
+
+/// A 2D sprite image referencing an RGB565 pixel slice.
+#[derive(Clone, Copy, Debug)]
+pub struct Sprite2D<'a> {
+    /// Screen X position of the top-left corner.
+    pub x: i32,
+    /// Screen Y position of the top-left corner.
+    pub y: i32,
+    /// Width of the sprite in pixels.
+    pub width: u32,
+    /// Height of the sprite in pixels.
+    pub height: u32,
+    /// Integer scale multiplier (1 = 1x, 2 = 2x, etc.).
+    pub scale: u8,
+    /// Transparency / blend mode.
+    pub blend_mode: SpriteBlendMode,
+    /// Pixel data slice of length `width * height`.
+    pub data: &'a [Rgb565],
+}
+
+impl<'a> Sprite2D<'a> {
+    /// Create a new 2D sprite descriptor.
+    pub const fn new(x: i32, y: i32, width: u32, height: u32, data: &'a [Rgb565]) -> Self {
+        Self {
+            x,
+            y,
+            width,
+            height,
+            scale: 1,
+            blend_mode: SpriteBlendMode::Normal,
+            data,
+        }
+    }
+
+    /// Configure color-key transparency (e.g. magenta `0xF81F`).
+    pub const fn with_colorkey(mut self, key: Rgb565) -> Self {
+        self.blend_mode = SpriteBlendMode::ColorKey(key);
+        self
+    }
+
+    /// Configure alpha transparency level (0-255).
+    pub const fn with_alpha(mut self, alpha: u8) -> Self {
+        self.blend_mode = SpriteBlendMode::Alpha(alpha);
+        self
+    }
+
+    /// Configure integer scaling multiplier (1x, 2x, 3x, ...).
+    pub const fn with_scale(mut self, scale: u8) -> Self {
+        self.scale = if scale > 0 { scale } else { 1 };
+        self
+    }
+
+    /// Blit this sprite directly onto an embedded-graphics [`DrawTarget`].
+    pub fn draw<D>(&self, target: &mut D) -> Result<(), D::Error>
+    where
+        D: DrawTarget<Color = Rgb565>,
+    {
+        let scale = self.scale as i32;
+        let w = self.width as usize;
+        let h = self.height as usize;
+
+        for sy in 0..h {
+            for sx in 0..w {
+                let idx = sy * w + sx;
+                if idx >= self.data.len() {
+                    break;
+                }
+                let color = self.data[idx];
+
+                if let SpriteBlendMode::ColorKey(key) = self.blend_mode {
+                    if color == key {
+                        continue;
+                    }
+                }
+
+                let base_x = self.x + sx as i32 * scale;
+                let base_y = self.y + sy as i32 * scale;
+
+                if scale == 1 {
+                    target.draw_iter([Pixel(Point::new(base_x, base_y), color)])?;
+                } else {
+                    for dy in 0..scale {
+                        for dx in 0..scale {
+                            target
+                                .draw_iter([Pixel(Point::new(base_x + dx, base_y + dy), color)])?;
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 /// A single HUD element drawn as a 2D overlay after the 3D scene.
 #[derive(Clone, Copy, Debug)]
-pub enum HudElement {
+pub enum HudElement<'a> {
     /// Solid filled rectangle.
     FillRect {
         x: i32,
@@ -146,6 +253,8 @@ pub enum HudElement {
         color: Rgb565,
         alpha: u8,
     },
+    /// 2D composited sprite overlay.
+    Sprite(Sprite2D<'a>),
 }
 
 /// A 2D HUD overlay layer holding up to `N` elements.
@@ -160,17 +269,17 @@ pub enum HudElement {
 ///     value: health / 100.0, fg: Rgb565::RED, bg: Rgb565::new(8, 0, 0) }).ok();
 /// hud.draw(&mut display);
 /// ```
-pub struct HudLayer<const N: usize> {
-    elements: Vec<HudElement, N>,
+pub struct HudLayer<'a, const N: usize> {
+    elements: Vec<HudElement<'a>, N>,
 }
 
-impl<const N: usize> Default for HudLayer<N> {
+impl<const N: usize> Default for HudLayer<'_, N> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<const N: usize> HudLayer<N> {
+impl<'a, const N: usize> HudLayer<'a, N> {
     pub const fn new() -> Self {
         Self {
             elements: Vec::new(),
@@ -183,7 +292,7 @@ impl<const N: usize> HudLayer<N> {
     }
 
     /// Add an element. Returns `Err(element)` if the layer is full.
-    pub fn push(&mut self, element: HudElement) -> Result<(), HudElement> {
+    pub fn push(&mut self, element: HudElement<'a>) -> Result<(), HudElement<'a>> {
         self.elements.push(element)
     }
 
@@ -193,10 +302,11 @@ impl<const N: usize> HudLayer<N> {
         D: DrawTarget<Color = Rgb565>,
     {
         for elem in &self.elements {
-            match *elem {
+            match elem {
                 HudElement::FillRect { x, y, w, h, color } => {
                     let _ = target.draw_iter(
-                        rect_pixels(x, y, w, h).map(|(px, py)| Pixel(Point::new(px, py), color)),
+                        rect_pixels(*x, *y, *w, *h)
+                            .map(|(px, py)| Pixel(Point::new(px, py), *color)),
                     );
                 }
                 HudElement::TranslucentRect {
@@ -208,7 +318,8 @@ impl<const N: usize> HudLayer<N> {
                     alpha: _,
                 } => {
                     let _ = target.draw_iter(
-                        rect_pixels(x, y, w, h).map(|(px, py)| Pixel(Point::new(px, py), color)),
+                        rect_pixels(*x, *y, *w, *h)
+                            .map(|(px, py)| Pixel(Point::new(px, py), *color)),
                     );
                 }
                 HudElement::ProgressBar {
@@ -220,17 +331,17 @@ impl<const N: usize> HudLayer<N> {
                     fg,
                     bg,
                 } => {
-                    let filled = ((w as f32 * value.clamp(0.0, 1.0)) as u32).min(w);
+                    let filled = ((*w as f32 * value.clamp(0.0, 1.0)) as u32).min(*w);
                     if filled > 0 {
                         let _ = target.draw_iter(
-                            rect_pixels(x, y, filled, h)
-                                .map(|(px, py)| Pixel(Point::new(px, py), fg)),
+                            rect_pixels(*x, *y, filled, *h)
+                                .map(|(px, py)| Pixel(Point::new(px, py), *fg)),
                         );
                     }
-                    if filled < w {
+                    if filled < *w {
                         let _ = target.draw_iter(
-                            rect_pixels(x + filled as i32, y, w - filled, h)
-                                .map(|(px, py)| Pixel(Point::new(px, py), bg)),
+                            rect_pixels(*x + filled as i32, *y, *w - filled, *h)
+                                .map(|(px, py)| Pixel(Point::new(px, py), *bg)),
                         );
                     }
                 }
@@ -244,8 +355,12 @@ impl<const N: usize> HudLayer<N> {
                     alpha: _,
                 } => {
                     let _ = target.draw_iter(
-                        border_pixels(x, y, w, h).map(|(px, py)| Pixel(Point::new(px, py), color)),
+                        border_pixels(*x, *y, *w, *h)
+                            .map(|(px, py)| Pixel(Point::new(px, py), *color)),
                     );
+                }
+                HudElement::Sprite(sprite) => {
+                    let _ = sprite.draw(target);
                 }
             }
         }
@@ -456,5 +571,25 @@ mod tests {
         let mut target = MockTarget::new();
         hud.draw(&mut target);
         assert_eq!(target.pixels.len(), 0);
+    }
+
+    #[test]
+    fn test_sprite2d_colorkey_and_scale() {
+        let sprite_data = [
+            Rgb565::RED,
+            Rgb565::MAGENTA, // ColorKey
+            Rgb565::BLUE,
+            Rgb565::GREEN,
+        ];
+        let sprite = Sprite2D::new(10, 10, 2, 2, &sprite_data)
+            .with_colorkey(Rgb565::MAGENTA)
+            .with_scale(2);
+
+        let mut target = MockTarget::new();
+        sprite.draw(&mut target).unwrap();
+
+        // 3 non-transparent pixels * (2x2 scale) = 12 pixels drawn
+        assert_eq!(target.pixels.len(), 12);
+        assert!(target.pixels.iter().all(|&(_, _, c)| c != Rgb565::MAGENTA));
     }
 }

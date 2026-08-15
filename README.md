@@ -80,7 +80,27 @@ engine.record(core::iter::once(&mesh), &mut commands, None).unwrap();
 engine.execute(&mut display, &mut frame_ctx, &commands, None).unwrap();
 ```
 
+### Geometry & Surface Normals for Lighting
+
+When using lit render modes (`RenderMode::SolidLightDir`, `BlinnPhong`, `Toon`, `GouraudLightDir`), the engine requires **surface face normals** in `Geometry.normals` (or `vertex_normals`) to evaluate light angles ($N \cdot L$):
+
+* **Static Flash ROM Storage (Recommended for MCUs):** Precompute face normals offline or at compile-time and store them alongside vertices as `&'static [[f32; 3]]` (0 RAM overhead).
+* **On-Demand Helper:** If authoring procedural geometry in code, use `Geometry::compute_face_normals_into(&verts, &faces, &mut out_normals)` or `Geometry::compute_face_normals(&verts, &faces)`:
+
+```rust
+let mut normals = [[0.0f32; 3]; CUBE_FACES.len()];
+Geometry::compute_face_normals_into(&CUBE_VERTS, &CUBE_FACES, &mut normals);
+
+let geometry = Geometry {
+    vertices: &CUBE_VERTS,
+    faces: &CUBE_FACES,
+    normals: &normals,
+    ..Default::default()
+};
+```
+
 More patterns (particles, lights, fog, physics, skeleton, soft body, async present) live under `examples/` and on [docs.rs](https://docs.rs/embedded-3dgfx).
+
 
 ## Feature flags
 

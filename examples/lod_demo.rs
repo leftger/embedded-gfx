@@ -176,9 +176,11 @@ fn main() {
         sphere.set_render_mode(RenderMode::Solid);
 
         // Set LOD geometries
-        let mut lod_levels = LODLevels::default();
-        lod_levels.high_distance = 30.0;
-        lod_levels.medium_distance = 60.0;
+        let lod_levels = LODLevels {
+            high_distance: 30.0,
+            medium_distance: 60.0,
+            ..Default::default()
+        };
         sphere.set_lod(Some(med_geom), Some(low_geom), lod_levels);
 
         spheres.push(sphere);
@@ -293,9 +295,11 @@ fn main() {
 
         // Update LOD thresholds for all spheres
         for sphere in &mut spheres {
-            let mut levels = LODLevels::default();
-            levels.high_distance = lod_high_threshold;
-            levels.medium_distance = lod_medium_threshold;
+            let levels = LODLevels {
+                high_distance: lod_high_threshold,
+                medium_distance: lod_medium_threshold,
+                ..Default::default()
+            };
             sphere.set_lod(Some(med_geom), Some(low_geom), levels);
         }
 

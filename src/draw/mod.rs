@@ -396,4 +396,47 @@ mod tests {
         let out = fast_blend_rgba8888_to_rgb565(bg, fg);
         assert_eq!(out, Rgb565::CSS_RED);
     }
+
+    #[test]
+    fn test_depth_interpolation_mode() {
+        let z1 = 10.0;
+        let z2 = 20.0;
+        let z3 = 30.0;
+
+        let (ez1, ez2, ez3) = DepthInterpolationMode::Exact.process_depths(z1, z2, z3);
+        assert_eq!((ez1, ez2, ez3), (10.0, 20.0, 30.0));
+
+        let (az1, az2, az3) = DepthInterpolationMode::FastAverage.process_depths(z1, z2, z3);
+        assert!((az1 - 20.0).abs() < 1e-5);
+        assert_eq!(az1, az2);
+        assert_eq!(az2, az3);
+
+        let (mz1, mz2, mz3) = DepthInterpolationMode::FastMax.process_depths(z1, z2, z3);
+        assert_eq!((mz1, mz2, mz3), (30.0, 30.0, 30.0));
+
+        let mut fb = MockFramebuffer::new();
+        let mut zbuf = [crate::Z_MAX_VALUE; 64 * 64];
+        let prim = crate::DrawPrimitive::ColoredTriangleWithDepth {
+            points: [
+                Point2::new(10, 10),
+                Point2::new(30, 10),
+                Point2::new(20, 30),
+            ],
+            depths: [10.0, 20.0, 30.0],
+            color: Rgb565::CSS_BLUE,
+        };
+
+        draw_zbuffered_with_options(
+            prim,
+            &mut fb,
+            &mut zbuf,
+            64,
+            None,
+            None,
+            DepthInterpolationMode::FastAverage,
+        );
+        assert!(fb.pixel_count() > 0);
+        let expected_z = crate::to_zdepth((20.0 * 65536.0) as u32);
+        assert_eq!(zbuf[20 * 64 + 20], expected_z);
+    }
 }

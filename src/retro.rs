@@ -95,6 +95,108 @@ pub enum TextureMapping {
     Affine,
 }
 
+/// Configuration for distance-based texture LOD and flat-color shedding.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TextureLodConfig {
+    /// Distance below which textures render with full detail.
+    pub near_distance: f32,
+    /// Distance at or beyond which textures are dropped and rendered as solid color.
+    pub far_distance: f32,
+    /// Fallback flat material color when texture is dropped.
+    pub fallback_color: Rgb565,
+}
+
+impl TextureLodConfig {
+    /// Create a new texture LOD threshold configuration.
+    pub const fn new(near_distance: f32, far_distance: f32, fallback_color: Rgb565) -> Self {
+        Self {
+            near_distance,
+            far_distance,
+            fallback_color,
+        }
+    }
+
+    /// Evaluates whether a triangle at depth `z` should drop texture sampling.
+    #[inline]
+    pub fn should_drop_texture(&self, z: f32) -> bool {
+        z >= self.far_distance
+    }
+
+    /// Evaluates if `z` is in the transition crossfade band [near_distance, far_distance).
+    #[inline]
+    pub fn is_in_transition(&self, z: f32) -> bool {
+        z >= self.near_distance && z < self.far_distance
+    }
+
+    /// Compute blend factor [0.0, 1.0] toward flat color.
+    #[inline]
+    pub fn flat_blend_factor(&self, z: f32) -> f32 {
+        if z <= self.near_distance {
+            0.0
+        } else if z >= self.far_distance {
+            1.0
+        } else {
+            (z - self.near_distance) / (self.far_distance - self.near_distance)
+        }
+    }
+}
+
+/// Dynamic color palette with runtime cycling and animation support.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AnimatedPalette<const N: usize> {
+    /// Base palette colors.
+    pub colors: [Rgb565; N],
+    /// Cycle start index (inclusive).
+    pub cycle_start: usize,
+    /// Cycle end index (exclusive).
+    pub cycle_end: usize,
+    /// Current cycle offset.
+    pub offset: usize,
+}
+
+impl<const N: usize> AnimatedPalette<N> {
+    /// Create a new animated palette from static colors.
+    pub const fn new(colors: [Rgb565; N]) -> Self {
+        Self {
+            colors,
+            cycle_start: 0,
+            cycle_end: N,
+            offset: 0,
+        }
+    }
+
+    /// Constrain palette cycling to a sub-range [start, end).
+    pub const fn with_cycle_range(mut self, start: usize, end: usize) -> Self {
+        self.cycle_start = start;
+        self.cycle_end = if end <= N { end } else { N };
+        self
+    }
+
+    /// Step the palette cycle by `steps` positions.
+    pub fn step(&mut self, steps: usize) {
+        let range_len = self.cycle_end.saturating_sub(self.cycle_start);
+        if range_len > 1 {
+            self.offset = (self.offset + steps) % range_len;
+        }
+    }
+
+    /// Look up a color by palette index, applying the active animation offset if within cycle range.
+    #[inline]
+    pub fn get_color(&self, index: usize) -> Rgb565 {
+        if index >= N {
+            return Rgb565::BLACK;
+        }
+        if index >= self.cycle_start && index < self.cycle_end {
+            let range_len = self.cycle_end - self.cycle_start;
+            let cycled_idx =
+                self.cycle_start + (index - self.cycle_start + self.offset) % range_len;
+            self.colors[cycled_idx]
+        } else {
+            self.colors[index]
+        }
+    }
+}
+
 /// Coarse visual-style controls for retro rendering presets.
 #[derive(Debug, Clone, Copy)]
 pub struct RetroStyle {
@@ -230,5 +332,39 @@ mod tests {
         assert!(s.fog.is_some());
         assert!(s.dither.is_some());
         assert!(s.sky.is_some());
+    }
+
+    #[test]
+    fn test_texture_lod_config() {
+        let lod = TextureLodConfig::new(50.0, 150.0, Rgb565::new(16, 32, 16));
+        assert!(!lod.should_drop_texture(40.0));
+        assert!(!lod.should_drop_texture(100.0));
+        assert!(lod.should_drop_texture(150.0));
+        assert!(lod.should_drop_texture(200.0));
+
+        assert!(!lod.is_in_transition(40.0));
+        assert!(lod.is_in_transition(100.0));
+        assert!(!lod.is_in_transition(150.0));
+
+        assert_eq!(lod.flat_blend_factor(50.0), 0.0);
+        assert_eq!(lod.flat_blend_factor(100.0), 0.5);
+        assert_eq!(lod.flat_blend_factor(150.0), 1.0);
+    }
+
+    #[test]
+    fn test_animated_palette() {
+        let colors = [Rgb565::RED, Rgb565::GREEN, Rgb565::BLUE, Rgb565::WHITE];
+        let mut pal = AnimatedPalette::new(colors).with_cycle_range(1, 3);
+
+        assert_eq!(pal.get_color(0), Rgb565::RED);
+        assert_eq!(pal.get_color(1), Rgb565::GREEN);
+        assert_eq!(pal.get_color(2), Rgb565::BLUE);
+        assert_eq!(pal.get_color(3), Rgb565::WHITE);
+
+        pal.step(1);
+        assert_eq!(pal.get_color(0), Rgb565::RED); // Uncycled
+        assert_eq!(pal.get_color(1), Rgb565::BLUE); // Cycled
+        assert_eq!(pal.get_color(2), Rgb565::GREEN); // Cycled
+        assert_eq!(pal.get_color(3), Rgb565::WHITE); // Uncycled
     }
 }

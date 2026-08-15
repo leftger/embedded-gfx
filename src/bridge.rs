@@ -193,6 +193,95 @@ where
     drawable.draw(&mut fb).map(|_| ()).map_err(|_| ())
 }
 
+// ── 3. Half-Width / Anamorphic Framebuffer Adapter ───────────────────────────
+
+/// An adapter wrapping a `DrawTarget<Color = Rgb565>` that horizontally doubles every pixel.
+///
+/// Writing a pixel at `(x, y)` emits two adjacent pixels at `(2*x, y)` and `(2*x + 1, y)`.
+/// This enables rendering 3D scenes into a half-width coordinate space (e.g. 160x240)
+/// while scanout outputs directly to a full-width target (e.g. 320x240), saving 50% RAM.
+pub struct HalfWidthDrawTargetAdapter<'a, D> {
+    inner: &'a mut D,
+}
+
+impl<'a, D> HalfWidthDrawTargetAdapter<'a, D> {
+    pub fn new(inner: &'a mut D) -> Self {
+        Self { inner }
+    }
+}
+
+impl<D> Dimensions for HalfWidthDrawTargetAdapter<'_, D>
+where
+    D: Dimensions,
+{
+    fn bounding_box(&self) -> Rectangle {
+        let orig = self.inner.bounding_box();
+        Rectangle::new(
+            Point::new(orig.top_left.x / 2, orig.top_left.y),
+            embedded_graphics_core::geometry::Size::new(orig.size.width / 2, orig.size.height),
+        )
+    }
+}
+
+impl<D> DrawTarget for HalfWidthDrawTargetAdapter<'_, D>
+where
+    D: DrawTarget<Color = Rgb565>,
+{
+    type Color = Rgb565;
+    type Error = D::Error;
+
+    fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
+    where
+        I: IntoIterator<Item = Pixel<Rgb565>>,
+    {
+        self.inner
+            .draw_iter(pixels.into_iter().flat_map(|Pixel(pos, color)| {
+                [
+                    Pixel(Point::new(pos.x * 2, pos.y), color),
+                    Pixel(Point::new(pos.x * 2 + 1, pos.y), color),
+                ]
+            }))
+    }
+}
+
+/// Expands a half-width row or buffer `&[Rgb565]` (width `half_w`) into a full-width slice `dst` (width `half_w * 2`)
+/// with 2x horizontal pixel replication.
+pub fn scanout_half_width_row(src: &[Rgb565], dst: &mut [Rgb565]) {
+    let count = src.len().min(dst.len() / 2);
+    for i in 0..count {
+        dst[i * 2] = src[i];
+        dst[i * 2 + 1] = src[i];
+    }
+}
+
+/// Blits an entire half-width framebuffer `src` (dimensions `half_w x height`) to a full-width `DrawTarget`
+/// with 2x horizontal pixel doubling.
+pub fn scanout_half_width_buffer<D>(
+    src: &[Rgb565],
+    half_w: usize,
+    height: usize,
+    target: &mut D,
+) -> Result<(), D::Error>
+where
+    D: DrawTarget<Color = Rgb565>,
+{
+    for y in 0..height {
+        let row_start = y * half_w;
+        let row_end = row_start + half_w;
+        if row_end > src.len() {
+            break;
+        }
+        let row = &src[row_start..row_end];
+        target.draw_iter(row.iter().enumerate().flat_map(|(x, &color)| {
+            [
+                Pixel(Point::new((x * 2) as i32, y as i32), color),
+                Pixel(Point::new((x * 2 + 1) as i32, y as i32), color),
+            ]
+        }))?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     extern crate std;
@@ -254,5 +343,35 @@ mod tests {
             &mut fb,
         );
         assert_eq!(fb.get_color_at(Point::new(1, 1)), Rgb565::new(31, 0, 0));
+    }
+
+    #[test]
+    fn test_half_width_draw_target_adapter() {
+        let backing = std::vec![Rgb565::BLACK; 8].leak();
+        let mut fb = FrameBuf::new(
+            EndianCorrectedBuffer::new(backing, EndianCorrection::ToLittleEndian),
+            4,
+            2,
+        );
+        {
+            let mut adapter = HalfWidthDrawTargetAdapter::new(&mut fb);
+            adapter
+                .draw_iter([Pixel(Point::new(0, 0), Rgb565::RED)])
+                .unwrap();
+        }
+        assert_eq!(fb.get_color_at(Point::new(0, 0)), Rgb565::RED);
+        assert_eq!(fb.get_color_at(Point::new(1, 0)), Rgb565::RED);
+        assert_eq!(fb.get_color_at(Point::new(2, 0)), Rgb565::BLACK);
+    }
+
+    #[test]
+    fn test_scanout_half_width() {
+        let src = [Rgb565::RED, Rgb565::GREEN];
+        let mut dst = [Rgb565::BLACK; 4];
+        scanout_half_width_row(&src, &mut dst);
+        assert_eq!(dst[0], Rgb565::RED);
+        assert_eq!(dst[1], Rgb565::RED);
+        assert_eq!(dst[2], Rgb565::GREEN);
+        assert_eq!(dst[3], Rgb565::GREEN);
     }
 }

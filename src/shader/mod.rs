@@ -5,6 +5,7 @@ pub mod blend;
 pub mod dither;
 pub mod fog;
 pub mod retro;
+pub mod water_reflect;
 
 pub use blend::{
     fast_blend_rgb565, fast_blend_rgba8888, fast_blend_rgba8888_to_rgb565, reverse_color_rgb565,
@@ -13,6 +14,7 @@ pub use blend::{
 pub use dither::{DitherConfig, DitherShader};
 pub use fog::{FogConfig, FogShader};
 pub use retro::{PaletteShader, ScreenTintShader};
+pub use water_reflect::{WaterReflectConfig, WaterReflectShader};
 
 /// Zero-cost composable fragment shader interface.
 pub trait FragmentShader {

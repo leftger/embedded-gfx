@@ -274,7 +274,16 @@ required-features = ["std", "scene"]
 name = "walkable_demo"
 required-features = ["std", "lighting", "scene"]
 
+[[example]]
+name = "water_reflection_ssr_demo"
+required-features = ["std", "lighting"]
+
+[[example]]
+name = "hybrid_hud_sprite_demo"
+required-features = ["std", "hud", "lighting"]
+
 [[bench]]
+
 name = "raster_benchmark"
 harness = false
 

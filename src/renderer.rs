@@ -56,6 +56,32 @@ impl DirtyRegion {
     }
 }
 
+/// A screen-space pick query asking for the topmost hit at pixel `(x, y)`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PickQuery {
+    pub x: i32,
+    pub y: i32,
+}
+
+impl PickQuery {
+    pub const fn new(x: i32, y: i32) -> Self {
+        Self { x, y }
+    }
+}
+
+/// Result of an integrated screen-space pick query during command execution.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PickResult {
+    /// Screen X coordinate tested.
+    pub x: i32,
+    /// Screen Y coordinate tested.
+    pub y: i32,
+    /// Closest depth recorded at this pixel.
+    pub depth: crate::ZDepth,
+    /// Index of the command in the CommandBuffer that hit this pixel.
+    pub command_index: usize,
+}
+
 #[inline(always)]
 fn primitive_bounds(primitive: &DrawPrimitive) -> (i32, i32, i32, i32) {
     primitive.bounds()
@@ -264,6 +290,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    extern crate std;
     use super::stripe_on_at;
 
     #[test]
@@ -297,6 +324,60 @@ mod tests {
         }
         max_run = max_run.max(run);
         assert!(max_run <= stripe_w as usize);
+    }
+
+    #[test]
+    fn test_execute_commands_with_picking() {
+        use crate::command_buffer::{CommandBuffer, RenderCommand};
+        use crate::primitive::DrawPrimitive;
+        use embedded_graphics_core::pixelcolor::{Rgb565, RgbColor};
+        use embedded_graphics_framebuf::{
+            FrameBuf,
+            backends::{EndianCorrectedBuffer, EndianCorrection},
+        };
+        use nalgebra::Point2;
+
+        let backing = std::vec![Rgb565::BLACK; 64 * 64].leak();
+        let mut fb = FrameBuf::new(
+            EndianCorrectedBuffer::new(backing, EndianCorrection::ToLittleEndian),
+            64,
+            64,
+        );
+        let mut zbuf = [crate::Z_MAX_VALUE; 64 * 64];
+        let mut frame = super::FrameCtx {
+            zbuffer: &mut zbuf,
+            width: 64,
+            height: 64,
+        };
+
+        let mut cmd = CommandBuffer::<8>::new();
+        cmd.push(RenderCommand::Draw(
+            DrawPrimitive::ColoredTriangleWithDepth {
+                points: [
+                    Point2::new(10, 10),
+                    Point2::new(40, 10),
+                    Point2::new(25, 40),
+                ],
+                depths: [10.0, 10.0, 10.0],
+                color: Rgb565::RED,
+            },
+        ))
+        .unwrap();
+
+        let queries = [super::PickQuery::new(25, 20), super::PickQuery::new(0, 0)];
+        let mut results = [None, None];
+
+        let region =
+            super::execute_commands_with_picking(&mut fb, &mut frame, &cmd, &queries, &mut results)
+                .unwrap();
+
+        assert!(region.is_some());
+        assert!(results[0].is_some());
+        let hit = results[0].unwrap();
+        assert_eq!(hit.x, 25);
+        assert_eq!(hit.y, 20);
+        assert_eq!(hit.command_index, 0);
+        assert!(results[1].is_none()); // (0, 0) was outside triangle
     }
 }
 
@@ -697,4 +778,93 @@ where
         }
     }
     Ok(())
+}
+
+/// Execute commands and evaluate integrated screen-space pick queries during the rasterization pass.
+pub fn execute_commands_with_picking<D, const MAX: usize>(
+    fb: &mut D,
+    frame: &mut FrameCtx<'_>,
+    cmd: &CommandBuffer<MAX>,
+    queries: &[PickQuery],
+    results: &mut [Option<PickResult>],
+) -> Result<Option<DirtyRegion>, RenderError>
+where
+    D: DrawTarget<Color = Rgb565>,
+    <D as DrawTarget>::Error: Debug,
+{
+    frame.validate()?;
+    let mut dirty_bounds: Option<(i32, i32, i32, i32)> = None;
+
+    for (cmd_idx, c) in cmd.iter().enumerate() {
+        match c {
+            RenderCommand::ClearColor(color) => {
+                let w = frame.width as i32;
+                let h = frame.height as i32;
+                for y in 0..h {
+                    for x in 0..w {
+                        fb.draw_iter([Pixel(Point::new(x, y), *color)])
+                            .map_err(|_| {
+                                RenderError::InvalidInput("draw target rejected clear write")
+                            })?;
+                    }
+                }
+            }
+            RenderCommand::ClearDepth(value) => {
+                crate::clear_zbuffer(frame.zbuffer, *value);
+            }
+            RenderCommand::Draw(primitive) => {
+                let mut prev_depths = [0 as crate::ZDepth; 16];
+                let check_count = queries.len().min(16).min(results.len());
+                for (q_i, query) in queries.iter().take(check_count).enumerate() {
+                    if query.x >= 0
+                        && query.x < frame.width as i32
+                        && query.y >= 0
+                        && query.y < frame.height as i32
+                    {
+                        let idx = query.y as usize * frame.width + query.x as usize;
+                        prev_depths[q_i] = frame.zbuffer[idx];
+                    }
+                }
+
+                crate::draw::draw_zbuffered(primitive.clone(), fb, frame.zbuffer, frame.width);
+
+                for (q_i, query) in queries.iter().take(check_count).enumerate() {
+                    if query.x >= 0
+                        && query.x < frame.width as i32
+                        && query.y >= 0
+                        && query.y < frame.height as i32
+                    {
+                        let idx = query.y as usize * frame.width + query.x as usize;
+                        let new_depth = frame.zbuffer[idx];
+                        if new_depth < prev_depths[q_i] {
+                            results[q_i] = Some(PickResult {
+                                x: query.x,
+                                y: query.y,
+                                depth: new_depth,
+                                command_index: cmd_idx,
+                            });
+                        }
+                    }
+                }
+
+                let (min_x, min_y, max_x, max_y) = primitive_bounds(primitive);
+                if let Some((min_x, min_y, max_x, max_y)) =
+                    clamp_bounds_to_frame(min_x, min_y, max_x, max_y, frame.width, frame.height)
+                {
+                    dirty_bounds = Some(match dirty_bounds {
+                        Some((cx0, cy0, cx1, cy1)) => (
+                            cx0.min(min_x),
+                            cy0.min(min_y),
+                            cx1.max(max_x),
+                            cy1.max(max_y),
+                        ),
+                        None => (min_x, min_y, max_x, max_y),
+                    });
+                }
+            }
+        }
+    }
+
+    let region = dirty_bounds.and_then(|(x0, y0, x1, y1)| DirtyRegion::from_bounds(x0, y0, x1, y1));
+    Ok(region)
 }

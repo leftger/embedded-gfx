@@ -276,12 +276,22 @@ impl K3dengine {
     }
 
     #[inline(always)]
-    pub(crate) fn transform_point(
+    pub fn transform_point(
         &self,
         point: &[f32; 3],
         model_matrix: Matrix4<f32>,
     ) -> Option<Point3<i32>> {
         transform::transform_point(&self.camera, self.width, self.height, point, model_matrix)
+    }
+
+    /// Project a 3D world position into 2D screen coordinates using the camera's view-projection matrix.
+    pub fn project_point(
+        &self,
+        point: Point3<f32>,
+    ) -> Option<embedded_graphics_core::geometry::Point> {
+        let arr = [point.x, point.y, point.z];
+        let pt3 = self.transform_point(&arr, self.camera.vp_matrix)?;
+        Some(embedded_graphics_core::geometry::Point::new(pt3.x, pt3.y))
     }
 
     #[inline(always)]

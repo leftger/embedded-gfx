@@ -2,7 +2,49 @@ use core::f32::consts;
 
 #[cfg(feature = "render-layers")]
 use crate::render_layers::RenderLayers;
+use embedded_graphics_core::geometry::Point;
 use nalgebra::{Isometry3, Perspective3, Point3, Vector3};
+
+/// A 3D ray defined by origin and direction vectors.
+#[derive(Debug, Clone, Copy)]
+pub struct Ray {
+    /// Ray origin point in world space.
+    pub origin: Vector3<f32>,
+    /// Normalized ray direction vector.
+    pub direction: Vector3<f32>,
+}
+
+impl Ray {
+    /// Create a new ray with origin and normalized direction.
+    pub fn new(origin: Vector3<f32>, direction: Vector3<f32>) -> Self {
+        Self {
+            origin,
+            direction: direction.normalize(),
+        }
+    }
+
+    /// Construct a 3D ray unprojected from 2D screen coordinates via a [`Camera`].
+    pub fn from_screen_point(point: Point, camera: &Camera, width: usize, height: usize) -> Self {
+        let ndc_x = (2.0 * point.x as f32 / width as f32) - 1.0;
+        let ndc_y = 1.0 - (2.0 * point.y as f32 / height as f32);
+
+        let inv_vp = camera
+            .vp_matrix
+            .try_inverse()
+            .unwrap_or(nalgebra::Matrix4::identity());
+        let near_h = inv_vp * nalgebra::Vector4::new(ndc_x, ndc_y, -1.0, 1.0);
+        let far_h = inv_vp * nalgebra::Vector4::new(ndc_x, ndc_y, 1.0, 1.0);
+
+        let near_pt = Vector3::new(near_h.x, near_h.y, near_h.z) / near_h.w.abs().max(1e-6);
+        let far_pt = Vector3::new(far_h.x, far_h.y, far_h.z) / far_h.w.abs().max(1e-6);
+
+        let direction = (far_pt - near_pt).normalize();
+        Self {
+            origin: camera.position.coords,
+            direction,
+        }
+    }
+}
 
 pub struct Camera {
     pub position: Point3<f32>,

@@ -168,6 +168,7 @@ pub use bounds::Aabb;
 pub use bridge::{
     AsEgPoint, AsNalgebraPoint, draw_to, eg_to_nalgebra, nalgebra_to_eg, render_drawable_to_buffer,
 };
+pub use camera::{Camera, Ray};
 #[cfg(feature = "scene")]
 pub use character::CharacterController;
 pub use completion::{CompletionSlot, WaitTransfer, WaitTransferFuture};

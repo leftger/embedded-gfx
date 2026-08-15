@@ -46,7 +46,7 @@ lighting = []
 # Texture sampling modes + texture manager. Implies lighting for TexturedGouraud.
 textured = ["lighting"]
 # Doom-style 2D raycaster, BSP helpers, sector lights.
-raycast = []
+raycast = ["textured", "lighting"]
 # Skeletal / particle / billboard / animation / scene stream stack.
 scene = []
 # HUD helpers.

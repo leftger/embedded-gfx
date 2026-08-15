@@ -6,6 +6,7 @@ use core::fmt::Debug;
 use embedded_graphics_core::draw_target::DrawTarget;
 use embedded_graphics_core::pixelcolor::{Rgb565, RgbColor};
 use embedded_graphics_core::prelude::Point;
+use micromath::F32Ext;
 
 use super::blend::{ReadPixel, blend_q8};
 

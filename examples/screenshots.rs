@@ -13,6 +13,7 @@ use embedded_3dgfx::bsp::BspTelemetry;
 use embedded_3dgfx::bsp::builder::{RoomSpec, build_room_strip};
 use embedded_3dgfx::bsp::scratch::BspScratch;
 use embedded_3dgfx::command_buffer::CommandBuffer;
+use embedded_3dgfx::config::apply_default_caps;
 use embedded_3dgfx::draw::{
     DitherConfig, FogConfig, draw_zbuffered, draw_zbuffered_with_effects,
     draw_zbuffered_with_textures,
@@ -23,10 +24,15 @@ use embedded_3dgfx::particles::{ParticleSpawn, ParticleSystem};
 #[cfg(feature = "physics")]
 use embedded_3dgfx::physics::{Collider, PhysicsWorld, RigidBody, sync_body_to_mesh};
 use embedded_3dgfx::renderer::FrameCtx;
+use embedded_3dgfx::retro::AnimatedPalette;
+use embedded_3dgfx::shader::{
+    FlatColorShader, FragmentShader, WaterReflectConfig, WaterReflectShader,
+};
 #[cfg(feature = "physics")]
 use embedded_3dgfx::softbody::SoftBody;
 use embedded_3dgfx::texture::{Texture, TextureManager};
 use embedded_3dgfx::{K3dengine, RetroStyle, SkyConfig};
+
 use embedded_graphics::mono_font::{MonoTextStyle, ascii::FONT_6X10};
 use embedded_graphics::prelude::Primitive;
 use embedded_graphics::primitives::{PrimitiveStyleBuilder, Rectangle};
@@ -118,7 +124,9 @@ fn main() {
     gif_newtons_cradle();
     gif_particles();
     gif_point_lights();
+    gif_water_ssr();
     // Perf
+
     benchmark();
     println!("All assets saved to assets/");
 }
@@ -2217,6 +2225,156 @@ fn gif_point_lights() {
         frames.push(frame_rgb(&display));
     }
     save_gif(&mut frames, W, H, "assets/gif_point_lights.gif", 5);
+}
+
+// ── GIF 8: Screen-Space Water Reflection (SSR) & Palette Cycling ─────────────
+
+fn gif_water_ssr() {
+    const W: u16 = 320;
+    const H: u16 = 240;
+    const WATERLINE_Y: i32 = 140;
+    const FRAMES: usize = 48;
+
+    let mut display = SimulatorDisplay::<Rgb565>::new(Size::new(W as u32, H as u32));
+    let mut zbuffer = vec![Z_MAX_VALUE; W as usize * H as usize];
+    let mut commands = CommandBuffer::<2048>::new();
+    let mut color_buffer = vec![Rgb565::BLACK; W as usize * H as usize];
+
+    let mut engine = K3dengine::new(W, H);
+    apply_default_caps(&mut engine);
+    engine.camera.set_position(Point3::new(0.0, 1.2, 4.5));
+    engine.camera.set_target(Point3::new(0.0, 0.4, 0.0));
+
+    let gem_vertices: &[[f32; 3]] = &[
+        [0.0, 1.4, 0.0],
+        [-0.9, 0.0, 0.9],
+        [0.9, 0.0, 0.9],
+        [0.9, 0.0, -0.9],
+        [-0.9, 0.0, -0.9],
+        [0.0, -1.0, 0.0],
+    ];
+    let gem_faces: &[[usize; 3]] = &[
+        [0, 1, 2],
+        [0, 2, 3],
+        [0, 3, 4],
+        [0, 4, 1],
+        [5, 2, 1],
+        [5, 3, 2],
+        [5, 4, 3],
+        [5, 1, 4],
+    ];
+    let mut gem_normals = [[0.0f32; 3]; 8];
+    Geometry::compute_face_normals_into(gem_vertices, gem_faces, &mut gem_normals);
+
+    let geometry = Geometry {
+        vertices: gem_vertices,
+        faces: gem_faces,
+        colors: &[],
+        lines: &[],
+        normals: &gem_normals,
+        vertex_normals: &[],
+        uvs: &[],
+        texture_id: None,
+    };
+
+    let mut gem = K3dMesh::new(geometry);
+    gem.set_render_mode(RenderMode::SolidLightDir(Vector3::new(0.5, 1.0, 0.3)));
+    gem.set_position(0.0, 0.5, 0.0);
+
+    let beacon_colors = [
+        Rgb565::new(31, 0, 0),
+        Rgb565::new(31, 16, 0),
+        Rgb565::new(31, 31, 0),
+        Rgb565::new(0, 48, 10),
+        Rgb565::new(0, 32, 31),
+        Rgb565::new(16, 0, 31),
+    ];
+    let mut beacon_palette = AnimatedPalette::new(beacon_colors);
+
+    let mut frames = Vec::with_capacity(FRAMES);
+    let mut avg_ms = 0.0f64;
+
+    for i in 0..FRAMES {
+        let t_anim = i as f32 / FRAMES as f32 * core::f32::consts::TAU;
+
+        if i % 6 == 0 {
+            beacon_palette.step(1);
+        }
+        let current_beacon = beacon_palette.get_color(0);
+        gem.set_color(current_beacon);
+
+        display.clear(Rgb565::BLACK).unwrap();
+        zbuffer.fill(Z_MAX_VALUE);
+
+        // Draw sky
+        for y in 0..WATERLINE_Y {
+            let t = y as f32 / WATERLINE_Y as f32;
+            let r = (2.0 + t * 26.0) as u8;
+            let g = (8.0 + t * 24.0) as u8;
+            let b = (28.0 - t * 16.0) as u8;
+            let color = Rgb565::new(r, g, b);
+            let _ = display.draw_iter((0..W as i32).map(|x| Pixel(Point::new(x, y), color)));
+        }
+
+        let rot_y = t_anim;
+        let rot_x = t_anim.sin() * 0.3;
+        gem.set_attitude(rot_x, rot_y, 0.0);
+        gem.set_position(0.0, 0.5, 0.0);
+
+        let t_render = Instant::now();
+        commands.clear();
+        let mut frame = FrameCtx {
+            zbuffer: &mut zbuffer,
+            width: W as usize,
+            height: H as usize,
+        };
+        engine.record([&gem], &mut commands, None).unwrap();
+        engine
+            .execute::<_, 2048>(&mut display, &mut frame, &commands, None)
+            .unwrap();
+
+        for y in 0..WATERLINE_Y {
+            for x in 0..W as i32 {
+                let pixel = display.get_pixel(Point::new(x, y));
+                color_buffer[y as usize * W as usize + x as usize] = pixel;
+            }
+        }
+
+        let ripple_phase = (i * 4) as i32;
+        let water_cfg = WaterReflectConfig::new(
+            &color_buffer,
+            W as usize,
+            H as usize,
+            WATERLINE_Y,
+            Rgb565::new(1, 8, 18),
+            40,
+        )
+        .with_ripples(3, ripple_phase);
+
+        let water_shader = WaterReflectShader {
+            inner: FlatColorShader {
+                color: Rgb565::new(1, 6, 16),
+            },
+            config: &water_cfg,
+        };
+
+        for y in WATERLINE_Y..H as i32 {
+            for x in 0..W as i32 {
+                let water_pixel = water_shader.shade(x, y, 0, ());
+                let _ = display.draw_iter([Pixel(Point::new(x, y), water_pixel)]);
+            }
+        }
+
+        let ms = t_render.elapsed().as_secs_f64() * 1000.0;
+        avg_ms = if i == 0 { ms } else { 0.2 * ms + 0.8 * avg_ms };
+        draw_hud(
+            &mut display,
+            "SSR water reflection | 8 tris",
+            &format!("render {avg_ms:.2}ms"),
+        );
+        frames.push(frame_rgb(&display));
+    }
+    save_gif(&mut frames, W, H, "assets/gif_water_ssr.gif", 5);
 }
 
 // ── Benchmark: measure frame times for key scenarios ─────────────────────────

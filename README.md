@@ -24,14 +24,19 @@ A `no_std` 3D graphics and physics engine for embedded systems: software rasteri
 
 <table>
   <tr>
+    <td align="center"><img src="assets/gif_water_ssr.gif" alt="SSR Water Reflection" width="320"><br><em>SSR water reflection + palette cycling</em></td>
     <td align="center"><img src="assets/gif_suzanne.gif" alt="Blinn-Phong Suzanne" width="320"><br><em>Blinn-Phong</em></td>
-    <td align="center"><img src="assets/gif_physics.gif" alt="Physics balls" width="320"><br><em>Rigid body physics</em></td>
   </tr>
   <tr>
+    <td align="center"><img src="assets/gif_physics.gif" alt="Physics balls" width="320"><br><em>Rigid body physics</em></td>
     <td align="center"><img src="assets/gif_particles.gif" alt="Particles + fog" width="320"><br><em>Particles + fog</em></td>
+  </tr>
+  <tr>
     <td align="center"><img src="assets/gif_cloth.gif" alt="Cloth" width="320"><br><em>Soft-body cloth</em></td>
+    <td align="center"><img src="assets/gif_point_lights.gif" alt="Point lights" width="320"><br><em>Point lights</em></td>
   </tr>
 </table>
+
 
 ```bash
 cargo run --example screenshots --features std

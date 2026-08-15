@@ -230,7 +230,7 @@ dependencies = [
 
 [[package]]
 name = "embedded-3dgfx"
-version = "0.5.2"
+version = "0.5.3"
 dependencies = [
  "critical-section",
  "embassy-sync",
@@ -262,7 +262,7 @@ dependencies = [
 
 [[package]]
 name = "embedded-draw-target"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "critical-section",
  "embedded-graphics-core",

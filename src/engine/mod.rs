@@ -354,6 +354,7 @@ impl K3dengine {
         );
     }
 
+    #[allow(dead_code)]
     pub(crate) fn render<'a, MS, F>(&self, meshes: MS, callback: F)
     where
         MS: IntoIterator<Item = &'a K3dMesh<'a>>,
@@ -396,6 +397,7 @@ impl K3dengine {
         )
     }
 
+    #[allow(dead_code)]
     pub(crate) fn record_one_mesh<'a, const MAX: usize>(
         &self,
         mesh: &'a K3dMesh<'a>,

@@ -216,6 +216,28 @@ Load and view STL models (Suzanne, teapot, Blåhaj).
 cargo run --example stl_viewer --features std
 ```
 
+#### `star_striker_demo` - Star Striker 3D Retro Rail Shooter Demo 🚀✨
+A high-speed 3D retro arcade rail shooter inspired by early 90s polygonal classics. Fly the Star Striker through orbital corridors, roll to deflect enemy lasers, blast interceptor squadrons, dodge dense asteroid belts, and fly through golden recovery rings.
+
+**Features:**
+- Dynamic chase camera with smooth banking, rolling, and pitch controls
+- Twin wingtip laser cannons with bold 3D plasma beam geometry, muzzle flashes, and glowing trails
+- Barrel roll maneuver (`Z`/`X`) with invulnerability spin and shield deflection
+- Continuous streaming wave spawner (Delta fighter formations, asteroid fields, monolithic space arches, golden supply rings)
+- Enemy interceptor AI with plasma counter-attacks
+- Authentic retro arcade HUD: segmented Shield gauge, Score, Hits counter, 3D target reticle, and squad radio transmissions
+
+**Controls:**
+- `Arrow Keys` / `W, A, S, D` - Steer Star Striker (Bank left/right, Pitch up/down)
+- `SPACE` - Fire Twin Laser Cannons
+- `Z` / `X` - Perform a Barrel Roll (Invulnerability spin)
+- `R` - Restart mission on Game Over
+- `ESC` - Exit
+
+```bash
+cargo run --example star_striker_demo --features std,lighting,scene
+```
+
 #### `painters_algorithm_demo` - Z-buffer-free Rendering
 Back-to-front triangle sorting without Z-buffer (saves 1.92MB RAM).
 

@@ -282,6 +282,10 @@ required-features = ["std", "lighting"]
 name = "hybrid_hud_sprite_demo"
 required-features = ["std", "hud", "lighting"]
 
+[[example]]
+name = "star_striker_demo"
+required-features = ["std", "lighting", "scene"]
+
 [[bench]]
 
 name = "raster_benchmark"

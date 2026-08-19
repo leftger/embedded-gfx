@@ -2,10 +2,20 @@
 
 This document covers the final asset/streaming stack:
 
+- Blender export add-on (`tools/blender_addon/io_export_embedded_3dgfx.py`)
 - offline conversion CLI (`asset_cli`)
 - versioned chunked scene format (`E3DS`, version `1`)
 - cooperative loader + non-blocking upload API
 - CI build-time asset budget report
+
+## Blender Add-on
+
+Located at [`tools/blender_addon/io_export_embedded_3dgfx.py`](../tools/blender_addon/io_export_embedded_3dgfx.py).
+
+Features:
+- Direct export to static Rust code (`Geometry`), LOD chains, vertex animations, quantized binary meshes (`.e3dm`), RGB565 textures (`.e3dt`), and chunked scene containers (`.e3dscene`).
+- 3D Viewport sidebar with live MCU polygon/ROM budget monitoring (Cortex-M0+, Cortex-M4, Cortex-M7, ESP32).
+- One-click material to RGB565 texture baking.
 
 ## Offline converter CLI
 

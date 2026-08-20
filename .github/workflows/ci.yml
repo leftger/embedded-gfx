@@ -118,6 +118,7 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -134,6 +135,7 @@ jobs:
   embedded-budget:
     name: Embedded Budget (${{ matrix.row_width_feature }})
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -158,6 +160,7 @@ jobs:
   minimal-feature-guard:
     name: Minimal Feature Guard
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -177,6 +180,7 @@ jobs:
   profile-budget:
     name: Profile Budget (${{ matrix.caps_profile }})
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -199,6 +203,7 @@ jobs:
   perf-baseline:
     name: Perf Baseline (${{ matrix.caps_profile }})
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -224,6 +229,7 @@ jobs:
   m55-perf-budget:
     name: M55 Perf Budget
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       EMBEDDED_3DGFX_CAPS: m55
       TELEMETRY_MAX_RECORD_DRAW_COMMANDS: "4"

@@ -25,7 +25,7 @@ pub(crate) fn aa_pixel<T: ReadPixel>(fb: &T, point: Point, draw_color: Rgb565, c
 #[cfg(feature = "aa")]
 #[inline]
 pub fn draw_zbuffered_aa<T: ReadPixel + DrawTarget<Color = Rgb565>>(
-    primitive: crate::DrawPrimitive,
+    primitive: crate::primitive::DrawPrimitive,
     fb: &mut T,
     zbuffer: &mut [crate::ZDepth],
     width: usize,
@@ -33,7 +33,7 @@ pub fn draw_zbuffered_aa<T: ReadPixel + DrawTarget<Color = Rgb565>>(
     <T as DrawTarget>::Error: Debug,
 {
     match primitive {
-        crate::DrawPrimitive::ColoredTriangleWithDepth {
+        crate::primitive::DrawPrimitive::ColoredTriangleWithDepth {
             points,
             depths,
             color,
@@ -79,7 +79,7 @@ impl embedded_graphics_core::geometry::OriginDimensions for SuperFramebuffer {
 /// Render primitives with 2x Super-Sample Anti-Aliasing (2xSSAA).
 #[cfg(feature = "aa")]
 pub fn draw_zbuffered_2xssaa<D: DrawTarget<Color = Rgb565>>(
-    primitive: crate::DrawPrimitive,
+    primitive: crate::primitive::DrawPrimitive,
     fb: &mut D,
     zbuffer: &mut [crate::ZDepth],
     width: usize,
@@ -87,7 +87,7 @@ pub fn draw_zbuffered_2xssaa<D: DrawTarget<Color = Rgb565>>(
     <D as DrawTarget>::Error: Debug,
 {
     match primitive {
-        crate::DrawPrimitive::ColoredTriangleWithDepth {
+        crate::primitive::DrawPrimitive::ColoredTriangleWithDepth {
             points,
             depths,
             color,
@@ -176,7 +176,7 @@ pub fn draw_zbuffered_2xssaa<D: DrawTarget<Color = Rgb565>>(
 /// Render primitives with Z-buffering and Coverage-Based Anti-Aliasing (AA-Coverage).
 #[cfg(feature = "aa")]
 pub fn draw_zbuffered_aa_coverage<D: DrawTarget<Color = Rgb565>>(
-    primitive: crate::DrawPrimitive,
+    primitive: crate::primitive::DrawPrimitive,
     fb: &mut D,
     zbuffer: &mut [crate::ZDepth],
     width: usize,
@@ -184,7 +184,7 @@ pub fn draw_zbuffered_aa_coverage<D: DrawTarget<Color = Rgb565>>(
     <D as DrawTarget>::Error: Debug,
 {
     match primitive {
-        crate::DrawPrimitive::ColoredTriangleWithDepth {
+        crate::primitive::DrawPrimitive::ColoredTriangleWithDepth {
             points,
             depths,
             color,

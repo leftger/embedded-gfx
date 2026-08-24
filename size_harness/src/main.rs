@@ -8,8 +8,8 @@
 #![no_main]
 
 use cortex_m_rt::entry;
-use embedded_3dgfx::K3dengine;
 use embedded_3dgfx::command_buffer::CommandBuffer;
+use embedded_3dgfx::engine::K3dengine;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
 #[cfg(feature = "lighting")]
 use embedded_graphics_core::pixelcolor::Rgb565;
@@ -45,7 +45,7 @@ fn main() -> ! {
         mesh.set_render_mode(RenderMode::SolidLightDir(nalgebra::Vector3::new(
             0.0, 1.0, 0.0,
         )));
-        let _ = engine.add_point_light(embedded_3dgfx::PointLight::new(
+        let _ = engine.add_point_light(embedded_3dgfx::lights::PointLight::new(
             nalgebra::Point3::new(0.0, 1.0, 0.0),
             Rgb565::new(31, 63, 31),
             1.0,

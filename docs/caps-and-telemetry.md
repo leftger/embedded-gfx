@@ -20,7 +20,7 @@ This keeps traversal and raster execution explicit and avoids hidden double work
 Apply default caps immediately after creating the engine:
 
 ```rust
-use embedded_3dgfx::K3dengine;
+use embedded_3dgfx::engine::K3dengine;
 use embedded_3dgfx::config::apply_default_caps;
 
 let mut engine = K3dengine::new(320, 240);

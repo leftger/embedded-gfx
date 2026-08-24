@@ -10,7 +10,9 @@
 extern crate std;
 
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, LODLevels};
-use embedded_3dgfx::{Aabb, K3dengine, mesh_ray_cast, mesh_ray_cast_bounded, mesh_ray_cast_mesh};
+use embedded_3dgfx::{
+    bounds::Aabb, engine::K3dengine, mesh_ray_cast, mesh_ray_cast_bounded, mesh_ray_cast_mesh,
+};
 use nalgebra::{Matrix4, Point3, Vector3};
 
 fn unit_tri_mesh() -> (
@@ -112,7 +114,7 @@ fn two_stage_cull_rejects_far_mesh() {
 #[cfg(feature = "render-layers")]
 mod layers {
     use super::*;
-    use embedded_3dgfx::RenderLayers;
+    use embedded_3dgfx::render_layers::RenderLayers;
 
     #[test]
     fn layer_mismatch_culls_mesh() {
@@ -284,9 +286,9 @@ mod anim {
 
 #[cfg(feature = "gizmos")]
 mod gizmos_tests {
-    use embedded_3dgfx::DrawPrimitive;
     use embedded_3dgfx::bounds::Aabb;
     use embedded_3dgfx::gizmos::emit_aabb_wireframe_projected;
+    use embedded_3dgfx::primitive::DrawPrimitive;
     use embedded_graphics_core::pixelcolor::{Rgb565, WebColors};
     use nalgebra::{Matrix4, Point3, Vector3};
 
@@ -342,7 +344,7 @@ mod sort {
             .iter()
             .filter_map(|c| match c {
                 embedded_3dgfx::command_buffer::RenderCommand::Draw(
-                    embedded_3dgfx::DrawPrimitive::ColoredPoint(_, col),
+                    embedded_3dgfx::primitive::DrawPrimitive::ColoredPoint(_, col),
                 ) => Some(*col),
                 _ => None,
             })

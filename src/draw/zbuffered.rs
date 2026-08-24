@@ -9,7 +9,7 @@ use super::blend::fast_blend_rgb565;
 use super::effects::{DepthInterpolationMode, DitherConfig, FogConfig};
 #[cfg(feature = "lighting")]
 use super::fill::interpolate_color;
-use crate::DrawPrimitive;
+use crate::primitive::DrawPrimitive;
 
 /// Render primitives with Z-buffering.
 #[inline]

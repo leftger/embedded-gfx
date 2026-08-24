@@ -16,10 +16,10 @@
 //! - S: Add sphere
 //! - ESC: Exit
 
-use embedded_3dgfx::K3dengine;
 use embedded_3dgfx::Z_MAX_VALUE;
 use embedded_3dgfx::command_buffer::CommandBuffer;
 use embedded_3dgfx::config::apply_default_caps;
+use embedded_3dgfx::engine::K3dengine;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
 #[cfg(feature = "perfcounter")]
 use embedded_3dgfx::perfcounter::PerformanceCounter;

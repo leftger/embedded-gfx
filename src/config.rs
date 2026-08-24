@@ -180,7 +180,7 @@ pub fn default_profile_caps() -> Option<ProfileCaps> {
     Some(DEFAULT_PROFILE_CAPS)
 }
 
-pub fn apply_default_caps(engine: &mut crate::K3dengine) {
+pub fn apply_default_caps(engine: &mut crate::engine::K3dengine) {
     if let Some(caps) = default_profile_caps() {
         engine.set_caps(caps);
         engine.apply_render_defaults(render_defaults_for_profile(caps));

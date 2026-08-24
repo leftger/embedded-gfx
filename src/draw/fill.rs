@@ -7,7 +7,7 @@ use embedded_graphics_core::prelude::Point;
 use heapless::Vec;
 
 use super::blend::MAX_ROW_WIDTH;
-use crate::DrawPrimitive;
+use crate::primitive::DrawPrimitive;
 
 const FP_SHIFT: i64 = 16;
 

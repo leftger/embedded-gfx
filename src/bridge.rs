@@ -27,8 +27,8 @@ use embedded_graphics_core::{
 };
 use embedded_graphics_framebuf::{FrameBuf, backends::FrameBufferBackend};
 
-use crate::DrawPrimitive;
 use crate::draw::draw;
+use crate::primitive::DrawPrimitive;
 
 // ── 1. Color adapter ─────────────────────────────────────────────────────────
 

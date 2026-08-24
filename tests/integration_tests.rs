@@ -10,7 +10,7 @@ use embedded_3dgfx::renderer::FrameCtx;
 use embedded_3dgfx::telemetry::{ExecuteTelemetry, RecordTelemetry};
 #[cfg(feature = "textured")]
 use embedded_3dgfx::texture::{Texture, TextureManager};
-use embedded_3dgfx::{K3dengine, RetroStyle, Z_MAX_VALUE};
+use embedded_3dgfx::{Z_MAX_VALUE, engine::K3dengine, retro::RetroStyle};
 use embedded_graphics_core::pixelcolor::Rgb565;
 use embedded_graphics_core::prelude::*;
 use nalgebra::{Point3, Vector3};
@@ -2465,6 +2465,6 @@ fn test_toon_shading_and_outline_rendering() {
 }
 
 #[allow(dead_code)]
-fn _draw_helper(prim: embedded_3dgfx::DrawPrimitive, fb: &mut TestFramebuffer) {
+fn _draw_helper(prim: embedded_3dgfx::primitive::DrawPrimitive, fb: &mut TestFramebuffer) {
     draw(prim, fb);
 }

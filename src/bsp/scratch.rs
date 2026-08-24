@@ -1,6 +1,6 @@
 //! Per-frame mutable scratch memory for BSP traversal.
 //!
-//! Create once, pass `&mut BspScratch` into [`K3dengine::record_bsp`](crate::K3dengine::record_bsp) each
+//! Create once, pass `&mut BspScratch` into [`K3dengine::record_bsp`](crate::engine::K3dengine::record_bsp) each
 //! frame.  The frame counter wraps safely and the visframe array is zero-cost
 //! to "clear" — a wrapping increment of `frame` is the full reset.
 

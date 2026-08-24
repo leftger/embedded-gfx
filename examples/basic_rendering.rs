@@ -7,10 +7,10 @@
 //!
 //! Press SPACE to cycle through render modes
 
-use embedded_3dgfx::K3dengine;
 use embedded_3dgfx::Z_MAX_VALUE;
 use embedded_3dgfx::command_buffer::CommandBuffer;
 use embedded_3dgfx::config::apply_default_caps;
+use embedded_3dgfx::engine::K3dengine;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
 use embedded_3dgfx::renderer::FrameCtx;
 use embedded_graphics_core::pixelcolor::{Rgb565, RgbColor};

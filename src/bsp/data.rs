@@ -71,7 +71,7 @@ pub struct Face {
 /// The complete borrowed BSP world.
 ///
 /// Construct with [`BspWorld::new`] from your static lumps, then pass a
-/// `&BspWorld` into [`K3dengine::record_bsp`](crate::K3dengine::record_bsp) every frame.  No allocator needed.
+/// `&BspWorld` into [`K3dengine::record_bsp`](crate::engine::K3dengine::record_bsp) every frame.  No allocator needed.
 pub struct BspWorld<'a> {
     pub planes: &'a [Plane],
     pub nodes: &'a [Node],

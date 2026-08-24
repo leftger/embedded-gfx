@@ -9,7 +9,7 @@ use super::effects::{DitherConfig, FogConfig};
 #[cfg(feature = "lighting")]
 use super::fill::interpolate_color;
 use super::zbuffered::draw_zbuffered_with_effects;
-use crate::DrawPrimitive;
+use crate::primitive::DrawPrimitive;
 use crate::retro::{PaletteMode, ScreenTint, StippleMode, TextureMapping};
 
 #[inline]

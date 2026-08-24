@@ -16,9 +16,9 @@
 //! - SPACE: toggle auto-rotation
 //! - ESC: exit
 
-use embedded_3dgfx::K3dengine;
 use embedded_3dgfx::Z_MAX_VALUE;
 use embedded_3dgfx::command_buffer::CommandBuffer;
+use embedded_3dgfx::engine::K3dengine;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
 use embedded_3dgfx::renderer::FrameCtx;
 use embedded_3dgfx::texture::{Texture, TextureManager};

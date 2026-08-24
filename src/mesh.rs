@@ -36,8 +36,8 @@ pub enum RenderMode {
     /// Flat, unlit, texture-sampled -- the `Solid` mode's texture-mapped
     /// counterpart. Requires `geometry.uvs` (one per vertex) and
     /// `geometry.texture_id`; faces are silently skipped if either is
-    /// missing. Must be drawn via [`crate::K3dengine::execute_with_textures`]
-    /// (plain [`crate::K3dengine::execute`] can't resolve `texture_id`
+    /// missing. Must be drawn via [`crate::engine::K3dengine::execute_with_textures`]
+    /// (plain [`crate::engine::K3dengine::execute`] can't resolve `texture_id`
     /// without a [`crate::texture::TextureManager`]).
     #[cfg(feature = "textured")]
     Textured,

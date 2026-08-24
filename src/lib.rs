@@ -88,9 +88,6 @@ pub mod billboard;
 pub mod engine;
 pub mod primitive;
 
-pub use engine::{BudgetFallbackOutcome, DegradationOutcome, K3dengine};
-pub use primitive::DrawPrimitive;
-
 /// Result of a ray cast against triangle geometry.
 #[derive(Debug, Clone, Copy)]
 pub struct MeshRayCastHit {
@@ -168,74 +165,6 @@ pub mod tilebin;
 pub mod transform_anim;
 #[cfg(feature = "scene")]
 pub mod tween;
-
-// Re-export framebuffer types from external crate for user convenience
-pub use embedded_graphics_framebuf::{
-    FrameBuf,
-    backends::{DMACapableFrameBufferBackend, EndianCorrectedBuffer, EndianCorrection},
-};
-
-pub use draw::PixelRead;
-#[cfg(feature = "aa")]
-pub use draw::ReadPixel;
-
-#[cfg(feature = "aabb-cull")]
-pub use bounds::Aabb;
-pub use bridge::{
-    AsEgPoint, AsNalgebraPoint, HalfWidthDrawTargetAdapter, draw_to, eg_to_nalgebra,
-    nalgebra_to_eg, render_drawable_to_buffer, scanout_half_width_buffer, scanout_half_width_row,
-};
-pub use camera::{Camera, Ray};
-#[cfg(feature = "scene")]
-pub use character::CharacterController;
-pub use completion::{CompletionSlot, WaitTransfer, WaitTransferFuture};
-pub use display_backend::{
-    AsyncDmaTransfer, DisplayBackend, DisplayError, DisplayRegion, DmaTransfer, SimulatorBackend,
-    TransferError,
-};
-#[cfg(feature = "aa")]
-pub use draw::draw_zbuffered_2xssaa;
-pub use draw::{
-    DepthInterpolationMode, DitherConfig, FogConfig, InterlaceField, draw_zbuffered_with_options,
-    fast_blend_rgb565, fast_blend_rgba8888, fast_blend_rgba8888_to_rgb565, reverse_color_rgb565,
-    reverse_color_rgba8888,
-};
-#[cfg(feature = "embassy")]
-pub use embassy::{EmbassyWaitTransfer, EmbassyWaitTransferFuture, FrameClock};
-pub use swapchain::{StandardSwapChain, SwapChain};
-#[cfg(feature = "triple-buffering")]
-pub use swapchain::{StandardTripleSwapChain, TripleSwapChain};
-// Q16.16 fixed-point math now lives in embedded-dsp (shared with
-// embedded-gui) instead of a bespoke copy in this crate. Only available
-// when the "fixed-transform" feature (which requires "dsp") is enabled.
-#[cfg(feature = "fixed-transform")]
-pub use embedded_dsp::fixed_point::{
-    FP_ONE, Q16, Q16_MAX, Q16_MIN, ScanlineInterp, abs_q16, angle_to_q16, div_f_q16, div_n_q16,
-    div_q16, from_i16_q16, from_q16, lerp_q16, mul_f_q16, mul_n_q16, mul_q16, q16_to_q31,
-    q31_to_q16, qadd_q16, qsub_q16, recip_q16, to_i16_q16, to_q16,
-};
-#[cfg(feature = "hud")]
-pub use hud::{HudElement, HudLayer, Sprite2D, SpriteBlendMode};
-pub use input::InputState;
-#[cfg(feature = "lighting")]
-pub use lights::{PointLight, PointLightSet};
-#[cfg(feature = "scene")]
-pub use particles::{ParticleSpawn, ParticleSystem};
-#[cfg(feature = "render-layers")]
-pub use render_layers::RenderLayers;
-pub use renderer::{DirtyRegion, FrameCtx, PickQuery, PickResult, execute_commands_with_picking};
-pub use retro::{
-    AnimatedPalette, LightLevels, PaletteMode, RetroStyle, ScreenTint, SkyConfig, StippleMode,
-    TextureLodConfig, TextureMapping,
-};
-#[cfg(feature = "raycast")]
-pub use sector_lights::{LightEffectKind, SectorLight, light_level_at, light_level_u8_at};
-pub use shader::{WaterReflectConfig, WaterReflectShader};
-pub use tilebin::{TileBinStats, TileConfig};
-#[cfg(feature = "scene")]
-pub use transform_anim::{AnimationPlayer, SampledTransform, TransformKeyframe, TransformTrack};
-#[cfg(feature = "scene")]
-pub use tween::{Easing, Tween, Tween3, apply_easing, lerp, lerp3, scale_rgb565};
 
 /// Ray-cast against triangle geometry using Möller–Trumbore intersection.
 ///
@@ -351,7 +280,7 @@ pub fn mesh_ray_cast_bounded(
     geometry: &mesh::Geometry<'_>,
     model_matrix: &Matrix4<f32>,
     max_distance: f32,
-    model_aabb: Option<&Aabb>,
+    model_aabb: Option<&bounds::Aabb>,
 ) -> Option<MeshRayCastHit> {
     let inv = model_matrix.try_inverse()?;
     let origin4 = inv * Vector4::new(ray_origin.x, ray_origin.y, ray_origin.z, 1.0);
@@ -530,6 +459,8 @@ mod tests {
     }
 
     use super::*;
+    use crate::engine::K3dengine;
+    use crate::primitive::DrawPrimitive;
 
     #[test]
     fn test_engine_creation() {

@@ -10,13 +10,13 @@
 //!
 //! Run: `cargo run --example boot_menu --features std`
 
-use embedded_3dgfx::DrawPrimitive;
-use embedded_3dgfx::K3dengine;
 use embedded_3dgfx::billboard::Billboard;
 use embedded_3dgfx::command_buffer::CommandBuffer;
 use embedded_3dgfx::config::apply_default_caps;
 use embedded_3dgfx::draw::draw_zbuffered_with_textures as draw_tex;
+use embedded_3dgfx::engine::K3dengine;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
+use embedded_3dgfx::primitive::DrawPrimitive;
 use embedded_3dgfx::renderer::FrameCtx;
 use embedded_3dgfx::texture::{Texture, TextureManager};
 use embedded_3dgfx::transform_anim::{AnimationPlayer, TransformKeyframe, TransformTrack};
@@ -160,7 +160,7 @@ fn place_menu_items(items: &mut [K3dMesh<'static>], x: f32) {
 
 fn apply_billboard_from_sample(
     billboard: &mut Billboard,
-    sample: &embedded_3dgfx::SampledTransform,
+    sample: &embedded_3dgfx::transform_anim::SampledTransform,
     size_mul: f32,
 ) {
     billboard.position = Point3::new(sample.position[0], sample.position[1], sample.position[2]);

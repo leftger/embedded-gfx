@@ -77,7 +77,10 @@ mod tests {
         let point = Point2::new(10, 20);
         let color = Rgb565::CSS_RED;
 
-        draw(crate::DrawPrimitive::ColoredPoint(point, color), &mut fb);
+        draw(
+            crate::primitive::DrawPrimitive::ColoredPoint(point, color),
+            &mut fb,
+        );
 
         assert_eq!(fb.pixel_count(), 1);
         assert!(fb.contains_pixel(10, 20));
@@ -90,7 +93,10 @@ mod tests {
         let p2 = Point2::new(20, 20);
         let color = Rgb565::CSS_GREEN;
 
-        draw(crate::DrawPrimitive::Line([p1, p2], color), &mut fb);
+        draw(
+            crate::primitive::DrawPrimitive::Line([p1, p2], color),
+            &mut fb,
+        );
 
         assert!(fb.pixel_count() >= 10);
         assert!(fb.contains_pixel(10, 20));
@@ -104,7 +110,10 @@ mod tests {
         let p2 = Point2::new(10, 20);
         let color = Rgb565::CSS_BLUE;
 
-        draw(crate::DrawPrimitive::Line([p1, p2], color), &mut fb);
+        draw(
+            crate::primitive::DrawPrimitive::Line([p1, p2], color),
+            &mut fb,
+        );
 
         assert!(fb.pixel_count() >= 10);
         assert!(fb.contains_pixel(10, 10));
@@ -118,7 +127,10 @@ mod tests {
         let p2 = Point2::new(10, 10);
         let color = Rgb565::CSS_WHITE;
 
-        draw(crate::DrawPrimitive::Line([p1, p2], color), &mut fb);
+        draw(
+            crate::primitive::DrawPrimitive::Line([p1, p2], color),
+            &mut fb,
+        );
 
         assert!(fb.pixel_count() >= 10);
         assert!(fb.contains_pixel(0, 0));
@@ -136,7 +148,7 @@ mod tests {
         let color = Rgb565::CSS_YELLOW;
 
         draw(
-            crate::DrawPrimitive::ColoredTriangle(vertices, color),
+            crate::primitive::DrawPrimitive::ColoredTriangle(vertices, color),
             &mut fb,
         );
 
@@ -156,7 +168,7 @@ mod tests {
         let color = Rgb565::CSS_CYAN;
 
         draw(
-            crate::DrawPrimitive::ColoredTriangle(vertices, color),
+            crate::primitive::DrawPrimitive::ColoredTriangle(vertices, color),
             &mut fb,
         );
 
@@ -175,7 +187,7 @@ mod tests {
         let color = Rgb565::CSS_MAGENTA;
 
         draw(
-            crate::DrawPrimitive::ColoredTriangle(vertices, color),
+            crate::primitive::DrawPrimitive::ColoredTriangle(vertices, color),
             &mut fb,
         );
 
@@ -193,7 +205,7 @@ mod tests {
         let color = Rgb565::CSS_WHITE;
 
         draw(
-            crate::DrawPrimitive::ColoredTriangle(vertices, color),
+            crate::primitive::DrawPrimitive::ColoredTriangle(vertices, color),
             &mut fb,
         );
 
@@ -205,11 +217,11 @@ mod tests {
         let mut fb = MockFramebuffer::new();
 
         draw(
-            crate::DrawPrimitive::ColoredPoint(Point2::new(5, 5), Rgb565::CSS_RED),
+            crate::primitive::DrawPrimitive::ColoredPoint(Point2::new(5, 5), Rgb565::CSS_RED),
             &mut fb,
         );
         draw(
-            crate::DrawPrimitive::Line(
+            crate::primitive::DrawPrimitive::Line(
                 [Point2::new(10, 10), Point2::new(20, 20)],
                 Rgb565::CSS_GREEN,
             ),
@@ -416,7 +428,7 @@ mod tests {
 
         let mut fb = MockFramebuffer::new();
         let mut zbuf = [crate::Z_MAX_VALUE; 64 * 64];
-        let prim = crate::DrawPrimitive::ColoredTriangleWithDepth {
+        let prim = crate::primitive::DrawPrimitive::ColoredTriangleWithDepth {
             points: [
                 Point2::new(10, 10),
                 Point2::new(30, 10),

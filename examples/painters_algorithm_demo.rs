@@ -14,14 +14,14 @@
 //! - R: Rotate objects
 //! - ESC: Exit
 
-use embedded_3dgfx::DrawPrimitive;
-use embedded_3dgfx::K3dengine;
 use embedded_3dgfx::Z_MAX_VALUE;
 use embedded_3dgfx::command_buffer::{CommandBuffer, RenderCommand};
 use embedded_3dgfx::draw::draw;
+use embedded_3dgfx::engine::K3dengine;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
 #[cfg(feature = "perfcounter")]
 use embedded_3dgfx::perfcounter::PerformanceCounter;
+use embedded_3dgfx::primitive::DrawPrimitive;
 use embedded_3dgfx::renderer::FrameCtx;
 use embedded_graphics::mono_font::{MonoTextStyle, ascii::FONT_6X10};
 use embedded_graphics::text::Text;

@@ -202,7 +202,7 @@ impl<const N: usize> ParticleSystem<N> {
     /// `commands`.
     ///
     /// Each particle emits two
-    /// [`DrawPrimitive::ColoredTriangleWithDepth`][crate::DrawPrimitive::ColoredTriangleWithDepth]
+    /// [`DrawPrimitive::ColoredTriangleWithDepth`][crate::primitive::DrawPrimitive::ColoredTriangleWithDepth]
     /// commands.  Billboard orientation uses world-up `(0, 1, 0)`, which is
     /// correct for all but extreme pitch angles.
     ///
@@ -211,7 +211,7 @@ impl<const N: usize> ParticleSystem<N> {
     /// silently skipped.
     pub fn record<const MAX: usize>(
         &self,
-        engine: &crate::K3dengine,
+        engine: &crate::engine::K3dengine,
         commands: &mut crate::command_buffer::CommandBuffer<MAX>,
     ) -> usize {
         use crate::command_buffer::RenderCommand;
@@ -245,14 +245,14 @@ impl<const N: usize> ParticleSystem<N> {
             };
 
             let _ = commands.push(RenderCommand::Draw(
-                crate::DrawPrimitive::ColoredTriangleWithDepth {
+                crate::primitive::DrawPrimitive::ColoredTriangleWithDepth {
                     points: [pts1[0].xy(), pts1[1].xy(), pts1[2].xy()],
                     depths: [pts1[0].z as f32, pts1[1].z as f32, pts1[2].z as f32],
                     color,
                 },
             ));
             let _ = commands.push(RenderCommand::Draw(
-                crate::DrawPrimitive::ColoredTriangleWithDepth {
+                crate::primitive::DrawPrimitive::ColoredTriangleWithDepth {
                     points: [pts2[0].xy(), pts2[1].xy(), pts2[2].xy()],
                     depths: [pts2[0].z as f32, pts2[1].z as f32, pts2[2].z as f32],
                     color,

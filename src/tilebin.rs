@@ -1,6 +1,6 @@
-use crate::DrawPrimitive;
 use crate::command_buffer::{CommandBuffer, RenderCommand};
 use crate::error::RenderError;
+use crate::primitive::DrawPrimitive;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TileConfig {

@@ -15,8 +15,9 @@
 //!
 //! Note: callers supply a fixed triangle scratch buffer; no heap allocation is required.
 
+use crate::engine::K3dengine;
 use crate::mesh::{K3dMesh, RenderMode};
-use crate::{DrawPrimitive, K3dengine};
+use crate::primitive::DrawPrimitive;
 use core::cmp::Ordering;
 use embedded_graphics_core::pixelcolor::{Rgb565, RgbColor};
 use nalgebra::{Vector3, Vector4};

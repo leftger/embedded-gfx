@@ -8,10 +8,10 @@ use embedded_graphics_core::{
 };
 
 use crate::{
-    DrawPrimitive,
     command_buffer::{CommandBuffer, RenderCommand},
     draw::{DitherConfig, FogConfig, draw_zbuffered_with_effects},
     error::{BudgetKind, RenderError},
+    primitive::DrawPrimitive,
     retro::{PaletteMode, ScreenTint, SkyConfig, StippleMode},
 };
 

@@ -28,7 +28,7 @@ use embedded_3dgfx::particles::{ParticleSpawn, ParticleSystem};
 #[cfg(feature = "perfcounter")]
 use embedded_3dgfx::perfcounter::PerformanceCounter;
 use embedded_3dgfx::renderer::FrameCtx;
-use embedded_3dgfx::{K3dengine, RetroStyle};
+use embedded_3dgfx::{engine::K3dengine, retro::RetroStyle};
 use embedded_graphics::mono_font::{MonoTextStyle, ascii::FONT_6X10};
 use embedded_graphics::text::Text;
 use embedded_graphics_core::pixelcolor::{Rgb565, RgbColor};

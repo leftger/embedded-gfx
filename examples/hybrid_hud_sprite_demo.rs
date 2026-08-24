@@ -5,10 +5,10 @@
 //! 2. 2D Sprite overlays using `Sprite2D` (color-key transparency & integer scaling).
 //! 3. Integrated Screen-Space Picking (`execute_commands_with_picking`).
 
-use embedded_3dgfx::K3dengine;
 use embedded_3dgfx::Z_MAX_VALUE;
 use embedded_3dgfx::command_buffer::CommandBuffer;
 use embedded_3dgfx::config::apply_default_caps;
+use embedded_3dgfx::engine::K3dengine;
 use embedded_3dgfx::hud::{HudElement, HudLayer, Sprite2D};
 use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
 use embedded_3dgfx::renderer::{FrameCtx, PickQuery, PickResult, execute_commands_with_picking};

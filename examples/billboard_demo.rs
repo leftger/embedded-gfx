@@ -10,11 +10,11 @@
 //! - SPACE: Spawn more particles
 //! - ESC: Exit
 
-use embedded_3dgfx::K3dengine;
 use embedded_3dgfx::Z_MAX_VALUE;
 use embedded_3dgfx::billboard::Billboard;
 use embedded_3dgfx::config::apply_default_caps;
 use embedded_3dgfx::draw::draw_zbuffered;
+use embedded_3dgfx::engine::K3dengine;
 use embedded_3dgfx::mesh::Geometry;
 #[cfg(feature = "perfcounter")]
 use embedded_3dgfx::perfcounter::PerformanceCounter;
@@ -248,7 +248,7 @@ fn main() {
                 if let Some([p1, p2, p3]) =
                     engine.transform_points(face, geometry.vertices, engine.camera.vp_matrix)
                 {
-                    use embedded_3dgfx::DrawPrimitive;
+                    use embedded_3dgfx::primitive::DrawPrimitive;
                     draw_zbuffered(
                         DrawPrimitive::ColoredTriangleWithDepth {
                             points: [p1.xy(), p2.xy(), p3.xy()],

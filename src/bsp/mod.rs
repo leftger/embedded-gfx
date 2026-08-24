@@ -31,10 +31,11 @@ use heapless::Vec as HVec;
 use nalgebra::{Point2, Vector4};
 
 use crate::{
-    DrawPrimitive, K3dengine,
     command_buffer::{CommandBuffer, RenderCommand},
+    engine::K3dengine,
     error::RenderError,
     lights::PointLight,
+    primitive::DrawPrimitive,
     renderer::FrameCtx,
     sector_lights::{SectorLight, light_level_u8_at},
     texture::TextureManager,

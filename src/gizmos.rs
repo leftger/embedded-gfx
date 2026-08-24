@@ -3,9 +3,9 @@
 //! Intended for `std` / simulator builds when tuning culling. All helpers are
 //! `no_std`-safe and write into a caller-provided callback or command buffer.
 
-use crate::DrawPrimitive;
 use crate::bounds::Aabb;
 use crate::camera::Camera;
+use crate::primitive::DrawPrimitive;
 use embedded_graphics_core::pixelcolor::Rgb565;
 use nalgebra::{Matrix4, Point2, Point3, Vector3};
 

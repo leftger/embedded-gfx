@@ -12,10 +12,10 @@
 //! - SPACE: Toggle auto-rotation
 //! - ESC: Exit
 
-use embedded_3dgfx::K3dengine;
 use embedded_3dgfx::Z_MAX_VALUE;
 use embedded_3dgfx::config::apply_default_caps;
 use embedded_3dgfx::draw::draw_zbuffered;
+use embedded_3dgfx::engine::K3dengine;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh};
 #[cfg(feature = "perfcounter")]
 use embedded_3dgfx::perfcounter::PerformanceCounter;
@@ -218,7 +218,7 @@ fn main() {
                         [mesh.color, mesh.color, mesh.color]
                     };
 
-                    use embedded_3dgfx::DrawPrimitive;
+                    use embedded_3dgfx::primitive::DrawPrimitive;
                     draw_zbuffered(
                         DrawPrimitive::GouraudTriangleWithDepth {
                             points: [p1.xy(), p2.xy(), p3.xy()],

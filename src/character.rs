@@ -146,7 +146,7 @@ impl CharacterController {
     }
 
     /// Write the eye position and look target into the engine camera.
-    pub fn apply_to_camera(&self, engine: &mut crate::K3dengine) {
+    pub fn apply_to_camera(&self, engine: &mut crate::engine::K3dengine) {
         engine.camera.set_position(self.eye_position());
         engine.camera.set_target(self.look_target());
     }

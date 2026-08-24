@@ -70,7 +70,7 @@ embedded-3dgfx = { version = "0.5", features = ["std", "physics"] }
 ## Quick start
 
 ```rust
-use embedded_3dgfx::{K3dengine, mesh::{Geometry, K3dMesh, RenderMode}};
+use embedded_3dgfx::{engine::K3dengine, mesh::{Geometry, K3dMesh, RenderMode}};
 use nalgebra::Vector3;
 
 let mut engine = K3dengine::new(320, 240);

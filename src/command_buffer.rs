@@ -1,8 +1,8 @@
 use heapless::Vec;
 
 use crate::{
-    DrawPrimitive,
     error::{BudgetKind, RenderError},
+    primitive::DrawPrimitive,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

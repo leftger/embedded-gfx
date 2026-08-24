@@ -369,7 +369,7 @@ fn test_billboard_fast_transform_matches_manual() {
 // 4. 2xSSAA — confirmed via draw_zbuffered_2xssaa API surface existence
 // ─────────────────────────────────────────────────────────────────────────────
 
-use embedded_3dgfx::DrawPrimitive;
+use embedded_3dgfx::primitive::DrawPrimitive;
 use nalgebra::Point2;
 
 /// A minimal PixelRead + DrawTarget framebuffer for testing 2xSSAA.
@@ -414,7 +414,7 @@ impl embedded_graphics_core::draw_target::DrawTarget for MockFb {
     }
 }
 
-impl embedded_3dgfx::PixelRead for MockFb {
+impl embedded_3dgfx::draw::PixelRead for MockFb {
     fn get_pixel(&self, pt: embedded_graphics_core::prelude::Point) -> Rgb565 {
         if pt.x >= 0 && pt.y >= 0 && (pt.x as u32) < self.width && (pt.y as u32) < self.height {
             self.pixels[(pt.y as u32 * self.width + pt.x as u32) as usize]

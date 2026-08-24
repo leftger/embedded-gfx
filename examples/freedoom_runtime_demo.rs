@@ -17,7 +17,7 @@ use embedded_3dgfx::command_buffer::CommandBuffer;
 use embedded_3dgfx::config::apply_default_caps;
 use embedded_3dgfx::renderer::FrameCtx;
 use embedded_3dgfx::texture::{Texture, TextureManager};
-use embedded_3dgfx::{FogConfig, K3dengine, RetroStyle, StippleMode};
+use embedded_3dgfx::{draw::FogConfig, engine::K3dengine, retro::RetroStyle, retro::StippleMode};
 use embedded_graphics::mono_font::{MonoTextStyle, ascii::FONT_6X10};
 use embedded_graphics::text::Text;
 use embedded_graphics_core::pixelcolor::Rgb565;

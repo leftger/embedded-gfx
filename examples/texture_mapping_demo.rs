@@ -15,10 +15,10 @@
 //! - SPACE: Toggle auto-rotation
 //! - ESC: Exit
 
-use embedded_3dgfx::K3dengine;
 use embedded_3dgfx::Z_MAX_VALUE;
 use embedded_3dgfx::config::apply_default_caps;
 use embedded_3dgfx::draw::draw_zbuffered_with_textures;
+use embedded_3dgfx::engine::K3dengine;
 use embedded_3dgfx::mesh::{Geometry, K3dMesh};
 #[cfg(feature = "perfcounter")]
 use embedded_3dgfx::perfcounter::PerformanceCounter;
@@ -286,7 +286,7 @@ fn main() {
                             geometry.uvs[face[2]],
                         ];
 
-                        use embedded_3dgfx::DrawPrimitive;
+                        use embedded_3dgfx::primitive::DrawPrimitive;
                         draw_zbuffered_with_textures(
                             DrawPrimitive::TexturedTriangleWithDepth {
                                 points: [p1.xy(), p2.xy(), p3.xy()],

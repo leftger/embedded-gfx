@@ -7,7 +7,6 @@ use std::f32::consts::PI;
 use std::fs::File;
 use std::time::Instant;
 
-use embedded_3dgfx::DrawPrimitive;
 use embedded_3dgfx::Z_MAX_VALUE;
 use embedded_3dgfx::bsp::BspTelemetry;
 use embedded_3dgfx::bsp::builder::{RoomSpec, build_room_strip};
@@ -23,6 +22,7 @@ use embedded_3dgfx::mesh::{Geometry, K3dMesh, RenderMode};
 use embedded_3dgfx::particles::{ParticleSpawn, ParticleSystem};
 #[cfg(feature = "physics")]
 use embedded_3dgfx::physics::{Collider, PhysicsWorld, RigidBody, sync_body_to_mesh};
+use embedded_3dgfx::primitive::DrawPrimitive;
 use embedded_3dgfx::renderer::FrameCtx;
 use embedded_3dgfx::retro::AnimatedPalette;
 use embedded_3dgfx::shader::{
@@ -31,7 +31,7 @@ use embedded_3dgfx::shader::{
 #[cfg(feature = "physics")]
 use embedded_3dgfx::softbody::SoftBody;
 use embedded_3dgfx::texture::{Texture, TextureManager};
-use embedded_3dgfx::{K3dengine, RetroStyle, SkyConfig};
+use embedded_3dgfx::{engine::K3dengine, retro::RetroStyle, retro::SkyConfig};
 
 use embedded_graphics::mono_font::{MonoTextStyle, ascii::FONT_6X10};
 use embedded_graphics::prelude::Primitive;

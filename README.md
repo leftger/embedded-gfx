@@ -1,5 +1,9 @@
 # embedded-3dgfx
 
+<p align="center">
+  <img src="assets/aztec_rustacean.png" alt="embedded-3dgfx" width="100%">
+</p>
+
 [![crates.io](https://img.shields.io/crates/v/embedded-3dgfx.svg)](https://crates.io/crates/embedded-3dgfx)
 [![docs.rs](https://img.shields.io/docsrs/embedded-3dgfx)](https://docs.rs/embedded-3dgfx)
 [![CI](https://github.com/leftger/embedded-3dgfx/actions/workflows/ci.yml/badge.svg)](https://github.com/leftger/embedded-3dgfx/actions/workflows/ci.yml)

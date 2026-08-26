@@ -174,18 +174,21 @@ impl K3dengine {
     }
 
     #[cfg(feature = "lighting")]
+    #[allow(dead_code)]
     #[inline]
     pub(crate) fn light_tint_at(&self, world_pos: Point3<f32>) -> Rgb565 {
         pipeline::light_tint_at(self, world_pos)
     }
 
     #[cfg(feature = "lighting")]
+    #[allow(dead_code)]
     #[inline]
     pub(crate) fn add_tint(base: Rgb565, tint: Rgb565) -> Rgb565 {
         pipeline::add_tint(base, tint)
     }
 
     #[cfg(feature = "lighting")]
+    #[allow(dead_code)]
     #[inline]
     pub(crate) fn sector_shaded_color(
         &self,
@@ -197,6 +200,7 @@ impl K3dengine {
     }
 
     #[cfg(feature = "lighting")]
+    #[allow(dead_code)]
     #[inline]
     pub(crate) fn face_world_center(
         face: &[usize; 3],

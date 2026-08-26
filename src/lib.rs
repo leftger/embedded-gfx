@@ -145,6 +145,7 @@ pub mod renderer;
 // the heavier `painters` helpers stay opt-in.
 pub mod retro;
 pub mod shader;
+pub mod simd_dsp;
 
 #[cfg(feature = "scene")]
 pub mod scene_format;

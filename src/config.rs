@@ -72,6 +72,26 @@ impl ProfileCaps {
     }
 }
 
+pub const PROFILE_M0_MIN: ProfileCaps = ProfileCaps {
+    max_draw_primitives: 256,
+    max_meshes_per_frame: 16,
+    max_textures: 1,
+    max_width: 128,
+    max_height: 128,
+    max_triangles_per_mesh: 512,
+    max_vertices_per_mesh: 512,
+};
+
+pub const PROFILE_M0_BALANCED: ProfileCaps = ProfileCaps {
+    max_draw_primitives: 512,
+    max_meshes_per_frame: 32,
+    max_textures: 2,
+    max_width: 160,
+    max_height: 128,
+    max_triangles_per_mesh: 1_024,
+    max_vertices_per_mesh: 1_024,
+};
+
 pub const PROFILE_M3_MIN: ProfileCaps = ProfileCaps {
     max_draw_primitives: 1_024,
     max_meshes_per_frame: 64,
@@ -155,7 +175,7 @@ pub fn render_defaults_for_profile(profile: ProfileCaps) -> RenderDefaults {
 /// Priority:
 /// 1. `desktop-unbounded` cargo feature => no caps
 /// 2. `EMBEDDED_3DGFX_CAPS=off` => no caps
-/// 3. `EMBEDDED_3DGFX_CAPS=m3|m4|m33|m55` => corresponding balanced/perf profile
+/// 3. `EMBEDDED_3DGFX_CAPS=m0|m3|m4|m33|m55` => corresponding balanced/perf profile
 /// 4. Fallback => `DEFAULT_PROFILE_CAPS` (`PROFILE_M33_BALANCED`)
 pub fn default_profile_caps() -> Option<ProfileCaps> {
     if cfg!(feature = "desktop-unbounded") {
@@ -168,6 +188,8 @@ pub fn default_profile_caps() -> Option<ProfileCaps> {
             let value = raw.trim().to_ascii_lowercase();
             return match value.as_str() {
                 "off" | "none" | "unbounded" => None,
+                "m0" | "m0_min" => Some(PROFILE_M0_MIN),
+                "m0_balanced" => Some(PROFILE_M0_BALANCED),
                 "m3" | "m3_balanced" => Some(PROFILE_M3_BALANCED),
                 "m4" | "m4_balanced" => Some(PROFILE_M4_BALANCED),
                 "m33" | "m33_balanced" => Some(PROFILE_M33_BALANCED),
@@ -193,6 +215,13 @@ pub fn apply_default_caps(engine: &mut crate::engine::K3dengine) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_render_defaults_for_m0_prefers_fastest_unlit() {
+        let d = render_defaults_for_profile(PROFILE_M0_BALANCED);
+        assert_eq!(d.quality_tier, QualityTier::Fastest);
+        assert_eq!(d.material_profile, MaterialProfile::Unlit);
+    }
 
     #[test]
     fn test_render_defaults_for_m3_prefers_fastest_unlit() {

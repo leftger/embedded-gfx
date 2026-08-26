@@ -185,6 +185,7 @@ jobs:
       fail-fast: false
       matrix:
         caps_profile:
+          - m0
           - m3
           - m4
           - m33
@@ -208,6 +209,7 @@ jobs:
       fail-fast: false
       matrix:
         caps_profile:
+          - m0
           - m3
           - m4
           - m33

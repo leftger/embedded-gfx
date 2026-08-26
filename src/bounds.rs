@@ -97,24 +97,39 @@ impl Aabb {
         plane_normal: &Vector3<f32>,
         world_from_local: &Matrix3<f32>,
     ) -> f32 {
-        let n = *plane_normal;
-        let x = Vector3::new(
-            world_from_local[(0, 0)],
-            world_from_local[(1, 0)],
-            world_from_local[(2, 0)],
+        let n_arr = [plane_normal.x, plane_normal.y, plane_normal.z];
+        let x_dot = crate::simd_dsp::dot3_f32(
+            n_arr,
+            [
+                world_from_local[(0, 0)],
+                world_from_local[(1, 0)],
+                world_from_local[(2, 0)],
+            ],
         );
-        let y = Vector3::new(
-            world_from_local[(0, 1)],
-            world_from_local[(1, 1)],
-            world_from_local[(2, 1)],
+        let y_dot = crate::simd_dsp::dot3_f32(
+            n_arr,
+            [
+                world_from_local[(0, 1)],
+                world_from_local[(1, 1)],
+                world_from_local[(2, 1)],
+            ],
         );
-        let z = Vector3::new(
-            world_from_local[(0, 2)],
-            world_from_local[(1, 2)],
-            world_from_local[(2, 2)],
+        let z_dot = crate::simd_dsp::dot3_f32(
+            n_arr,
+            [
+                world_from_local[(0, 2)],
+                world_from_local[(1, 2)],
+                world_from_local[(2, 2)],
+            ],
         );
-        let projected = Vector3::new(n.dot(&x), n.dot(&y), n.dot(&z)).abs();
-        projected.dot(&self.half_extents)
+        crate::simd_dsp::dot3_f32(
+            [x_dot.abs(), y_dot.abs(), z_dot.abs()],
+            [
+                self.half_extents.x,
+                self.half_extents.y,
+                self.half_extents.z,
+            ],
+        )
     }
 
     /// Signed distance from plane `(n·x + d = 0)` to the AABB center in world
@@ -133,11 +148,24 @@ impl Aabb {
         n_len: f32,
         model_matrix: &Matrix4<f32>,
     ) -> f32 {
-        let n = Vector3::new(plane_a, plane_b, plane_c);
         let rot = model_matrix.fixed_view::<3, 3>(0, 0).into_owned();
         let world_center = model_matrix.transform_point(&Point3::from(self.center));
-        let dist = (n.dot(&world_center.coords) + plane_d) / n_len;
-        let r = self.relative_radius(&(n / n_len), &rot);
+        let dot = crate::simd_dsp::dot3_f32(
+            [plane_a, plane_b, plane_c],
+            [
+                world_center.coords.x,
+                world_center.coords.y,
+                world_center.coords.z,
+            ],
+        );
+        let dist = (dot + plane_d) / n_len;
+        let inv_n_len = 1.0 / n_len;
+        let n_norm = Vector3::new(
+            plane_a * inv_n_len,
+            plane_b * inv_n_len,
+            plane_c * inv_n_len,
+        );
+        let r = self.relative_radius(&n_norm, &rot);
         dist + r
     }
 

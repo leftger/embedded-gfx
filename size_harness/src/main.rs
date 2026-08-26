@@ -23,6 +23,7 @@ static NORMALS: [[f32; 3]; 1] = [[0.0, 0.0, 1.0]];
 
 #[entry]
 fn main() -> ! {
+    #[allow(unused_mut)]
     let mut engine = K3dengine::new(320, 240);
     let geometry = Geometry {
         vertices: &VERTS,

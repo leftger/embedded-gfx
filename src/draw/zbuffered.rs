@@ -770,9 +770,9 @@ fn draw_scanline_zbuffered_gouraud<D: DrawTarget<Color = Rgb565>>(
 
     for x in start_x..=end_x {
         let z = (z_curr >> 16) as u32;
-        let r = (r_curr >> 16).clamp(0, 31) as u8;
-        let g = (g_curr >> 16).clamp(0, 63) as u8;
-        let b = (b_curr >> 16).clamp(0, 31) as u8;
+        let r = crate::simd_dsp::clamp_u5(r_curr >> 16);
+        let g = crate::simd_dsp::clamp_u6(g_curr >> 16);
+        let b = crate::simd_dsp::clamp_u5(b_curr >> 16);
         z_curr += z_step as i64;
         r_curr += r_step;
         g_curr += g_step;

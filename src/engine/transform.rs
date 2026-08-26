@@ -66,18 +66,22 @@ pub(crate) fn should_cull_mesh(camera: &Camera, mesh: &K3dMesh) -> bool {
 
         for plane in &planes {
             let (a, b, c, d) = (plane[0], plane[1], plane[2], plane[3]);
-            let len = ComplexField::sqrt(a * a + b * b + c * c);
+            let len = ComplexField::sqrt(crate::simd_dsp::dot3_f32([a, b, c], [a, b, c]));
             if len <= 0.0 {
                 continue;
             }
-            let dist = (a * world_center.x + b * world_center.y + c * world_center.z + d) / len;
+            let dist = (crate::simd_dsp::dot3_f32(
+                [a, b, c],
+                [world_center.x, world_center.y, world_center.z],
+            ) + d)
+                / len;
             if dist < -radius {
                 return true;
             }
         }
         for plane in &planes {
             let (a, b, c, d) = (plane[0], plane[1], plane[2], plane[3]);
-            let len = ComplexField::sqrt(a * a + b * b + c * c);
+            let len = ComplexField::sqrt(crate::simd_dsp::dot3_f32([a, b, c], [a, b, c]));
             if len <= 0.0 {
                 continue;
             }
@@ -96,9 +100,12 @@ pub(crate) fn should_cull_mesh(camera: &Camera, mesh: &K3dMesh) -> bool {
         let planes = frustum_planes_from_vp(&camera.vp_matrix);
         for plane in &planes {
             let (a, b, c, d) = (plane[0], plane[1], plane[2], plane[3]);
-            let len = ComplexField::sqrt(a * a + b * b + c * c);
+            let len = ComplexField::sqrt(crate::simd_dsp::dot3_f32([a, b, c], [a, b, c]));
             if len > 0.0 {
-                let dist = (a * mesh_pos.x + b * mesh_pos.y + c * mesh_pos.z + d) / len;
+                let dist =
+                    (crate::simd_dsp::dot3_f32([a, b, c], [mesh_pos.x, mesh_pos.y, mesh_pos.z])
+                        + d)
+                        / len;
                 if dist < -radius {
                     return true;
                 }

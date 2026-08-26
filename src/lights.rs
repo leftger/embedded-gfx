@@ -124,7 +124,11 @@ impl<const N: usize> PointLightSet<N> {
             g += c.g() as u32;
             b += c.b() as u32;
         }
-        Rgb565::new(r.min(31) as u8, g.min(63) as u8, b.min(31) as u8)
+        Rgb565::new(
+            crate::simd_dsp::clamp_u5(r as i32),
+            crate::simd_dsp::clamp_u6(g as i32),
+            crate::simd_dsp::clamp_u5(b as i32),
+        )
     }
 }
 

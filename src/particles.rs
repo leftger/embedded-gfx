@@ -78,6 +78,21 @@ impl Particle {
     pub fn size(&self) -> f32 {
         self.size_start + self.t() * (self.size_end - self.size_start)
     }
+
+    /// Sample color using a multi-stop [`ColorGradient`][crate::color_gradient::ColorGradient].
+    #[inline]
+    pub fn color_with_gradient(
+        &self,
+        gradient: &crate::color_gradient::ColorGradient<Rgb565>,
+    ) -> Rgb565 {
+        gradient.sample(self.t())
+    }
+
+    /// Sample size using a parametric [`Curve`][crate::curve::Curve].
+    #[inline]
+    pub fn size_with_curve(&self, curve: &crate::curve::Curve<f32>) -> f32 {
+        curve.sample(self.t())
+    }
 }
 
 #[inline]
@@ -230,6 +245,74 @@ impl<const N: usize> ParticleSystem<N> {
                 continue;
             }
             let color = particle.color();
+
+            let billboard = Billboard::new(particle.position, size, color);
+            let quad = billboard.generate_quad(engine.camera.position, camera_up);
+
+            // Triangle 1: bottom-left (0), bottom-right (1), top-right (2)
+            let Some((pts1, _)) = engine.transform_points_with_w(&[0usize, 1, 2], &quad, vp) else {
+                continue;
+            };
+
+            // Triangle 2: bottom-left (0), top-right (2), top-left (3)
+            let Some((pts2, _)) = engine.transform_points_with_w(&[0usize, 2, 3], &quad, vp) else {
+                continue;
+            };
+
+            let _ = commands.push(RenderCommand::Draw(
+                crate::primitive::DrawPrimitive::ColoredTriangleWithDepth {
+                    points: [pts1[0].xy(), pts1[1].xy(), pts1[2].xy()],
+                    depths: [pts1[0].z as f32, pts1[1].z as f32, pts1[2].z as f32],
+                    color,
+                },
+            ));
+            let _ = commands.push(RenderCommand::Draw(
+                crate::primitive::DrawPrimitive::ColoredTriangleWithDepth {
+                    points: [pts2[0].xy(), pts2[1].xy(), pts2[2].xy()],
+                    depths: [pts2[0].z as f32, pts2[1].z as f32, pts2[2].z as f32],
+                    color,
+                },
+            ));
+            emitted += 1;
+        }
+
+        emitted
+    }
+
+    /// Record all live particles with an optional [`ColorGradient`][crate::color_gradient::ColorGradient]
+    /// and/or [`Curve`][crate::curve::Curve] for size ramp.
+    pub fn record_with_gradient<const MAX: usize>(
+        &self,
+        engine: &crate::engine::K3dengine,
+        commands: &mut crate::command_buffer::CommandBuffer<MAX>,
+        gradient: Option<&crate::color_gradient::ColorGradient<Rgb565>>,
+        size_curve: Option<&crate::curve::Curve<f32>>,
+    ) -> usize {
+        use crate::command_buffer::RenderCommand;
+
+        if self.active == 0 {
+            return 0;
+        }
+
+        let camera_up = Vector3::new(0.0, 1.0, 0.0);
+        let vp = engine.camera.vp_matrix;
+        let mut emitted = 0usize;
+
+        for particle in self.iter_active() {
+            let size = if let Some(curve) = size_curve {
+                particle.size_with_curve(curve)
+            } else {
+                particle.size()
+            };
+            if size <= 0.0 {
+                continue;
+            }
+
+            let color = if let Some(grad) = gradient {
+                particle.color_with_gradient(grad)
+            } else {
+                particle.color()
+            };
 
             let billboard = Billboard::new(particle.position, size, color);
             let quad = billboard.generate_quad(engine.camera.position, camera_up);

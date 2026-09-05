@@ -468,6 +468,11 @@ mod anim_blend_api {
     }
 
     impl<'a> AnimClip<'a> {
+        /// Create a new animation clip.
+        pub const fn new(keyframes: &'a [SkeletonKeyframe<'a>], looping: bool) -> Self {
+            Self { keyframes, looping }
+        }
+
         pub fn duration(&self) -> f32 {
             self.keyframes.last().map(|k| k.time).unwrap_or(0.0)
         }

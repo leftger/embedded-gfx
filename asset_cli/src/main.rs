@@ -1,3 +1,10 @@
+#![allow(
+    clippy::type_complexity,
+    clippy::iter_cloned_collect,
+    clippy::needless_range_loop,
+    clippy::single_char_add_str
+)]
+
 use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
@@ -1674,6 +1681,7 @@ fn usage() {
   asset_cli pack-scene --output <scene.e3dscene> --chunk <kind:path> [--chunk <kind:path> ...]
   asset_cli import-bsp --input <level.bsp> --output <level_bsp.rs> [--no-lightmaps]
   asset_cli import-wad --input <doom.wad> --output <level_wad.rs> [--map MAP01]
+  asset_cli bake-vertex-ao --input <mesh.txt> --output <ao_data.rs> [--samples 64] [--max-dist 2.0]
 
 Quake 1 BSP (version 29) importer.
 Emits a Rust source file with pub static arrays and a bsp_world() constructor.
@@ -1862,6 +1870,219 @@ fn kind_to_u16(kind: &str) -> io::Result<u16> {
     }
 }
 
+fn ray_triangle_intersect(
+    orig: [f32; 3],
+    dir: [f32; 3],
+    v0: [f32; 3],
+    v1: [f32; 3],
+    v2: [f32; 3],
+) -> Option<f32> {
+    const EPSILON: f32 = 1e-6;
+    let edge1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
+    let edge2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
+
+    let h = [
+        dir[1] * edge2[2] - dir[2] * edge2[1],
+        dir[2] * edge2[0] - dir[0] * edge2[2],
+        dir[0] * edge2[1] - dir[1] * edge2[0],
+    ];
+    let a = edge1[0] * h[0] + edge1[1] * h[1] + edge1[2] * h[2];
+    if a.abs() < EPSILON {
+        return None;
+    }
+
+    let f = 1.0 / a;
+    let s = [orig[0] - v0[0], orig[1] - v0[1], orig[2] - v0[2]];
+    let u = f * (s[0] * h[0] + s[1] * h[1] + s[2] * h[2]);
+    if !(0.0..=1.0).contains(&u) {
+        return None;
+    }
+
+    let q = [
+        s[1] * edge1[2] - s[2] * edge1[1],
+        s[2] * edge1[0] - s[0] * edge1[2],
+        s[0] * edge1[1] - s[1] * edge1[0],
+    ];
+    let v = f * (dir[0] * q[0] + dir[1] * q[1] + dir[2] * q[2]);
+    if v < 0.0 || u + v > 1.0 {
+        return None;
+    }
+
+    let t = f * (edge2[0] * q[0] + edge2[1] * q[1] + edge2[2] * q[2]);
+    if t > 1e-4 { Some(t) } else { None }
+}
+
+fn bake_mesh_vertex_ao(
+    mesh_text: &str,
+    num_samples: usize,
+    max_dist: f32,
+    output_path: &Path,
+) -> io::Result<()> {
+    let mut vertices: Vec<[f32; 3]> = Vec::new();
+    let mut faces: Vec<[usize; 3]> = Vec::new();
+
+    for line in mesh_text.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        match parts.first().copied() {
+            Some("v") if parts.len() == 4 => {
+                let x: f32 = parts[1]
+                    .parse()
+                    .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid vertex x"))?;
+                let y: f32 = parts[2]
+                    .parse()
+                    .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid vertex y"))?;
+                let z: f32 = parts[3]
+                    .parse()
+                    .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid vertex z"))?;
+                vertices.push([x, y, z]);
+            }
+            Some("f") if parts.len() == 4 => {
+                let i0: usize = parts[1]
+                    .parse()
+                    .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid face i0"))?;
+                let i1: usize = parts[2]
+                    .parse()
+                    .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid face i1"))?;
+                let i2: usize = parts[3]
+                    .parse()
+                    .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid face i2"))?;
+                faces.push([i0, i1, i2]);
+            }
+            _ => {}
+        }
+    }
+
+    if vertices.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "no vertices found in mesh",
+        ));
+    }
+
+    // Compute smooth vertex normals
+    let mut normals: Vec<[f32; 3]> = vec![[0.0, 0.0, 0.0]; vertices.len()];
+    for face in &faces {
+        let v0 = vertices[face[0]];
+        let v1 = vertices[face[1]];
+        let v2 = vertices[face[2]];
+        let e1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
+        let e2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
+        let fnorm = [
+            e1[1] * e2[2] - e1[2] * e2[1],
+            e1[2] * e2[0] - e1[0] * e2[2],
+            e1[0] * e2[1] - e1[1] * e2[0],
+        ];
+        for &idx in face {
+            normals[idx][0] += fnorm[0];
+            normals[idx][1] += fnorm[1];
+            normals[idx][2] += fnorm[2];
+        }
+    }
+
+    for n in &mut normals {
+        let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+        if len > 1e-6 {
+            n[0] /= len;
+            n[1] /= len;
+            n[2] /= len;
+        } else {
+            *n = [0.0, 1.0, 0.0];
+        }
+    }
+
+    // Generate hemisphere sample rays
+    let mut hemisphere_dirs: Vec<[f32; 3]> = Vec::with_capacity(num_samples);
+    for i in 0..num_samples {
+        let theta = (i as f32 + 0.5) * 2.3999632; // golden angle
+        let y = 1.0 - (i as f32 + 0.5) / (num_samples as f32);
+        let radius = (1.0 - y * y).max(0.0).sqrt();
+        let x = theta.cos() * radius;
+        let z = theta.sin() * radius;
+        hemisphere_dirs.push([x, y, z]);
+    }
+
+    let mut ao_values: Vec<f32> = Vec::with_capacity(vertices.len());
+    let mut rgb565_values: Vec<u16> = Vec::with_capacity(vertices.len());
+
+    for (v_idx, &v) in vertices.iter().enumerate() {
+        let n = normals[v_idx];
+        let mut unoccluded = 0usize;
+
+        for &local_dir in &hemisphere_dirs {
+            // Align local hemisphere around normal
+            let dot = local_dir[0] * n[0] + local_dir[1] * n[1] + local_dir[2] * n[2];
+            let dir = if dot < 0.0 {
+                [
+                    local_dir[0] - 2.0 * dot * n[0],
+                    local_dir[1] - 2.0 * dot * n[1],
+                    local_dir[2] - 2.0 * dot * n[2],
+                ]
+            } else {
+                local_dir
+            };
+
+            // Offset origin slightly along normal to avoid self-intersection
+            let orig = [v[0] + n[0] * 1e-3, v[1] + n[1] * 1e-3, v[2] + n[2] * 1e-3];
+
+            let mut occluded = false;
+            for face in &faces {
+                let v0 = vertices[face[0]];
+                let v1 = vertices[face[1]];
+                let v2 = vertices[face[2]];
+                if let Some(t) = ray_triangle_intersect(orig, dir, v0, v1, v2)
+                    && t > 1e-3
+                    && t < max_dist
+                {
+                    occluded = true;
+                    break;
+                }
+            }
+
+            if !occluded {
+                unoccluded += 1;
+            }
+        }
+
+        let ao = (unoccluded as f32) / (num_samples as f32);
+        ao_values.push(ao);
+
+        // Map AO to greyscale Rgb565
+        let r5 = (ao * 31.0).round().clamp(0.0, 31.0) as u16;
+        let g6 = (ao * 63.0).round().clamp(0.0, 63.0) as u16;
+        let b5 = (ao * 31.0).round().clamp(0.0, 31.0) as u16;
+        let rgb565 = (r5 << 11) | (g6 << 5) | b5;
+        rgb565_values.push(rgb565);
+    }
+
+    // Output Rust file with static baked data
+    let mut out = String::new();
+    out.push_str("// Auto-generated by embedded-3dgfx asset_cli bake-vertex-ao\n");
+    out.push_str("use embedded_graphics_core::pixelcolor::Rgb565;\n\n");
+    out.push_str(&format!(
+        "pub static VERTEX_AO: [f32; {}] = [\n",
+        ao_values.len()
+    ));
+    for ao in &ao_values {
+        out.push_str(&format!("    {:.4},\n", ao));
+    }
+    out.push_str("];\n\n");
+
+    out.push_str(&format!(
+        "pub static VERTEX_COLORS_RGB565: [Rgb565; {}] = [\n",
+        rgb565_values.len()
+    ));
+    for raw in &rgb565_values {
+        out.push_str(&format!("    Rgb565::from_raw({:#06x}),\n", raw));
+    }
+    out.push_str("];\n");
+
+    fs::write(output_path, out)
+}
+
 fn pack_scene(output: &Path, chunks: &[String]) -> io::Result<()> {
     let mut out = Vec::new();
     out.extend_from_slice(b"E3DS");
@@ -1947,6 +2168,22 @@ fn main() -> io::Result<()> {
             let map = parse_flag(&args, "--map");
             import_wad(Path::new(&input), Path::new(&output), map.as_deref())?;
         }
+        "bake-vertex-ao" => {
+            let input = parse_flag(&args, "--input")
+                .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "missing --input"))?;
+            let output = parse_flag(&args, "--output")
+                .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "missing --output"))?;
+            let samples = parse_flag(&args, "--samples")
+                .unwrap_or_else(|| "64".to_string())
+                .parse::<usize>()
+                .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid --samples"))?;
+            let max_dist = parse_flag(&args, "--max-dist")
+                .unwrap_or_else(|| "2.0".to_string())
+                .parse::<f32>()
+                .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid --max-dist"))?;
+            let mesh_text = fs::read_to_string(&input)?;
+            bake_mesh_vertex_ao(&mesh_text, samples, max_dist, Path::new(&output))?;
+        }
         _ => {
             usage();
             return Err(io::Error::new(
@@ -1976,5 +2213,24 @@ mod tests {
         let random = wad_sector_effect(1).expect("type 1 should map to random");
         assert_eq!(random.0, "Random");
         assert!(wad_sector_effect(999).is_none());
+    }
+
+    #[test]
+    fn test_ray_triangle_intersection() {
+        let v0 = [0.0, 0.0, 0.0];
+        let v1 = [1.0, 0.0, 0.0];
+        let v2 = [0.0, 1.0, 0.0];
+
+        // Ray hitting center of triangle
+        let orig = [0.2, 0.2, 1.0];
+        let dir = [0.0, 0.0, -1.0];
+        let hit = ray_triangle_intersect(orig, dir, v0, v1, v2);
+        assert!(hit.is_some());
+        assert!((hit.unwrap() - 1.0).abs() < 1e-4);
+
+        // Ray missing triangle
+        let orig_miss = [2.0, 2.0, 1.0];
+        let hit_miss = ray_triangle_intersect(orig_miss, dir, v0, v1, v2);
+        assert!(hit_miss.is_none());
     }
 }

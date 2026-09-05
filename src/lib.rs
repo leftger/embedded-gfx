@@ -148,6 +148,14 @@ pub mod shader;
 pub mod simd_dsp;
 
 #[cfg(feature = "scene")]
+pub mod absm;
+pub mod color_gradient;
+pub mod curve;
+pub mod decal;
+pub mod navmesh;
+pub mod pool;
+
+#[cfg(feature = "scene")]
 pub mod scene_format;
 #[cfg(feature = "scene")]
 pub mod scene_stream;

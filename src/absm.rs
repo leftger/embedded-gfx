@@ -182,17 +182,6 @@ impl<'a, const S: usize, const T: usize, const P: usize> AnimationStateMachine<'
     pub fn update(&mut self, dt: f32) {
         self.time += dt;
 
-        // Progress active transition if one is ongoing
-        if let Some(mut trans) = self.active_transition {
-            trans.elapsed += dt;
-            if trans.elapsed >= trans.fade_duration {
-                self.current_state = trans.to_state;
-                self.active_transition = None;
-            } else {
-                self.active_transition = Some(trans);
-            }
-        }
-
         // Only evaluate new transitions if not currently in a transition
         if self.active_transition.is_none() {
             for trans_opt in &self.transitions {
@@ -225,6 +214,17 @@ impl<'a, const S: usize, const T: usize, const P: usize> AnimationStateMachine<'
                     }
                     break;
                 }
+            }
+        }
+
+        // Progress active transition if one is ongoing
+        if let Some(mut trans) = self.active_transition {
+            trans.elapsed += dt;
+            if trans.elapsed >= trans.fade_duration {
+                self.current_state = trans.to_state;
+                self.active_transition = None;
+            } else {
+                self.active_transition = Some(trans);
             }
         }
     }

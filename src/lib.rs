@@ -147,7 +147,7 @@ pub mod retro;
 pub mod shader;
 pub mod simd_dsp;
 
-#[cfg(feature = "scene")]
+#[cfg(feature = "anim-blend")]
 pub mod absm;
 pub mod color_gradient;
 pub mod curve;

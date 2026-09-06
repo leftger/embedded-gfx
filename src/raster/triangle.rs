@@ -128,3 +128,85 @@ pub fn draw_triangle_zbuffered<D, S>(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::shader::FlatColorShader;
+    use embedded_graphics_core::Pixel;
+    use embedded_graphics_core::geometry::{OriginDimensions, Size};
+    use embedded_graphics_core::pixelcolor::RgbColor;
+
+    struct TinyFb {
+        pixels: [Rgb565; 100],
+    }
+
+    impl OriginDimensions for TinyFb {
+        fn size(&self) -> Size {
+            Size::new(10, 10)
+        }
+    }
+
+    impl DrawTarget for TinyFb {
+        type Color = Rgb565;
+        type Error = core::convert::Infallible;
+
+        fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
+        where
+            I: IntoIterator<Item = Pixel<Self::Color>>,
+        {
+            for Pixel(point, color) in pixels {
+                if point.x >= 0 && point.x < 10 && point.y >= 0 && point.y < 10 {
+                    let idx = (point.y * 10 + point.x) as usize;
+                    self.pixels[idx] = color;
+                }
+            }
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn test_tri_area2() {
+        let p1 = Point::new(0, 0);
+        let p2 = Point::new(10, 0);
+        let p3 = Point::new(0, 10);
+        assert_eq!(tri_area2(p1, p2, p3), 100);
+
+        // Collinear
+        let p4 = Point::new(5, 0);
+        assert_eq!(tri_area2(p1, p4, p2), 0);
+    }
+
+    #[test]
+    fn test_draw_triangle_zbuffered() {
+        let mut fb = TinyFb {
+            pixels: [Rgb565::BLACK; 100],
+        };
+        let mut zbuffer = [ZDepth::MAX; 100];
+        let shader = FlatColorShader { color: Rgb565::RED };
+
+        let points = [Point::new(1, 1), Point::new(8, 1), Point::new(4, 8)];
+        let depths = [1.0, 1.0, 1.0];
+
+        draw_triangle_zbuffered(points, depths, &shader, &mut fb, &mut zbuffer);
+
+        // Center pixel should be painted
+        let center_idx = 4 * 10 + 4;
+        assert_eq!(fb.pixels[center_idx], Rgb565::RED);
+        assert!(zbuffer[center_idx] < ZDepth::MAX);
+    }
+
+    #[test]
+    fn test_draw_triangle_zero_area_ignored() {
+        let mut fb = TinyFb {
+            pixels: [Rgb565::BLACK; 100],
+        };
+        let mut zbuffer = [ZDepth::MAX; 100];
+        let shader = FlatColorShader { color: Rgb565::RED };
+
+        let collinear = [Point::new(0, 0), Point::new(5, 5), Point::new(9, 9)];
+        draw_triangle_zbuffered(collinear, [1.0, 1.0, 1.0], &shader, &mut fb, &mut zbuffer);
+
+        assert_eq!(fb.pixels[0], Rgb565::BLACK);
+    }
+}

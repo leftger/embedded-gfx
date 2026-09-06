@@ -760,8 +760,53 @@ mod tests {
         let cloth = SoftBody::<64, 128>::create_cloth(4, 4, 0.5, 100.0, 0.5);
         assert!(cloth.is_ok());
 
-        let cloth = cloth.unwrap();
+        let mut cloth = cloth.unwrap();
         assert_eq!(cloth.particles.len(), 16); // 4x4 grid
         assert!(cloth.springs.len() > 0); // Should have multiple springs
+
+        // Step simulation
+        cloth.step(0.016);
+        let mut positions = [[0.0f32; 3]; 16];
+        let count = cloth.get_vertex_positions(&mut positions);
+        assert_eq!(count, 16);
+    }
+
+    #[test]
+    fn test_jelly_cube_creation_and_step() {
+        let cube = SoftBody::<32, 64>::create_jelly_cube(2, 1.0, 100.0, 0.5);
+        assert!(cube.is_ok());
+
+        let mut cube = cube.unwrap();
+        assert_eq!(cube.particles.len(), 8);
+        assert!(cube.springs.len() > 0);
+
+        cube.apply_global_force(Vector3::new(0.0, 10.0, 0.0));
+        cube.step(0.016);
+        cube.clear_forces();
+    }
+
+    #[test]
+    fn test_soft_sphere_creation_and_step() {
+        let sphere = SoftBody::<32, 64>::create_soft_sphere(1.0, 1, 100.0, 0.5);
+        assert!(sphere.is_ok());
+
+        let mut sphere = sphere.unwrap();
+        assert_eq!(sphere.particles.len(), 12);
+        assert!(sphere.springs.len() > 0);
+
+        sphere.set_gravity(Vector3::new(0.0, -1.0, 0.0));
+        sphere.step(0.016);
+    }
+
+    #[test]
+    fn test_particle_builder_and_accessors() {
+        let mut body = SoftBody::<4, 4>::new();
+        let p = Particle::new(Vector3::zeros(), 2.0).with_radius(0.5);
+        assert_eq!(p.radius, 0.5);
+
+        body.add_particle(p).unwrap();
+        assert!(body.get_particle(0).is_some());
+        assert!(body.get_particle_mut(0).is_some());
+        assert!(body.get_particle(1).is_none());
     }
 }

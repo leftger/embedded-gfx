@@ -80,3 +80,41 @@ impl<'a, S: super::FragmentShader> super::FragmentShader for DitherShader<'a, S>
         self.dither.apply(base, x, y)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::shader::{FlatColorShader, FragmentShader};
+
+    #[test]
+    fn test_dither_intensity_zero_is_identity() {
+        let dither = DitherConfig::new(0);
+        let color = Rgb565::RED;
+        assert_eq!(dither.apply(color, 0, 0), color);
+        assert_eq!(dither.apply(color, 12, 15), color);
+    }
+
+    #[test]
+    fn test_dither_pattern_varies_with_pixel_coordinates() {
+        let dither = DitherConfig::new(128);
+        let color = Rgb565::new(16, 32, 16);
+        let c0 = dither.apply(color, 0, 0);
+        let c1 = dither.apply(color, 1, 1);
+        // Different matrix positions should produce different dither results
+        assert_ne!(c0, c1);
+    }
+
+    #[test]
+    fn test_dither_shader_decorator() {
+        let dither = DitherConfig::new(64);
+        let base_shader = FlatColorShader {
+            color: Rgb565::GREEN,
+        };
+        let dither_shader = DitherShader {
+            inner: base_shader,
+            dither: &dither,
+        };
+        let shaded = dither_shader.shade(2, 3, crate::to_zdepth(100), ());
+        assert!(shaded.g() > 0);
+    }
+}

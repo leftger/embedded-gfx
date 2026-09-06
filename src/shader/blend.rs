@@ -75,3 +75,61 @@ pub fn reverse_color_rgb565(c: Rgb565) -> Rgb565 {
 pub fn reverse_color_rgba8888(rgba: [u8; 4]) -> [u8; 4] {
     [255 - rgba[0], 255 - rgba[1], 255 - rgba[2], rgba[3]]
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use embedded_graphics_core::pixelcolor::RgbColor;
+
+    #[test]
+    fn test_fast_blend_rgb565_bounds() {
+        let red = Rgb565::RED;
+        let green = Rgb565::GREEN;
+
+        assert_eq!(fast_blend_rgb565(red, green, 0), red);
+        assert_eq!(fast_blend_rgb565(red, green, 255), green);
+
+        let mid = fast_blend_rgb565(Rgb565::BLACK, Rgb565::WHITE, 128);
+        assert!(mid.r() > 10 && mid.r() < 25);
+        assert!(mid.g() > 20 && mid.g() < 40);
+        assert!(mid.b() > 10 && mid.b() < 25);
+    }
+
+    #[test]
+    fn test_fast_blend_rgba8888_bounds() {
+        let black = [0, 0, 0, 255];
+        let white = [255, 255, 255, 255];
+
+        assert_eq!(fast_blend_rgba8888(black, [255, 255, 255, 0]), black);
+        assert_eq!(fast_blend_rgba8888(black, white), white);
+
+        let blended = fast_blend_rgba8888(black, [255, 255, 255, 128]);
+        assert_eq!(blended[0], 128);
+        assert_eq!(blended[1], 128);
+        assert_eq!(blended[2], 128);
+        assert_eq!(blended[3], 255);
+    }
+
+    #[test]
+    fn test_fast_blend_rgba8888_to_rgb565() {
+        let bg = Rgb565::BLACK;
+        assert_eq!(fast_blend_rgba8888_to_rgb565(bg, [255, 0, 0, 0]), bg);
+        assert_eq!(
+            fast_blend_rgba8888_to_rgb565(bg, [255, 0, 0, 255]),
+            Rgb565::RED
+        );
+
+        let mid = fast_blend_rgba8888_to_rgb565(bg, [255, 255, 255, 128]);
+        assert!(mid.r() > 0 && mid.r() < 31);
+    }
+
+    #[test]
+    fn test_reverse_color() {
+        assert_eq!(reverse_color_rgb565(Rgb565::BLACK), Rgb565::WHITE);
+        assert_eq!(reverse_color_rgb565(Rgb565::WHITE), Rgb565::BLACK);
+
+        let rgba = [10, 20, 30, 200];
+        let rev = reverse_color_rgba8888(rgba);
+        assert_eq!(rev, [245, 235, 225, 200]);
+    }
+}

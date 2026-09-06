@@ -67,3 +67,47 @@ impl EdgeStepper {
         self.x += self.step;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_fixed_to_i32() {
+        assert_eq!(fixed_to_i32(0), 0);
+        assert_eq!(fixed_to_i32(1 << FP_SHIFT), 1);
+        assert_eq!(fixed_to_i32(42 << FP_SHIFT), 42);
+        assert_eq!(fixed_to_i32(-(5 << FP_SHIFT)), -5);
+    }
+
+    #[test]
+    fn test_edge_stepper_vertical() {
+        let p1 = Point::new(10, 0);
+        let p2 = Point::new(10, 20);
+        let mut stepper = EdgeStepper::new(p1, p2, 0);
+        assert_eq!(stepper.current_x(), 10);
+        stepper.advance();
+        assert_eq!(stepper.current_x(), 10);
+    }
+
+    #[test]
+    fn test_edge_stepper_diagonal() {
+        let p1 = Point::new(0, 0);
+        let p2 = Point::new(20, 20);
+        let mut stepper = EdgeStepper::new(p1, p2, 0);
+        assert_eq!(stepper.current_x(), 0);
+        stepper.advance();
+        assert_eq!(stepper.current_x(), 1);
+        stepper.advance();
+        assert_eq!(stepper.current_x(), 2);
+    }
+
+    #[test]
+    fn test_edge_stepper_horizontal_zero_dy() {
+        let p1 = Point::new(5, 10);
+        let p2 = Point::new(25, 10);
+        let stepper = EdgeStepper::new(p1, p2, 10);
+        assert_eq!(stepper.current_x(), 5);
+        assert_eq!(stepper.step, 0);
+    }
+}

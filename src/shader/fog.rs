@@ -76,3 +76,43 @@ impl<'a, S: super::FragmentShader> super::FragmentShader for FogShader<'a, S> {
         self.fog.apply(base, u32::from(z))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::shader::{FlatColorShader, FragmentShader};
+
+    #[test]
+    fn test_fog_interpolation() {
+        let fog_color = Rgb565::WHITE;
+        let base_color = Rgb565::BLACK;
+        let fog = FogConfig::new(fog_color, 1.0, 10.0);
+
+        // Near or closer: no fog
+        assert_eq!(fog.apply(base_color, (1.0 * 65536.0) as u32), base_color);
+        assert_eq!(fog.apply(base_color, 0), base_color);
+
+        // Far or farther: full fog
+        assert_eq!(fog.apply(base_color, (10.0 * 65536.0) as u32), fog_color);
+        assert_eq!(fog.apply(base_color, (20.0 * 65536.0) as u32), fog_color);
+
+        // Halfway between near and far: 50% fog
+        let mid_depth = (5.5 * 65536.0) as u32;
+        let mid_color = fog.apply(base_color, mid_depth);
+        assert!(mid_color.r() > 10 && mid_color.r() < 25);
+    }
+
+    #[test]
+    fn test_fog_shader_decorator() {
+        let fog = FogConfig::new(Rgb565::WHITE, 1.0, 5.0);
+        let base_shader = FlatColorShader { color: Rgb565::RED };
+        let fog_shader = FogShader {
+            inner: base_shader,
+            fog: &fog,
+        };
+
+        // Shading at near depth should return flat base color
+        let near_depth = crate::to_zdepth(65536);
+        assert_eq!(fog_shader.shade(0, 0, near_depth, ()), Rgb565::RED);
+    }
+}

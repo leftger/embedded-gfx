@@ -2,9 +2,6 @@
 
 [advisories]
 version = 2
-vulnerability = "deny"
-unmaintained = "none"
-unsound = "none"
 
 [licenses]
 version = 2

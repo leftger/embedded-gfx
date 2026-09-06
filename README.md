@@ -16,13 +16,13 @@ A `no_std` 3D graphics and physics engine for embedded systems: software rasteri
 
 ## Highlights
 
-- **Modular Submodule Architecture** *(v0.5.1)* — explicit `embedded_3dgfx::raster::*` and `embedded_3dgfx::shader::*` namespaces
-- **Zero-Cost `FragmentShader` Pipeline** — composable decorator shaders (`FogShader`, `DitherShader`, `ScreenTintShader`, `PaletteShader`, or custom materials)
+- **Modular Architecture** — explicit `raster`, `shader`, `shapes`, `camera_controller`, `navmesh`, `absm`, and `input` namespaces
+- **Zero-Cost `FragmentShader` Pipeline** — composable decorator shaders (`FogShader`, `DitherShader`, `ScreenTintShader`, `PaletteShader`, `WaterReflectShader`, or custom materials)
 - **Record / execute** — traverse once, rasterize from a fixed-capacity command buffer (`PrimitiveHeader` + packed typed descriptors for low RAM footprint)
-- **Rendering** — MVP + frustum/backface cull, Z-buffer, flat/Gouraud/Blinn-Phong, perspective-correct textures, fog, point lights, particles, LOD, HUD
-- **Physics** *(feature `physics`)* — rigid bodies, joints, soft body, raycast with UV
-- **Animation** — skeletal LBS, vertex morphs, transform tracks / tweens
-- **Embedded-friendly** — `heapless` caps, async-agnostic swapchain present, silicon hardware offloading hooks (`HardwareAccelerator`)
+- **Rendering** — MVP + frustum/backface cull, Z-buffer, flat/Gouraud/Blinn-Phong, perspective textures, Bayer dither, Reinhard tonemapping, sub-pixel Q16.16 rasterization, lights, particles, LOD, HUD
+- **Physics & Navigation** *(features `physics`, `scene`)* — rigid bodies, joints, soft body, ray primitives, NavMesh A* pathfinding
+- **Animation** — skeletal LBS, vertex morphs, ABSM state machines, transform tracks, spline curves / tweens
+- **Embedded-friendly** — `heapless` caps, Cortex-M SWAR/DSP SIMD optimizations, async-agnostic swapchain present, silicon hardware offloading hooks (`HardwareAccelerator`)
 
 
 ## Screenshots
@@ -44,33 +44,31 @@ A `no_std` 3D graphics and physics engine for embedded systems: software rasteri
 
 
 ```bash
-cargo run --example screenshots --features std
+cargo run --release --example screenshots --features "std,lighting,textured,raycast,scene,physics"
 ```
 
 ## Installation
 
 ```toml
 [dependencies]
-# Embedded (no_std) — slim 0.5 default is just `row_width_240`
-embedded-3dgfx = { version = "0.5", default-features = false, features = ["row_width_320", "depth-u16"] }
+# Embedded (no_std) — slim default is row_width_240
+embedded-3dgfx = { version = "0.6", default-features = false, features = ["row_width_320", "depth-u16"] }
 
 # Orientation-style lit meshes
-embedded-3dgfx = { version = "0.5", default-features = false, features = ["row_width_320", "depth-u16", "lighting"] }
+embedded-3dgfx = { version = "0.6", default-features = false, features = ["row_width_320", "depth-u16", "lighting"] }
 
 # Desktop / simulator
-embedded-3dgfx = { version = "0.5", features = ["std", "physics"] }
+embedded-3dgfx = { version = "0.6", features = ["std", "physics"] }
 ```
 
 ### MCU feature recipes
 
 | Recipe | Features |
 | :--- | :--- |
-| Minimal wireframe / solid | `default-features = false`, `row_width_320`, `depth-u16` |
+| Minimal wireframe | `default-features = false`, `row_width_320`, `depth-u16` |
 | Lit mesh (Gouraud / Blinn / Toon) | add `lighting` |
-| Doom-style | `lighting`, `textured`, `raycast`, `hud` |
+| Retro / Doom-style | `lighting`, `textured`, `raycast`, `hud` |
 | Physics demo | add `physics` |
-
-**0.5 breaking change:** `std`, `aa-heuristic`, and `aa-coverage` are no longer in the default feature set. Desktop apps should opt into `std` (and AA) explicitly.
 
 ## Quick start
 
@@ -92,7 +90,7 @@ engine.execute(&mut display, &mut frame_ctx, &commands, None).unwrap();
 
 ### Geometry & Surface Normals for Lighting
 
-When using lit render modes (`RenderMode::SolidLightDir`, `BlinnPhong`, `Toon`, `GouraudLightDir`), the engine requires **surface face normals** in `Geometry.normals` (or `vertex_normals`) to evaluate light angles ($N \cdot L$):
+When using lit render modes (`RenderMode::SolidLightDir`, `BlinnPhong`, `Toon`, `GouraudLightDir`), the engine requires **surface face normals** in `Geometry.normals` (or `vertex_normals`) to evaluate light angles (`N · L`):
 
 * **Static Flash ROM Storage (Recommended for MCUs):** Precompute face normals offline or at compile-time and store them alongside vertices as `&'static [[f32; 3]]` (0 RAM overhead).
 * **On-Demand Helper:** If authoring procedural geometry in code, use `Geometry::compute_face_normals_into(&verts, &faces, &mut out_normals)` or `Geometry::compute_face_normals(&verts, &faces)`:
@@ -146,7 +144,7 @@ Flash impact of the slim recipes is tracked in [`docs/feature-size.md`](docs/fea
 | `scene-extras` | All of the above |
 
 ```toml
-embedded-3dgfx = { version = "0.5", features = ["std", "scene-extras"] }
+embedded-3dgfx = { version = "0.6", features = ["std", "scene-extras"] }
 ```
 
 ```bash
@@ -157,26 +155,26 @@ cargo test --test scene_extras --features "std,scene-extras"
 
 ```bash
 cargo run --example rotating_cube --features std
-cargo run --example custom_material_demo --features std
 cargo run --example lighting_demo --features "std,lighting"
 cargo run --example texture_mapping_demo --features "std,textured"
 cargo run --example skeletal_animation_demo --features "std,scene"
-# physics demos also need: --features "std,physics" (many also want lighting)
+cargo run --example star_striker_demo --features "std,lighting,scene"
+# physics demos also need: --features "std,physics"
 ```
 
+Rendering: `basic_rendering`, `rotating_cube`, `scene_viewer`, `lighting_demo`, `gouraud_demo`, `blinn_phong_demo`, `fog_dithering_demo`, `texture_mapping_demo`, `mesh_texture_demo`, `retro_presets_demo`, `bsp_builder_demo`, `dma_rendering_demo`, `billboard_demo`, `lod_demo`, `vertex_animation_demo`, `painters_algorithm_demo`, `boot_menu`, `stl_viewer`, `water_reflection_ssr_demo`, `hybrid_hud_sprite_demo`, `star_striker_demo`, …
 
-Rendering: `basic_rendering`, `rotating_cube`, `scene_viewer`, `lighting_demo`, `gouraud_demo`, `blinn_phong_demo`, `fog_dithering_demo`, `texture_mapping_demo`, `mesh_texture_demo`, `retro_presets_demo`, `bsp_builder_demo`, `dma_rendering_demo`, `billboard_demo`, `lod_demo`, `vertex_animation_demo`, `painters_algorithm_demo`, `boot_menu`, `stl_viewer`, …
+Physics: `physics_rolling_ball`, `physics_bouncing_balls`, `physics_pendulum`, `physics_newtons_cradle`, `physics_stack_tower`, `cloth_simulation`, `jelly_cube_demo`, `raycast_demo`, `walkable_demo`, `capsule_physics_demo`, …
 
-Physics: `physics_rolling_ball`, `physics_bouncing_balls`, `physics_pendulum`, `physics_newtons_cradle`, `physics_stack_tower`, `cloth_simulation`, `jelly_cube_demo`, `raycast_demo`, `skeletal_animation_demo`, …
+## Docs & tools
 
-## Docs & bring-up
-
-| Doc | Topic |
+| Resource | Topic |
 |-----|-------|
 | [`docs/caps-and-telemetry.md`](docs/caps-and-telemetry.md) | Caps, telemetry, CI budgets |
 | [`docs/feature-size.md`](docs/feature-size.md) | Slim vs full flash (`.text`) budgets |
 | [`docs/backend-integration.md`](docs/backend-integration.md) | Board bring-up, memory sizing |
 | [`docs/asset-pipeline.md`](docs/asset-pipeline.md) | Offline assets / scene streaming |
+| [`tools/blender_addon`](tools/blender_addon/README.md) | Blender mesh / animation export add-on |
 
 **Typical target:** Cortex-M4F/M33 with FPU; ~128 KB RAM minimum, ~512 KB+ recommended for double-buffer + Z + physics at 240×135.
 

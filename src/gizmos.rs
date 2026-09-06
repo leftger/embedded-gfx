@@ -142,6 +142,221 @@ pub fn emit_frustum_wireframe<F>(
     }
 }
 
+/// Emit a wireframe grid on the XZ plane centered at `center`.
+///
+/// * `center`: World-space center point of the grid.
+/// * `cell_size`: Distance between adjacent grid lines.
+/// * `half_count`: Number of grid cells in positive and negative directions (total lines: `2 * half_count + 1` per axis).
+/// * `grid_color`: Line color for standard grid lines.
+/// * `axis_color`: Optional highlight color for the primary center axes passing through `center`.
+/// * `project`: World-to-screen projection closure.
+/// * `emit`: Callback receiving emitted line primitives.
+pub fn emit_ground_grid<F>(
+    center: Point3<f32>,
+    cell_size: f32,
+    half_count: i32,
+    grid_color: Rgb565,
+    axis_color: Option<Rgb565>,
+    project: impl Fn([f32; 3]) -> Option<Point3<i32>>,
+    mut emit: F,
+) where
+    F: FnMut(DrawPrimitive),
+{
+    let extent = half_count as f32 * cell_size;
+    let min_x = center.x - extent;
+    let max_x = center.x + extent;
+    let min_z = center.z - extent;
+    let max_z = center.z + extent;
+    let y = center.y;
+
+    // Lines parallel to Z (varying X)
+    for i in -half_count..=half_count {
+        let x = center.x + i as f32 * cell_size;
+        let color = if i == 0 {
+            axis_color.unwrap_or(grid_color)
+        } else {
+            grid_color
+        };
+
+        if let (Some(p0), Some(p1)) = (project([x, y, min_z]), project([x, y, max_z])) {
+            emit(DrawPrimitive::Line([p0.xy(), p1.xy()], color));
+        }
+    }
+
+    // Lines parallel to X (varying Z)
+    for j in -half_count..=half_count {
+        let z = center.z + j as f32 * cell_size;
+        let color = if j == 0 {
+            axis_color.unwrap_or(grid_color)
+        } else {
+            grid_color
+        };
+
+        if let (Some(p0), Some(p1)) = (project([min_x, y, z]), project([max_x, y, z])) {
+            emit(DrawPrimitive::Line([p0.xy(), p1.xy()], color));
+        }
+    }
+}
+
+/// Emit 3D RGB coordinate axes (Red = +X, Green = +Y, Blue = +Z) at `origin`.
+///
+/// * `origin`: World-space pivot point.
+/// * `model_matrix`: Model-to-world transform matrix.
+/// * `length`: Length of each axis line.
+/// * `project`: World-to-screen projection closure.
+/// * `emit`: Callback receiving emitted line primitives.
+pub fn emit_transform_axes<F>(
+    origin: Point3<f32>,
+    model_matrix: &Matrix4<f32>,
+    length: f32,
+    project: impl Fn([f32; 3]) -> Option<Point3<i32>>,
+    mut emit: F,
+) where
+    F: FnMut(DrawPrimitive),
+{
+    let red = Rgb565::new(31, 0, 0);
+    let green = Rgb565::new(0, 63, 0);
+    let blue = Rgb565::new(0, 0, 31);
+
+    let p_orig = model_matrix.transform_point(&origin);
+    let p_x = model_matrix.transform_point(&(origin + Vector3::new(length, 0.0, 0.0)));
+    let p_y = model_matrix.transform_point(&(origin + Vector3::new(0.0, length, 0.0)));
+    let p_z = model_matrix.transform_point(&(origin + Vector3::new(0.0, 0.0, length)));
+
+    if let (Some(s0), Some(sx)) = (
+        project([p_orig.x, p_orig.y, p_orig.z]),
+        project([p_x.x, p_x.y, p_x.z]),
+    ) {
+        emit(DrawPrimitive::Line([s0.xy(), sx.xy()], red));
+    }
+    if let (Some(s0), Some(sy)) = (
+        project([p_orig.x, p_orig.y, p_orig.z]),
+        project([p_y.x, p_y.y, p_y.z]),
+    ) {
+        emit(DrawPrimitive::Line([s0.xy(), sy.xy()], green));
+    }
+    if let (Some(s0), Some(sz)) = (
+        project([p_orig.x, p_orig.y, p_orig.z]),
+        project([p_z.x, p_z.y, p_z.z]),
+    ) {
+        emit(DrawPrimitive::Line([s0.xy(), sz.xy()], blue));
+    }
+}
+
+/// Emit 2D screen-space text lines using the Hershey simplex stroke font.
+///
+/// * `text`: ASCII string (characters 32..=126).
+/// * `origin`: Screen-space top-left coordinate.
+/// * `scale`: Scaling factor applied to glyphs (height ≈ `21.0 * scale` pixels).
+/// * `color`: Line color.
+/// * `emit`: Callback receiving emitted line primitives.
+pub fn emit_stroke_text_2d<F>(
+    text: &str,
+    origin: Point2<i32>,
+    scale: f32,
+    color: Rgb565,
+    mut emit: F,
+) where
+    F: FnMut(DrawPrimitive),
+{
+    use crate::simplex_stroke_font::{SIMPLEX_CAP_HEIGHT, SIMPLEX_STROKE_FONT};
+
+    let mut cursor_x = origin.x as f32;
+    let baseline_y = origin.y as f32 + SIMPLEX_CAP_HEIGHT * scale;
+
+    for c in text.chars() {
+        if c == ' ' {
+            cursor_x += SIMPLEX_STROKE_FONT.advance as f32 * scale;
+            continue;
+        }
+
+        if let Some((advance, stroke_range)) = SIMPLEX_STROKE_FONT.get_glyph(c) {
+            for s in stroke_range {
+                let point_range = SIMPLEX_STROKE_FONT.strokes[s].clone();
+                if point_range.len() < 2 {
+                    continue;
+                }
+
+                let mut prev: Option<Point2<i32>> = None;
+                for p_idx in point_range {
+                    let [px, py] = SIMPLEX_STROKE_FONT.positions[p_idx];
+                    let sx = (cursor_x + px as f32 * scale) as i32;
+                    let sy = (baseline_y - py as f32 * scale) as i32;
+                    let curr = Point2::new(sx, sy);
+
+                    if let Some(p) = prev {
+                        emit(DrawPrimitive::Line([p, curr], color));
+                    }
+                    prev = Some(curr);
+                }
+            }
+            cursor_x += advance as f32 * scale;
+        } else {
+            cursor_x += SIMPLEX_STROKE_FONT.advance as f32 * scale;
+        }
+    }
+}
+
+/// Emit 3D text in world space projected to screen lines using the Hershey simplex stroke font.
+///
+/// Glyphs are placed on the XY plane in world space (advancing along +X, with +Y up)
+/// starting at `origin`, and projected to screen space.
+///
+/// * `text`: ASCII string (characters 32..=126).
+/// * `origin`: World-space position of first glyph baseline.
+/// * `scale`: World scale factor for glyphs (height in world units ≈ `21.0 * scale`).
+/// * `color`: Line color.
+/// * `project`: World-to-screen projection closure.
+/// * `emit`: Callback receiving emitted line primitives.
+pub fn emit_stroke_text_projected<F>(
+    text: &str,
+    origin: Point3<f32>,
+    scale: f32,
+    color: Rgb565,
+    project: impl Fn([f32; 3]) -> Option<Point3<i32>>,
+    mut emit: F,
+) where
+    F: FnMut(DrawPrimitive),
+{
+    use crate::simplex_stroke_font::SIMPLEX_STROKE_FONT;
+
+    let mut cursor_x = origin.x;
+
+    for c in text.chars() {
+        if c == ' ' {
+            cursor_x += SIMPLEX_STROKE_FONT.advance as f32 * scale;
+            continue;
+        }
+
+        if let Some((advance, stroke_range)) = SIMPLEX_STROKE_FONT.get_glyph(c) {
+            for s in stroke_range {
+                let point_range = SIMPLEX_STROKE_FONT.strokes[s].clone();
+                if point_range.len() < 2 {
+                    continue;
+                }
+
+                let mut prev: Option<Point2<i32>> = None;
+                for p_idx in point_range {
+                    let [px, py] = SIMPLEX_STROKE_FONT.positions[p_idx];
+                    let wx = cursor_x + px as f32 * scale;
+                    let wy = origin.y + py as f32 * scale;
+                    let wz = origin.z;
+
+                    let curr = project([wx, wy, wz]).map(|p| p.xy());
+
+                    if let (Some(p), Some(c)) = (prev, curr) {
+                        emit(DrawPrimitive::Line([p, c], color));
+                    }
+                    prev = curr;
+                }
+            }
+            cursor_x += advance as f32 * scale;
+        } else {
+            cursor_x += SIMPLEX_STROKE_FONT.advance as f32 * scale;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -159,5 +374,61 @@ mod tests {
             |_| count += 1,
         );
         assert_eq!(count, 12);
+    }
+
+    #[test]
+    fn test_emit_ground_grid() {
+        let mut line_count = 0;
+        emit_ground_grid(
+            Point3::new(0.0, 0.0, 0.0),
+            1.0,
+            2,
+            Rgb565::CSS_GRAY,
+            Some(Rgb565::CSS_WHITE),
+            |p| Some(Point3::new(p[0] as i32, p[2] as i32, 1)),
+            |_| line_count += 1,
+        );
+        // 2 * half_count + 1 = 5 lines per axis * 2 axes = 10 lines
+        assert_eq!(line_count, 10);
+    }
+
+    #[test]
+    fn test_emit_transform_axes() {
+        let mut line_count = 0;
+        emit_transform_axes(
+            Point3::new(0.0, 0.0, 0.0),
+            &Matrix4::identity(),
+            1.0,
+            |p| Some(Point3::new(p[0] as i32, p[1] as i32, 1)),
+            |_| line_count += 1,
+        );
+        assert_eq!(line_count, 3);
+    }
+
+    #[test]
+    fn test_emit_stroke_text_2d() {
+        let mut line_count = 0;
+        emit_stroke_text_2d(
+            "BEVY 3D",
+            Point2::new(10, 10),
+            1.0,
+            Rgb565::CSS_WHITE,
+            |_| line_count += 1,
+        );
+        assert!(line_count > 10);
+    }
+
+    #[test]
+    fn test_emit_stroke_text_projected() {
+        let mut line_count = 0;
+        emit_stroke_text_projected(
+            "HI",
+            Point3::new(0.0, 0.0, 0.0),
+            0.1,
+            Rgb565::CSS_YELLOW,
+            |p| Some(Point3::new((p[0] * 100.0) as i32, (p[1] * 100.0) as i32, 1)),
+            |_| line_count += 1,
+        );
+        assert!(line_count > 0);
     }
 }

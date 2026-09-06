@@ -16,7 +16,11 @@
 //! ```
 
 use embedded_graphics_core::pixelcolor::{Rgb565, RgbColor};
-use nalgebra::Point3;
+use nalgebra::{Point3, Vector3};
+
+#[cfg(not(feature = "std"))]
+#[allow(unused_imports)]
+use micromath::F32Ext;
 
 /// A dynamic point light in world space.
 ///
@@ -138,6 +142,167 @@ impl<const N: usize> Default for PointLightSet<N> {
     }
 }
 
+/// Compute physically-windowed distance attenuation:
+/// `(1 - (d/r)^4)^2 / max(d^2, 1.0)`
+/// Drops smoothly to exactly zero at `radius` without clipping seams.
+#[inline]
+pub fn windowed_distance_attenuation(dist_sq: f32, radius: f32) -> f32 {
+    let r_sq = radius * radius;
+    if dist_sq >= r_sq || radius <= 1e-4 {
+        return 0.0;
+    }
+    let ratio_sq = dist_sq / r_sq;
+    let ratio_4 = ratio_sq * ratio_sq;
+    let window = (1.0 - ratio_4).max(0.0);
+    (window * window) / dist_sq.max(1.0)
+}
+
+/// A directional spotlight with inner/outer cone angles and distance falloff.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SpotLight {
+    /// World-space position of the spotlight apex.
+    pub position: Point3<f32>,
+    /// Normalized direction vector the spotlight points towards.
+    pub direction: Vector3<f32>,
+    /// Light color.
+    pub color: Rgb565,
+    /// Maximum range. Points at or beyond receive zero light.
+    pub range: f32,
+    /// Brightness multiplier.
+    pub intensity: f32,
+    /// Half-angle of inner cone in radians (full brightness within this cone).
+    pub inner_angle: f32,
+    /// Half-angle of outer cone in radians (smoothly falls off to zero at outer edge).
+    pub outer_angle: f32,
+}
+
+impl SpotLight {
+    /// Create a new spotlight.
+    pub fn new(
+        position: Point3<f32>,
+        direction: Vector3<f32>,
+        color: Rgb565,
+        range: f32,
+        inner_angle: f32,
+        outer_angle: f32,
+    ) -> Self {
+        Self {
+            position,
+            direction: direction.normalize(),
+            color,
+            range,
+            intensity: 1.0,
+            inner_angle,
+            outer_angle,
+        }
+    }
+
+    /// Builder-style intensity override.
+    pub fn with_intensity(mut self, intensity: f32) -> Self {
+        self.intensity = intensity;
+        self
+    }
+
+    /// Compute the additive RGB565 contribution of this spotlight at `world_pos`.
+    #[inline]
+    pub fn contribution_at(&self, world_pos: Point3<f32>) -> Rgb565 {
+        let to_pos = world_pos - self.position;
+        let dist_sq = to_pos.dot(&to_pos);
+        let range_sq = self.range * self.range;
+        if dist_sq >= range_sq || dist_sq < 1e-6 {
+            return Rgb565::new(0, 0, 0);
+        }
+
+        let dist = dist_sq.sqrt();
+        let dir_to_pos = to_pos / dist;
+
+        // Cosine of angle between spotlight forward vector and direction to surface point
+        let cos_theta = dir_to_pos.dot(&self.direction);
+        let cos_outer = self.outer_angle.cos();
+        let cos_inner = self.inner_angle.cos();
+
+        if cos_theta <= cos_outer {
+            return Rgb565::new(0, 0, 0);
+        }
+
+        // Spot cone factor (smooth cosine falloff)
+        let spot_factor = if cos_inner > cos_outer {
+            ((cos_theta - cos_outer) / (cos_inner - cos_outer)).clamp(0.0, 1.0)
+        } else {
+            1.0
+        };
+        let spot_factor = spot_factor * spot_factor;
+
+        // Distance falloff
+        let dist_factor = (1.0 - dist_sq / range_sq).max(0.0);
+
+        let factor = spot_factor * dist_factor * self.intensity;
+
+        let r = ((self.color.r() as f32) * factor).min(31.0) as u8;
+        let g = ((self.color.g() as f32) * factor).min(63.0) as u8;
+        let b = ((self.color.b() as f32) * factor).min(31.0) as u8;
+        Rgb565::new(r, g, b)
+    }
+}
+
+/// A fixed-capacity collection of [`SpotLight`]s.
+pub struct SpotLightSet<const N: usize> {
+    pub lights: heapless::Vec<SpotLight, N>,
+}
+
+impl<const N: usize> SpotLightSet<N> {
+    /// Create an empty set.
+    pub const fn new() -> Self {
+        Self {
+            lights: heapless::Vec::new(),
+        }
+    }
+
+    /// Add a spotlight. Returns `true` on success, `false` if full.
+    pub fn add(&mut self, light: SpotLight) -> bool {
+        self.lights.push(light).is_ok()
+    }
+
+    /// Remove all spotlights.
+    pub fn clear(&mut self) {
+        self.lights.clear();
+    }
+
+    /// Number of registered spotlights.
+    pub fn len(&self) -> usize {
+        self.lights.len()
+    }
+
+    /// `true` if empty.
+    pub fn is_empty(&self) -> bool {
+        self.lights.is_empty()
+    }
+
+    /// Accumulate total RGB565 contribution at `world_pos`.
+    pub fn accumulate(&self, world_pos: Point3<f32>) -> Rgb565 {
+        let mut r = 0u32;
+        let mut g = 0u32;
+        let mut b = 0u32;
+        for light in &self.lights {
+            let c = light.contribution_at(world_pos);
+            r += c.r() as u32;
+            g += c.g() as u32;
+            b += c.b() as u32;
+        }
+        Rgb565::new(
+            crate::simd_dsp::clamp_u5(r as i32),
+            crate::simd_dsp::clamp_u6(g as i32),
+            crate::simd_dsp::clamp_u5(b as i32),
+        )
+    }
+}
+
+impl<const N: usize> Default for SpotLightSet<N> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     extern crate std;
@@ -233,5 +398,36 @@ mod tests {
         assert_eq!(tint.r(), expected_r);
         assert_eq!(tint.g(), expected_g);
         assert_eq!(tint.b(), expected_b);
+    }
+
+    #[test]
+    fn test_windowed_distance_attenuation() {
+        assert_eq!(windowed_distance_attenuation(100.0, 10.0), 0.0);
+        assert_eq!(windowed_distance_attenuation(0.0, 10.0), 1.0);
+        assert!(windowed_distance_attenuation(25.0, 10.0) > 0.0);
+    }
+
+    #[test]
+    fn test_spot_light_inner_and_outer_cone() {
+        let spot = SpotLight::new(
+            Point3::new(0.0, 0.0, 0.0),
+            Vector3::new(0.0, 0.0, 1.0),
+            Rgb565::CSS_WHITE,
+            10.0,
+            core::f32::consts::FRAC_PI_6, // 30 deg inner
+            core::f32::consts::FRAC_PI_4, // 45 deg outer
+        );
+
+        // Point straight ahead within range and inner cone
+        let tint_center = spot.contribution_at(Point3::new(0.0, 0.0, 2.0));
+        assert!(tint_center.r() > 0);
+
+        // Point behind spotlight
+        let tint_behind = spot.contribution_at(Point3::new(0.0, 0.0, -2.0));
+        assert_eq!(tint_behind.r(), 0);
+
+        // Point far outside 45 deg cone (at 90 deg)
+        let tint_side = spot.contribution_at(Point3::new(2.0, 0.0, 0.0));
+        assert_eq!(tint_side.r(), 0);
     }
 }

@@ -109,6 +109,48 @@ impl<'a> ColorGradient<'a, Rgb565> {
 
         self.stops[self.stops.len() - 1].color
     }
+
+    /// Sample the gradient with perceptual HSV interpolation along the shortest hue arc.
+    ///
+    /// Produces vibrant, saturated transitions between complementary colors without
+    /// the muddy gray/brown washout of linear RGB interpolation.
+    pub fn sample_hsv(&self, t: f32) -> Rgb565 {
+        if self.stops.is_empty() {
+            return Rgb565::new(0, 0, 0);
+        }
+        if self.stops.len() == 1 {
+            return self.stops[0].color;
+        }
+
+        let t = t.clamp(0.0, 1.0);
+
+        if t <= self.stops[0].location {
+            return self.stops[0].color;
+        }
+        if t >= self.stops[self.stops.len() - 1].location {
+            return self.stops[self.stops.len() - 1].color;
+        }
+
+        for i in 0..self.stops.len() - 1 {
+            let left = &self.stops[i];
+            let right = &self.stops[i + 1];
+
+            if t >= left.location && t <= right.location {
+                let span = right.location - left.location;
+                let alpha = if span > 1e-6 {
+                    (t - left.location) / span
+                } else {
+                    0.0
+                };
+
+                let hsv_left = crate::color::Hsv::from_rgb565(left.color);
+                let hsv_right = crate::color::Hsv::from_rgb565(right.color);
+                return crate::color::Hsv::lerp(hsv_left, hsv_right, alpha).to_rgb565();
+            }
+        }
+
+        self.stops[self.stops.len() - 1].color
+    }
 }
 
 impl<'a> ColorGradient<'a, Rgb888> {
@@ -199,5 +241,20 @@ mod tests {
         assert!(sample_quarter.r() > 10 && sample_quarter.r() < 31);
         assert!(sample_quarter.g() > 10 && sample_quarter.g() < 63);
         assert_eq!(sample_quarter.b(), 0);
+    }
+
+    #[test]
+    fn test_hsv_gradient() {
+        let stops = [
+            GradientStop::new(0.0, Rgb565::new(31, 0, 0)), // Red (hue 0)
+            GradientStop::new(1.0, Rgb565::new(31, 63, 0)), // Yellow (hue 60)
+        ];
+        let grad = ColorGradient::new(&stops);
+
+        // Midpoint should be vibrant orange in HSV
+        let mid = grad.sample_hsv(0.5);
+        assert!(mid.r() > 25);
+        assert!(mid.g() > 20 && mid.g() < 45);
+        assert_eq!(mid.b(), 0);
     }
 }

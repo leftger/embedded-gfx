@@ -111,6 +111,7 @@ pub mod bsp;
 pub mod camera;
 #[cfg(feature = "scene")]
 pub mod character;
+pub mod color;
 pub mod command_buffer;
 pub mod completion;
 pub mod config;
@@ -137,14 +138,18 @@ pub mod perfcounter;
 #[cfg(feature = "physics")]
 pub mod physics;
 pub mod raster;
+pub mod ray_primitive;
 pub mod raycast;
 #[cfg(feature = "render-layers")]
 pub mod render_layers;
 pub mod renderer;
+#[cfg(feature = "gizmos")]
+pub mod simplex_stroke_font;
 // retro types (palette/tint/stipple) are used by the always-on draw path;
 // the heavier `painters` helpers stay opt-in.
 pub mod retro;
 pub mod shader;
+pub mod shapes;
 pub mod simd_dsp;
 
 #[cfg(feature = "anim-blend")]
@@ -170,10 +175,12 @@ pub mod telemetry;
 #[cfg(feature = "textured")]
 pub mod texture;
 pub mod tilebin;
+pub mod timer;
 #[cfg(feature = "scene")]
 pub mod transform_anim;
 #[cfg(feature = "scene")]
 pub mod tween;
+pub mod view_frustum;
 
 /// Ray-cast against triangle geometry using Möller–Trumbore intersection.
 ///

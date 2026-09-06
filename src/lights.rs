@@ -134,6 +134,24 @@ impl<const N: usize> PointLightSet<N> {
             crate::simd_dsp::clamp_u5(b as i32),
         )
     }
+
+    /// Accumulate light contribution using inline Reinhard highlight compression.
+    ///
+    /// `half_exposure`: the accumulated intensity value where the channel compresses
+    /// to 50% brightness (e.g. 31 or 63). Highlights roll off smoothly rather
+    /// than hard-clamping to pure white.
+    pub fn accumulate_tonemapped(&self, world_pos: Point3<f32>, half_exposure: u32) -> Rgb565 {
+        let mut r = 0u32;
+        let mut g = 0u32;
+        let mut b = 0u32;
+        for light in &self.lights {
+            let c = light.contribution_at(world_pos);
+            r += c.r() as u32;
+            g += c.g() as u32;
+            b += c.b() as u32;
+        }
+        tonemap_reinhard_rgb565(r, g, b, half_exposure)
+    }
 }
 
 impl<const N: usize> Default for PointLightSet<N> {
@@ -295,6 +313,67 @@ impl<const N: usize> SpotLightSet<N> {
             crate::simd_dsp::clamp_u5(b as i32),
         )
     }
+
+    /// Accumulate total contribution using inline Reinhard highlight compression.
+    pub fn accumulate_tonemapped(&self, world_pos: Point3<f32>, half_exposure: u32) -> Rgb565 {
+        let mut r = 0u32;
+        let mut g = 0u32;
+        let mut b = 0u32;
+        for light in &self.lights {
+            let c = light.contribution_at(world_pos);
+            r += c.r() as u32;
+            g += c.g() as u32;
+            b += c.b() as u32;
+        }
+        tonemap_reinhard_rgb565(r, g, b, half_exposure)
+    }
+}
+
+/// Standard Reinhard rational tonemapping: `x / (1.0 + x)`.
+#[inline]
+pub fn reinhard_tonemap(val: f32) -> f32 {
+    if val <= 0.0 { 0.0 } else { val / (1.0 + val) }
+}
+
+/// Extended Reinhard tonemapping preserving user-defined maximum white point:
+/// `val * (1.0 + val / (white_point^2)) / (1.0 + val)`.
+#[inline]
+pub fn reinhard_extended_tonemap(val: f32, white_point: f32) -> f32 {
+    if val <= 0.0 {
+        return 0.0;
+    }
+    let w_sq = white_point * white_point;
+    if w_sq <= 1e-4 {
+        return val;
+    }
+    (val * (1.0 + val / w_sq)) / (1.0 + val)
+}
+
+/// Rational exposure tonemapping: `(exposure * val) / (1.0 + exposure * val)`.
+///
+/// Hardware-friendly on microcontrollers without an FPU; scales exposure
+/// without computing transcendental `exp()` functions.
+#[inline]
+pub fn rational_exposure_tonemap(val: f32, exposure: f32) -> f32 {
+    if val <= 0.0 || exposure <= 0.0 {
+        return 0.0;
+    }
+    let scaled = val * exposure;
+    scaled / (1.0 + scaled)
+}
+
+/// Fast integer Reinhard compression for multi-light accumulation into [`Rgb565`].
+///
+/// `half_exposure` is the accumulated channel value that yields 50% max channel output.
+/// Ensures accumulated multi-light contributions compress smoothly to display range
+/// without hue-shifting hard clipping artifacts.
+#[inline]
+pub fn tonemap_reinhard_rgb565(raw_r: u32, raw_g: u32, raw_b: u32, half_exposure: u32) -> Rgb565 {
+    let half_exposure = half_exposure.max(1);
+    let r = ((raw_r * 31) / (raw_r + half_exposure)).min(31) as u8;
+    let g = ((raw_g * 63) / (raw_g + half_exposure)).min(63) as u8;
+    let b = ((raw_b * 31) / (raw_b + half_exposure)).min(31) as u8;
+    Rgb565::new(r, g, b)
 }
 
 impl<const N: usize> Default for SpotLightSet<N> {
@@ -429,5 +508,42 @@ mod tests {
         // Point far outside 45 deg cone (at 90 deg)
         let tint_side = spot.contribution_at(Point3::new(2.0, 0.0, 0.0));
         assert_eq!(tint_side.r(), 0);
+    }
+
+    #[test]
+    fn test_tonemapping_curves() {
+        assert_eq!(reinhard_tonemap(0.0), 0.0);
+        assert!((reinhard_tonemap(1.0) - 0.5).abs() < 1e-4);
+        assert!(reinhard_tonemap(100.0) < 1.0);
+
+        assert_eq!(reinhard_extended_tonemap(0.0, 2.0), 0.0);
+        // When input equals the maximum white point, output maps to exactly 1.0
+        assert!((reinhard_extended_tonemap(2.0, 2.0) - 1.0).abs() < 1e-4);
+
+        assert_eq!(rational_exposure_tonemap(0.0, 1.0), 0.0);
+        assert_eq!(rational_exposure_tonemap(1.0, 0.0), 0.0);
+        assert!((rational_exposure_tonemap(1.0, 1.0) - 0.5).abs() < 1e-4);
+        assert!((rational_exposure_tonemap(2.0, 0.5) - 0.5).abs() < 1e-4);
+    }
+
+    #[test]
+    fn test_tonemap_reinhard_rgb565() {
+        // Zero light
+        let zero = tonemap_reinhard_rgb565(0, 0, 0, 31);
+        assert_eq!(zero.r(), 0);
+        assert_eq!(zero.g(), 0);
+        assert_eq!(zero.b(), 0);
+
+        // Half exposure
+        let half = tonemap_reinhard_rgb565(31, 31, 31, 31);
+        assert_eq!(half.r(), 15);
+        assert_eq!(half.g(), 31);
+        assert_eq!(half.b(), 15);
+
+        // Very high light compresses smoothly up to 31 / 63
+        let high = tonemap_reinhard_rgb565(1000, 1000, 1000, 31);
+        assert_eq!(high.r(), 30);
+        assert_eq!(high.g(), 61);
+        assert_eq!(high.b(), 30);
     }
 }

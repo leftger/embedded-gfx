@@ -109,6 +109,7 @@ pub mod bridge;
 #[cfg(feature = "raycast")]
 pub mod bsp;
 pub mod camera;
+pub mod camera_controller;
 #[cfg(feature = "scene")]
 pub mod character;
 pub mod color;
@@ -116,6 +117,7 @@ pub mod command_buffer;
 pub mod completion;
 pub mod config;
 pub mod display_backend;
+pub mod dither;
 pub mod draw;
 #[cfg(feature = "embassy")]
 pub mod embassy;
@@ -170,6 +172,7 @@ pub mod sector_lights;
 pub mod skeleton;
 #[cfg(feature = "physics")]
 pub mod softbody;
+pub mod state_machine;
 pub mod swapchain;
 pub mod telemetry;
 #[cfg(feature = "textured")]

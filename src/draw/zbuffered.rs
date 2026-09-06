@@ -1082,3 +1082,138 @@ fn fill_top_flat_translucent<D: DrawTarget<Color = Rgb565>>(
         curx2 -= invslope2;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::draw::effects::{DepthInterpolationMode, FogConfig};
+    use crate::primitive::DrawPrimitive;
+    use embedded_graphics_core::Pixel;
+    use embedded_graphics_core::geometry::{OriginDimensions, Size};
+
+    struct TestFb<const W: usize, const H: usize> {
+        pixels: [Rgb565; 400],
+    }
+
+    impl<const W: usize, const H: usize> Default for TestFb<W, H> {
+        fn default() -> Self {
+            Self {
+                pixels: [Rgb565::BLACK; 400],
+            }
+        }
+    }
+
+    impl<const W: usize, const H: usize> OriginDimensions for TestFb<W, H> {
+        fn size(&self) -> Size {
+            Size::new(W as u32, H as u32)
+        }
+    }
+
+    impl<const W: usize, const H: usize> DrawTarget for TestFb<W, H> {
+        type Color = Rgb565;
+        type Error = core::convert::Infallible;
+
+        fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
+        where
+            I: IntoIterator<Item = Pixel<Self::Color>>,
+        {
+            for Pixel(point, color) in pixels {
+                if point.x >= 0 && point.x < W as i32 && point.y >= 0 && point.y < H as i32 {
+                    let idx = (point.y as usize) * W + (point.x as usize);
+                    if idx < self.pixels.len() {
+                        self.pixels[idx] = color;
+                    }
+                }
+            }
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn test_draw_zbuffered_primitives() {
+        let mut fb = TestFb::<20, 20>::default();
+        let mut zbuf = [crate::Z_MAX_VALUE; 400];
+
+        // Draw close red triangle at z = 1.0
+        let close_tri = DrawPrimitive::ColoredTriangleWithDepth {
+            points: [
+                nalgebra::Point2::new(10, 2),
+                nalgebra::Point2::new(2, 18),
+                nalgebra::Point2::new(18, 18),
+            ],
+            depths: [1.0, 1.0, 1.0],
+            color: Rgb565::RED,
+        };
+        draw_zbuffered(close_tri, &mut fb, &mut zbuf, 20);
+
+        let center_idx = 10 * 20 + 10;
+        assert_eq!(fb.pixels[center_idx], Rgb565::RED);
+
+        // Draw far green triangle at z = 5.0 (should be occluded by zbuffer)
+        let far_tri = DrawPrimitive::ColoredTriangleWithDepth {
+            points: [
+                nalgebra::Point2::new(10, 2),
+                nalgebra::Point2::new(2, 18),
+                nalgebra::Point2::new(18, 18),
+            ],
+            depths: [5.0, 5.0, 5.0],
+            color: Rgb565::GREEN,
+        };
+        draw_zbuffered(far_tri, &mut fb, &mut zbuf, 20);
+
+        // Center pixel should STILL be red
+        assert_eq!(fb.pixels[center_idx], Rgb565::RED);
+    }
+
+    #[test]
+    fn test_draw_zbuffered_with_options() {
+        let mut fb = TestFb::<20, 20>::default();
+        let mut zbuf = [crate::Z_MAX_VALUE; 400];
+
+        let tri = DrawPrimitive::ColoredTriangleWithDepth {
+            points: [
+                nalgebra::Point2::new(10, 2),
+                nalgebra::Point2::new(2, 18),
+                nalgebra::Point2::new(18, 18),
+            ],
+            depths: [2.0, 2.0, 2.0],
+            color: Rgb565::WHITE,
+        };
+
+        let fog = FogConfig::new(Rgb565::BLUE, 1.0, 5.0);
+
+        draw_zbuffered_with_options(
+            tri,
+            &mut fb,
+            &mut zbuf,
+            20,
+            Some(&fog),
+            None,
+            DepthInterpolationMode::Exact,
+        );
+
+        let center_idx = 10 * 20 + 10;
+        assert!(fb.pixels[center_idx].b() > 0);
+    }
+
+    #[test]
+    fn test_draw_zbuffered_translucent() {
+        let mut fb = TestFb::<20, 20>::default();
+        let mut zbuf = [crate::Z_MAX_VALUE; 400];
+
+        let trans_tri = DrawPrimitive::TranslucentTriangleWithDepth {
+            points: [
+                nalgebra::Point2::new(10, 2),
+                nalgebra::Point2::new(2, 18),
+                nalgebra::Point2::new(18, 18),
+            ],
+            depths: [1.0, 1.0, 1.0],
+            color: Rgb565::RED,
+            alpha: 128,
+        };
+        draw_zbuffered(trans_tri, &mut fb, &mut zbuf, 20);
+
+        let center_idx = 10 * 20 + 10;
+        assert!(fb.pixels[center_idx].r() > 0);
+    }
+}

@@ -770,4 +770,142 @@ mod tests {
         assert_eq!(skinning.bone_weights[0], 0.7);
         assert_eq!(skinning.bone_weights[1], 0.3);
     }
+
+    #[test]
+    fn test_bone_builders_and_setters() {
+        let rot = UnitQuaternion::from_euler_angles(0.1, 0.2, 0.3);
+        let scale = Vector3::new(2.0, 2.0, 2.0);
+        let mut bone = Bone::new("hand").with_rotation(rot).with_scale(scale);
+        assert_eq!(bone.scale, scale);
+
+        bone.set_position(Vector3::new(5.0, 1.0, -2.0));
+        assert_eq!(bone.position, Vector3::new(5.0, 1.0, -2.0));
+
+        let rot2 = UnitQuaternion::identity();
+        bone.set_rotation(rot2);
+        assert_eq!(bone.rotation, rot2);
+    }
+
+    #[test]
+    fn test_skeleton_capacity_and_lookup() {
+        let mut skel = Skeleton::<2>::new();
+        assert!(skel.get_bone(BoneId(0)).is_none());
+        assert!(skel.get_bone_mut(BoneId(0)).is_none());
+
+        let b0 = skel.add_bone(Bone::new("b0"), None).unwrap();
+        let b1 = skel.add_bone(Bone::new("b1"), Some(b0)).unwrap();
+        assert!(skel.add_bone(Bone::new("b2"), None).is_err());
+
+        assert!(skel.get_bone(b0).is_some());
+        assert!(skel.get_bone_mut(b1).is_some());
+    }
+
+    #[test]
+    fn test_skinning_and_normals() {
+        let mut skel = Skeleton::<2>::new();
+        let b0 = skel.add_bone(Bone::new("root"), None).unwrap();
+        let b1 = skel
+            .add_bone(
+                Bone::new("arm").with_position(Vector3::new(0.0, 2.0, 0.0)),
+                Some(b0),
+            )
+            .unwrap();
+
+        skel.update_transforms();
+        skel.compute_inverse_bind_poses();
+
+        // Move the arm bone by +1 on X
+        if let Some(arm) = skel.get_bone_mut(b1) {
+            arm.set_position(Vector3::new(1.0, 2.0, 0.0));
+        }
+        skel.update_transforms();
+
+        let mut skin_data = SkinningData::default();
+        let _ = skin_data.add_vertex(VertexSkinning::single_bone(b1.0));
+        let _ = skin_data.add_vertex(VertexSkinning::two_bones(b0.0, 0.5, b1.0, 0.5));
+
+        let source_v = [[0.0, 2.0, 0.0], [0.0, 1.0, 0.0]];
+        let mut out_v = [[0.0; 3]; 2];
+        let n_verts = apply_skinning(&skel, &skin_data, &source_v, &mut out_v);
+        assert_eq!(n_verts, 2);
+        // Vertex 0 was at (0, 2, 0). Arm moved by +1 X relative to bind pose.
+        assert!((out_v[0][0] - 1.0).abs() < 0.01);
+        assert!((out_v[0][1] - 2.0).abs() < 0.01);
+
+        let source_n = [[0.0, 1.0, 0.0], [1.0, 0.0, 0.0]];
+        let mut out_n = [[0.0; 3]; 2];
+        let n_norms = apply_skinning_to_normals(&skel, &skin_data, &source_n, &mut out_n);
+        assert_eq!(n_norms, 2);
+        let len =
+            (out_n[0][0] * out_n[0][0] + out_n[0][1] * out_n[0][1] + out_n[0][2] * out_n[0][2])
+                .sqrt();
+        assert!((len - 1.0).abs() < 0.01);
+    }
+
+    #[cfg(feature = "anim-blend")]
+    #[test]
+    fn test_bone_pose_and_animation_blend() {
+        let pose1 = BonePose::identity();
+        let mut pose2 = BonePose::identity();
+        pose2.position = Vector3::new(2.0, 4.0, 6.0);
+
+        let blended = BonePose::blend(pose1, pose2, 0.5);
+        assert_eq!(blended.position, Vector3::new(1.0, 2.0, 3.0));
+
+        let kf1 = SkeletonKeyframe {
+            time: 0.0,
+            poses: &[pose1],
+        };
+        let kf2 = SkeletonKeyframe {
+            time: 1.0,
+            poses: &[pose2],
+        };
+        let keyframes = [kf1, kf2];
+        let clip = AnimClip::new(&keyframes, true);
+        assert_eq!(clip.duration(), 1.0);
+
+        let sampled = clip.sample_bone(0.5, 0).unwrap();
+        assert!((sampled.position.x - 1.0).abs() < 0.01);
+
+        let mut skel = Skeleton::<2>::new();
+        skel.add_bone(Bone::new("root"), None).unwrap();
+        blend_clips_onto_skeleton::<2, 1>(&mut skel, &[(&clip, 0.5, 1.0)]);
+
+        let bone = skel.get_bone(BoneId(0)).unwrap();
+        assert!((bone.position.x - 1.0).abs() < 0.01);
+    }
+
+    #[cfg(feature = "anim-blend")]
+    #[test]
+    fn test_joint_bounds_and_slerp() {
+        let mut bone = Bone::new("test");
+        let rot = UnitQuaternion::from_euler_angles(0.0, 1.57, 0.0);
+        bone.slerp_rotation(rot, 0.5);
+
+        let mut skel = Skeleton::<2>::new();
+        let b0 = skel.add_bone(bone, None).unwrap();
+        skel.update_transforms();
+        skel.compute_inverse_bind_poses();
+
+        let mut skin_data = SkinningData::new();
+        skin_data
+            .add_vertex(VertexSkinning::single_bone(b0.0))
+            .unwrap();
+        let verts = [[-1.0, -1.0, -1.0], [1.0, 1.0, 1.0]];
+
+        let joint_aabbs = compute_joint_aabbs::<2>(1, &skin_data, &verts);
+        assert_eq!(joint_aabbs.len(), 1);
+        assert!(joint_aabbs[0].is_some());
+
+        let model_aabb = skinned_model_aabb(&skel, &joint_aabbs);
+        assert!(model_aabb.is_some());
+    }
+
+    #[cfg(all(feature = "dsp", feature = "anim-blend"))]
+    #[test]
+    fn test_dsp_slerp() {
+        let mut bone = Bone::new("dsp_bone");
+        let rot = UnitQuaternion::from_euler_angles(0.0, 1.0, 0.0);
+        bone.interpolate_rotation_dsp(rot, 0.5);
+    }
 }

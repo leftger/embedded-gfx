@@ -947,3 +947,75 @@ where
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::camera::Camera;
+    use crate::mesh::K3dMesh;
+    use crate::primitive::DrawPrimitive;
+
+    #[test]
+    fn test_add_tint_saturates_channels() {
+        let base = Rgb565::new(20, 40, 20);
+        let tint = Rgb565::new(20, 30, 20);
+        let out = add_tint(base, tint);
+        // Channels cap at 31, 63, 31
+        assert_eq!(out.r(), 31);
+        assert_eq!(out.g(), 63);
+        assert_eq!(out.b(), 31);
+    }
+
+    #[test]
+    fn test_face_world_center_calculation() {
+        let vertices = [[0.0, 0.0, 0.0], [3.0, 0.0, 0.0], [0.0, 3.0, 0.0]];
+        let face = [0, 1, 2];
+        let center = face_world_center(&face, &vertices, Matrix4::identity());
+        assert_eq!(center, Point3::new(1.0, 1.0, 0.0));
+    }
+
+    #[test]
+    fn test_sector_shaded_color_modes() {
+        let mut engine = K3dengine::new(240, 240);
+        engine.camera = Camera::new(1.0);
+
+        // Linear mode
+        engine.light_levels = crate::retro::LightLevels::Linear;
+        let white = Rgb565::WHITE;
+        let shaded_half = sector_shaded_color(&engine, white, 128, Point3::origin());
+        assert!(shaded_half.r() > 0 && shaded_half.r() < 31);
+
+        // Doom32 mode with distance drop
+        engine.light_levels = crate::retro::LightLevels::Doom32;
+        let shaded_doom_close =
+            sector_shaded_color(&engine, white, 255, Point3::new(0.0, 0.0, 4.0));
+        let shaded_doom_far =
+            sector_shaded_color(&engine, white, 255, Point3::new(0.0, 0.0, -10.0));
+        // Farther should be dimmer or equal
+        assert!(shaded_doom_close.r() >= shaded_doom_far.r());
+    }
+
+    #[test]
+    fn test_pipeline_render_basic_mesh() {
+        let engine = K3dengine::new(240, 240);
+
+        let vertices = [[0.0, 0.0, -5.0], [0.5, 0.0, -5.0], [0.0, 0.5, -5.0]];
+        let faces = [[0, 1, 2]];
+
+        let geometry = crate::mesh::Geometry {
+            vertices: &vertices,
+            faces: &faces,
+            ..Default::default()
+        };
+
+        let mut mesh = K3dMesh::new(geometry);
+        mesh.render_mode = crate::mesh::RenderMode::Lines;
+
+        let mut emitted_count = 0;
+        render(&engine, [&mesh], |_prim: DrawPrimitive| {
+            emitted_count += 1;
+        });
+
+        assert!(emitted_count > 0);
+    }
+}

@@ -361,3 +361,150 @@ pub fn draw_line_aa<T: ReadPixel + DrawTarget<Color = Rgb565>>(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use embedded_graphics_core::Pixel;
+    use embedded_graphics_core::geometry::{OriginDimensions, Size};
+
+    struct TestAaFb<const W: usize, const H: usize> {
+        pixels: [Rgb565; 400],
+    }
+
+    impl<const W: usize, const H: usize> Default for TestAaFb<W, H> {
+        fn default() -> Self {
+            Self {
+                pixels: [Rgb565::BLACK; 400],
+            }
+        }
+    }
+
+    impl<const W: usize, const H: usize> OriginDimensions for TestAaFb<W, H> {
+        fn size(&self) -> Size {
+            Size::new(W as u32, H as u32)
+        }
+    }
+
+    impl<const W: usize, const H: usize> DrawTarget for TestAaFb<W, H> {
+        type Color = Rgb565;
+        type Error = core::convert::Infallible;
+
+        fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
+        where
+            I: IntoIterator<Item = Pixel<Self::Color>>,
+        {
+            for Pixel(point, color) in pixels {
+                if point.x >= 0 && point.x < W as i32 && point.y >= 0 && point.y < H as i32 {
+                    let idx = (point.y as usize) * W + (point.x as usize);
+                    if idx < self.pixels.len() {
+                        self.pixels[idx] = color;
+                    }
+                }
+            }
+            Ok(())
+        }
+    }
+
+    impl<const W: usize, const H: usize> ReadPixel for TestAaFb<W, H> {
+        fn read_pixel(&self, point: Point) -> Rgb565 {
+            if point.x >= 0 && point.x < W as i32 && point.y >= 0 && point.y < H as i32 {
+                let idx = (point.y as usize) * W + (point.x as usize);
+                if idx < self.pixels.len() {
+                    return self.pixels[idx];
+                }
+            }
+            Rgb565::BLACK
+        }
+    }
+
+    #[test]
+    fn test_draw_zbuffered_2xssaa() {
+        let mut fb = TestAaFb::<20, 20>::default();
+        let mut zbuffer = [crate::Z_MAX_VALUE; 400];
+        let prim = crate::primitive::DrawPrimitive::ColoredTriangleWithDepth {
+            points: [
+                nalgebra::Point2::new(2, 2),
+                nalgebra::Point2::new(18, 2),
+                nalgebra::Point2::new(10, 18),
+            ],
+            depths: [1.0, 1.0, 1.0],
+            color: Rgb565::RED,
+        };
+
+        draw_zbuffered_2xssaa(prim, &mut fb, &mut zbuffer, 20);
+
+        // Center pixel should be painted
+        let center_idx = 10 * 20 + 10;
+        assert!(fb.pixels[center_idx].r() > 0);
+    }
+
+    #[test]
+    fn test_draw_zbuffered_aa_coverage() {
+        let mut fb = TestAaFb::<20, 20>::default();
+        let mut zbuffer = [crate::Z_MAX_VALUE; 400];
+        let prim = crate::primitive::DrawPrimitive::ColoredTriangleWithDepth {
+            points: [
+                nalgebra::Point2::new(2, 2),
+                nalgebra::Point2::new(18, 2),
+                nalgebra::Point2::new(10, 18),
+            ],
+            depths: [1.0, 1.0, 1.0],
+            color: Rgb565::GREEN,
+        };
+
+        draw_zbuffered_aa_coverage(prim, &mut fb, &mut zbuffer, 20);
+
+        let center_idx = 10 * 20 + 10;
+        assert!(fb.pixels[center_idx].g() > 0);
+    }
+
+    #[test]
+    fn test_draw_zbuffered_aa_with_lines() {
+        let mut fb = TestAaFb::<20, 20>::default();
+        let mut zbuffer = [crate::Z_MAX_VALUE; 400];
+        let prim = crate::primitive::DrawPrimitive::ColoredTriangleWithDepth {
+            points: [
+                nalgebra::Point2::new(2, 2),
+                nalgebra::Point2::new(18, 2),
+                nalgebra::Point2::new(10, 18),
+            ],
+            depths: [1.0, 1.0, 1.0],
+            color: Rgb565::BLUE,
+        };
+
+        draw_zbuffered_aa(prim, &mut fb, &mut zbuffer, 20);
+
+        let center_idx = 10 * 20 + 10;
+        assert!(fb.pixels[center_idx].b() > 0);
+    }
+
+    #[test]
+    fn test_draw_line_aa_steep_and_shallow() {
+        let mut fb = TestAaFb::<20, 20>::default();
+
+        // Shallow line (dx > dy)
+        draw_line_aa(
+            nalgebra::Point2::new(1, 1),
+            nalgebra::Point2::new(18, 5),
+            Rgb565::WHITE,
+            &mut fb,
+        );
+
+        // Steep line (dy > dx)
+        draw_line_aa(
+            nalgebra::Point2::new(5, 1),
+            nalgebra::Point2::new(7, 18),
+            Rgb565::WHITE,
+            &mut fb,
+        );
+    }
+
+    #[test]
+    fn test_aa_pixel_coverage_bounds() {
+        let fb = TestAaFb::<10, 10>::default();
+        aa_pixel(&fb, Point::new(0, 0), Rgb565::RED, 255);
+        aa_pixel(&fb, Point::new(0, 0), Rgb565::RED, 128);
+        aa_pixel(&fb, Point::new(0, 0), Rgb565::RED, 0);
+    }
+}

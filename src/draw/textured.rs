@@ -1982,3 +1982,196 @@ fn draw_scanline_zbuffered_textured_gouraud<D: DrawTarget<Color = Rgb565>>(
         span_x = next_span_x;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::retro::{PaletteMode, StippleMode, TextureMapping};
+    use crate::texture::{Texture, TextureManager};
+    use embedded_graphics_core::Pixel;
+    use embedded_graphics_core::geometry::{OriginDimensions, Size};
+
+    static TEX_DATA_RED: [Rgb565; 16] = [Rgb565::RED; 16];
+    static TEX_DATA_GREEN: [Rgb565; 16] = [Rgb565::GREEN; 16];
+    static TEX_DATA_WHITE: [Rgb565; 16] = [Rgb565::WHITE; 16];
+    static TEX_DATA_LM: [Rgb565; 16] = [Rgb565::new(15, 30, 15); 16];
+
+    struct TestFb<const W: usize, const H: usize> {
+        pixels: [Rgb565; 400],
+    }
+
+    impl<const W: usize, const H: usize> Default for TestFb<W, H> {
+        fn default() -> Self {
+            Self {
+                pixels: [Rgb565::BLACK; 400],
+            }
+        }
+    }
+
+    impl<const W: usize, const H: usize> OriginDimensions for TestFb<W, H> {
+        fn size(&self) -> Size {
+            Size::new(W as u32, H as u32)
+        }
+    }
+
+    impl<const W: usize, const H: usize> DrawTarget for TestFb<W, H> {
+        type Color = Rgb565;
+        type Error = core::convert::Infallible;
+
+        fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
+        where
+            I: IntoIterator<Item = Pixel<Self::Color>>,
+        {
+            for Pixel(point, color) in pixels {
+                if point.x >= 0 && point.x < W as i32 && point.y >= 0 && point.y < H as i32 {
+                    let idx = (point.y as usize) * W + (point.x as usize);
+                    if idx < self.pixels.len() {
+                        self.pixels[idx] = color;
+                    }
+                }
+            }
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn test_fill_triangle_textured_gouraud_perspective_and_affine() {
+        let texture = Texture::new(&TEX_DATA_RED, 4, 4);
+
+        let mut fb = TestFb::<20, 20>::default();
+        let mut zbuf = [crate::Z_MAX_VALUE; 400];
+
+        // Flat-bottom triangle
+        fill_triangle_zbuffered_textured_gouraud(
+            nalgebra::Point2::new(10, 2),
+            nalgebra::Point2::new(2, 18),
+            nalgebra::Point2::new(18, 18),
+            1.0,
+            2.0,
+            2.0,
+            1.0,
+            0.5,
+            0.5,
+            [0.5, 0.0],
+            [0.0, 1.0],
+            [1.0, 1.0],
+            Rgb565::WHITE,
+            Rgb565::WHITE,
+            Rgb565::WHITE,
+            &texture,
+            &mut fb,
+            &mut zbuf,
+            20,
+            None,
+            None,
+            TextureMapping::PerspectiveCorrect,
+            StippleMode::Off,
+            None,
+            PaletteMode::Off,
+        );
+
+        let center_idx = 10 * 20 + 10;
+        assert_eq!(fb.pixels[center_idx], Rgb565::RED);
+
+        // Affine mapping mode
+        let mut fb_affine = TestFb::<20, 20>::default();
+        let mut zbuf_affine = [crate::Z_MAX_VALUE; 400];
+
+        fill_triangle_zbuffered_textured_gouraud(
+            nalgebra::Point2::new(10, 2),
+            nalgebra::Point2::new(2, 18),
+            nalgebra::Point2::new(18, 18),
+            1.0,
+            2.0,
+            2.0,
+            1.0,
+            0.5,
+            0.5,
+            [0.5, 0.0],
+            [0.0, 1.0],
+            [1.0, 1.0],
+            Rgb565::WHITE,
+            Rgb565::WHITE,
+            Rgb565::WHITE,
+            &texture,
+            &mut fb_affine,
+            &mut zbuf_affine,
+            20,
+            None,
+            None,
+            TextureMapping::Affine,
+            StippleMode::Off,
+            None,
+            PaletteMode::Off,
+        );
+        assert_eq!(fb_affine.pixels[center_idx], Rgb565::RED);
+    }
+
+    #[test]
+    fn test_draw_zbuffered_with_textures() {
+        let texture = Texture::new(&TEX_DATA_GREEN, 4, 4);
+        let mut tm = TextureManager::<4>::new();
+        let tex_id = tm.add_texture(texture).unwrap();
+
+        let mut fb = TestFb::<20, 20>::default();
+        let mut zbuf = [crate::Z_MAX_VALUE; 400];
+
+        let prim = crate::primitive::DrawPrimitive::TexturedTriangleWithDepth {
+            points: [
+                nalgebra::Point2::new(2, 2),
+                nalgebra::Point2::new(18, 2),
+                nalgebra::Point2::new(10, 18),
+            ],
+            depths: [1.0, 1.0, 1.0],
+            ws: [1.0, 1.0, 1.0],
+            uvs: [[0.0, 0.0], [1.0, 0.0], [0.5, 1.0]],
+            texture_id: tex_id,
+        };
+
+        draw_zbuffered_with_textures(prim, &mut fb, &mut zbuf, 20, &tm, None, None);
+        let center_idx = 10 * 20 + 10;
+        assert_eq!(fb.pixels[center_idx], Rgb565::GREEN);
+    }
+
+    #[test]
+    fn test_draw_zbuffered_lightmapped() {
+        let texture = Texture::new(&TEX_DATA_WHITE, 4, 4);
+        let lightmap = Texture::new(&TEX_DATA_LM, 4, 4);
+
+        let mut tm = TextureManager::<4>::new();
+        let tex_id = tm.add_texture(texture).unwrap();
+        let lm_id = tm.add_texture(lightmap).unwrap();
+
+        let mut fb = TestFb::<20, 20>::default();
+        let mut zbuf = [crate::Z_MAX_VALUE; 400];
+
+        let points = [
+            nalgebra::Point2::new(2, 2),
+            nalgebra::Point2::new(18, 2),
+            nalgebra::Point2::new(10, 18),
+        ];
+        let depths = [1.0, 1.0, 1.0];
+        let ws = [1.0, 1.0, 1.0];
+        let uvs = [[0.0, 0.0], [1.0, 0.0], [0.5, 1.0]];
+
+        draw_zbuffered_lightmapped(
+            points,
+            depths,
+            ws,
+            uvs,
+            uvs,
+            tex_id,
+            lm_id,
+            255,
+            Rgb565::WHITE,
+            None,
+            &tm,
+            &mut fb,
+            &mut zbuf,
+            20,
+        );
+
+        let center_idx = 10 * 20 + 10;
+        assert!(fb.pixels[center_idx].r() > 0);
+    }
+}

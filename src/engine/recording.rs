@@ -644,3 +644,60 @@ pub(crate) fn record_frustum_gizmo<const MAX: usize>(
         None => Ok(()),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::bounds::Aabb;
+    use embedded_graphics_core::pixelcolor::RgbColor;
+    use nalgebra::{Matrix4, Point3, Vector3};
+
+    #[test]
+    fn test_record_aabb_gizmo() {
+        let mut engine = K3dengine::new(240, 240);
+        engine.camera.set_position(Point3::new(0.0, 0.0, -10.0));
+        engine.camera.set_target(Point3::new(0.0, 0.0, 0.0));
+        let aabb = Aabb::from_min_max(Vector3::new(-1.0, -1.0, -1.0), Vector3::new(1.0, 1.0, 1.0));
+        let mut commands = CommandBuffer::<32>::new();
+
+        let res = record_aabb_gizmo(
+            &engine,
+            &aabb,
+            &Matrix4::identity(),
+            Rgb565::RED,
+            &mut commands,
+        );
+        assert!(res.is_ok());
+        // 12 edges for an AABB wireframe
+        assert_eq!(commands.len(), 12);
+    }
+
+    #[test]
+    fn test_record_frustum_gizmo() {
+        let engine = K3dengine::new(240, 240);
+        let mut commands = CommandBuffer::<32>::new();
+
+        let res = record_frustum_gizmo(&engine, Rgb565::GREEN, &mut commands);
+        assert!(res.is_ok());
+        assert!(!commands.is_empty());
+    }
+
+    #[test]
+    fn test_record_aabb_gizmo_buffer_overflow() {
+        let mut engine = K3dengine::new(240, 240);
+        engine.camera.set_position(Point3::new(0.0, 0.0, -10.0));
+        engine.camera.set_target(Point3::new(0.0, 0.0, 0.0));
+        let aabb = Aabb::from_min_max(Vector3::new(-1.0, -1.0, -1.0), Vector3::new(1.0, 1.0, 1.0));
+        // Buffer capacity of only 4 commands, but 12 are needed
+        let mut small_commands = CommandBuffer::<4>::new();
+
+        let res = record_aabb_gizmo(
+            &engine,
+            &aabb,
+            &Matrix4::identity(),
+            Rgb565::RED,
+            &mut small_commands,
+        );
+        assert!(res.is_err());
+    }
+}

@@ -1158,4 +1158,20 @@ mod tests {
         let out = clip_and_project(tri, 320, 240, 0.1, 40.0);
         assert_eq!(out.len(), 0);
     }
+
+    #[test]
+    fn test_frustum_from_vp_extraction() {
+        let vp = nalgebra::Matrix4::identity();
+        let planes = crate::bsp::traverse::frustum_from_vp(&vp);
+        assert_eq!(planes.len(), 6);
+    }
+
+    #[test]
+    fn test_cluster_visible_negative_and_self() {
+        let world = test_level::world();
+        // Negative cluster should always be visible
+        assert!(world.cluster_visible(-1, 5));
+        // Same cluster is always visible to itself
+        assert!(world.cluster_visible(3, 3));
+    }
 }

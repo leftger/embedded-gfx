@@ -651,4 +651,30 @@ mod tests {
         assert_eq!(geom.vertices.len(), 36);
         assert_eq!(geom.faces.len(), 32);
     }
+
+    #[test]
+    fn test_cylinder_12_and_16() {
+        let cyl12 = cylinder_12(0.5, 2.0);
+        let geom12 = cyl12.geometry();
+        assert_eq!(geom12.vertices.len(), 52);
+        assert_eq!(geom12.faces.len(), 48);
+
+        let cyl16 = cylinder_16(0.5, 2.0);
+        let geom16 = cyl16.geometry();
+        assert_eq!(geom16.vertices.len(), 68);
+        assert_eq!(geom16.faces.len(), 64);
+    }
+
+    #[test]
+    fn test_uv_sphere_12x8_and_16x12() {
+        let sphere12 = uv_sphere_12x8(2.0);
+        let geom12 = sphere12.geometry();
+        assert!(!geom12.vertices.is_empty());
+        assert!(!geom12.faces.is_empty());
+
+        let sphere16 = uv_sphere_16x12(1.5);
+        let geom16 = sphere16.geometry();
+        assert!(!geom16.vertices.is_empty());
+        assert!(!geom16.faces.is_empty());
+    }
 }

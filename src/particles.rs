@@ -436,4 +436,76 @@ mod tests {
         let s1 = sys.iter_active().next().unwrap().size();
         assert!(s1 < s0);
     }
+
+    #[test]
+    fn test_empty_and_default() {
+        let mut sys: ParticleSystem<4> = ParticleSystem::default();
+        assert!(sys.is_empty());
+        assert_eq!(sys.active_count(), 0);
+        assert!(sys.spawn(default_spawn(1.0)));
+        assert!(!sys.is_empty());
+    }
+
+    #[test]
+    fn test_size_curve_and_color_gradient() {
+        use crate::color_gradient::{ColorGradient, GradientStop};
+        use crate::curve::{Curve, CurveInterpolation, CurveKey};
+
+        let mut sys: ParticleSystem<2> = ParticleSystem::new();
+        sys.spawn(default_spawn(2.0));
+        let p = sys.iter_active().next().unwrap();
+
+        let curve_keys = [
+            CurveKey::new(0.0, 10.0, CurveInterpolation::Linear),
+            CurveKey::new(1.0, 20.0, CurveInterpolation::Linear),
+        ];
+        let curve = Curve::new(&curve_keys);
+        assert_eq!(p.size_with_curve(&curve), 10.0);
+
+        let stops = [
+            GradientStop::new(0.0, Rgb565::CSS_RED),
+            GradientStop::new(1.0, Rgb565::CSS_BLUE),
+        ];
+        let grad = ColorGradient::new(&stops);
+        assert_eq!(p.color_with_gradient(&grad), Rgb565::CSS_RED);
+    }
+
+    #[test]
+    fn test_record_particles() {
+        use crate::color_gradient::{ColorGradient, GradientStop};
+        use crate::curve::{Curve, CurveInterpolation, CurveKey};
+
+        let mut sys: ParticleSystem<4> = ParticleSystem::new();
+        let mut spawn = default_spawn(2.0);
+        spawn.position = Point3::new(0.0, 0.0, 5.0);
+        sys.spawn(spawn);
+
+        let mut engine = crate::engine::K3dengine::new(320, 240);
+        engine.camera.set_position(Point3::new(0.0, 0.0, 0.0));
+        engine.camera.set_target(Point3::new(0.0, 0.0, 5.0));
+
+        let mut commands: crate::command_buffer::CommandBuffer<16> =
+            crate::command_buffer::CommandBuffer::new();
+        let emitted = sys.record(&engine, &mut commands);
+        assert!(emitted > 0);
+        assert!(!commands.is_empty());
+
+        let mut commands_grad: crate::command_buffer::CommandBuffer<16> =
+            crate::command_buffer::CommandBuffer::new();
+        let curve_keys = [
+            CurveKey::new(0.0, 1.0, CurveInterpolation::Linear),
+            CurveKey::new(1.0, 0.5, CurveInterpolation::Linear),
+        ];
+        let curve = Curve::new(&curve_keys);
+        let stops = [
+            GradientStop::new(0.0, Rgb565::CSS_RED),
+            GradientStop::new(1.0, Rgb565::CSS_GREEN),
+        ];
+        let grad = ColorGradient::new(&stops);
+
+        let emitted_grad =
+            sys.record_with_gradient(&engine, &mut commands_grad, Some(&grad), Some(&curve));
+        assert!(emitted_grad > 0);
+        assert!(!commands_grad.is_empty());
+    }
 }

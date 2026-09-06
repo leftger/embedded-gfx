@@ -339,7 +339,7 @@ mod tests {
     #[test]
     #[cfg(feature = "textured")]
     fn test_sub_span_textured_scanline_correctness() {
-        use crate::retro::{PaletteMode, ScreenTint, StippleMode, TextureMapping};
+        use crate::retro::{PaletteMode, StippleMode, TextureMapping};
 
         let width = 100;
         let mut zbuffer = std::vec![crate::Z_MAX_VALUE; width * 10];

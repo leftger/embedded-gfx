@@ -505,3 +505,120 @@ fn draw_horizontal_line_gouraud<D: DrawTarget<Color = Rgb565>>(
             .unwrap();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use embedded_graphics_core::Pixel;
+    use embedded_graphics_core::geometry::{OriginDimensions, Size};
+
+    struct TestFb<const W: usize, const H: usize> {
+        pixels: [Rgb565; 400],
+    }
+
+    impl<const W: usize, const H: usize> Default for TestFb<W, H> {
+        fn default() -> Self {
+            Self {
+                pixels: [Rgb565::BLACK; 400],
+            }
+        }
+    }
+
+    impl<const W: usize, const H: usize> OriginDimensions for TestFb<W, H> {
+        fn size(&self) -> Size {
+            Size::new(W as u32, H as u32)
+        }
+    }
+
+    impl<const W: usize, const H: usize> DrawTarget for TestFb<W, H> {
+        type Color = Rgb565;
+        type Error = core::convert::Infallible;
+
+        fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
+        where
+            I: IntoIterator<Item = Pixel<Self::Color>>,
+        {
+            for Pixel(point, color) in pixels {
+                if point.x >= 0 && point.x < W as i32 && point.y >= 0 && point.y < H as i32 {
+                    let idx = (point.y as usize) * W + (point.x as usize);
+                    if idx < self.pixels.len() {
+                        self.pixels[idx] = color;
+                    }
+                }
+            }
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn test_fill_triangle_variations() {
+        let mut fb = TestFb::<20, 20>::default();
+
+        // Flat-bottom triangle
+        fill_triangle(
+            Point::new(10, 2),
+            Point::new(2, 10),
+            Point::new(18, 10),
+            Rgb565::RED,
+            &mut fb,
+        );
+        assert_eq!(fb.pixels[5 * 20 + 10], Rgb565::RED);
+
+        // Flat-top triangle
+        fill_triangle(
+            Point::new(2, 11),
+            Point::new(18, 11),
+            Point::new(10, 19),
+            Rgb565::GREEN,
+            &mut fb,
+        );
+        assert_eq!(fb.pixels[15 * 20 + 10], Rgb565::GREEN);
+
+        // General triangle
+        let mut fb2 = TestFb::<20, 20>::default();
+        fill_triangle(
+            Point::new(10, 1),
+            Point::new(2, 8),
+            Point::new(18, 18),
+            Rgb565::BLUE,
+            &mut fb2,
+        );
+        assert_eq!(fb2.pixels[8 * 20 + 10], Rgb565::BLUE);
+    }
+
+    #[test]
+    fn test_draw_primitives() {
+        let mut fb = TestFb::<20, 20>::default();
+
+        // Line
+        draw(
+            DrawPrimitive::Line(
+                [nalgebra::Point2::new(1, 1), nalgebra::Point2::new(5, 1)],
+                Rgb565::WHITE,
+            ),
+            &mut fb,
+        );
+        assert_eq!(fb.pixels[1 * 20 + 3], Rgb565::WHITE);
+
+        // Point
+        draw(
+            DrawPrimitive::ColoredPoint(nalgebra::Point2::new(7, 7), Rgb565::RED),
+            &mut fb,
+        );
+        assert_eq!(fb.pixels[7 * 20 + 7], Rgb565::RED);
+
+        // ColoredTriangle
+        draw(
+            DrawPrimitive::ColoredTriangle(
+                [
+                    nalgebra::Point2::new(10, 2),
+                    nalgebra::Point2::new(5, 15),
+                    nalgebra::Point2::new(15, 15),
+                ],
+                Rgb565::GREEN,
+            ),
+            &mut fb,
+        );
+        assert_eq!(fb.pixels[10 * 20 + 10], Rgb565::GREEN);
+    }
+}

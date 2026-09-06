@@ -113,6 +113,7 @@ impl K3dengine {
                             continue;
                         }
 
+                        #[cfg(feature = "lighting")]
                         let v0_world = mesh.model_matrix.transform_point(&nalgebra::Point3::new(
                             v[face[0]][0],
                             v[face[0]][1],
@@ -128,6 +129,7 @@ impl K3dengine {
                         // demo meshes use mixed winding; forcing cull from inferred winding
                         // makes Painter mode appear "corrupted" because visible faces are
                         // incorrectly discarded.
+                        #[cfg(feature = "lighting")]
                         let mut normal_world_opt: Option<Vector3<f32>> = None;
                         if !geometry.normals.is_empty() && face_idx < geometry.normals.len() {
                             let n = geometry.normals[face_idx];
@@ -144,17 +146,21 @@ impl K3dengine {
                                 ) {
                                     continue;
                                 }
-                                normal_world_opt = Some(n_world);
+                                #[cfg(feature = "lighting")]
+                                {
+                                    normal_world_opt = Some(n_world);
+                                }
                             }
                         }
 
                         // Fallback normal for flat lighting when explicit normals are absent.
-                        let v0 = Vector3::new(v[face[0]][0], v[face[0]][1], v[face[0]][2]);
-                        let v1 = Vector3::new(v[face[1]][0], v[face[1]][1], v[face[1]][2]);
-                        let v2 = Vector3::new(v[face[2]][0], v[face[2]][1], v[face[2]][2]);
+                        #[cfg(feature = "lighting")]
                         let normal_world = if let Some(n) = normal_world_opt {
                             n
                         } else {
+                            let v0 = Vector3::new(v[face[0]][0], v[face[0]][1], v[face[0]][2]);
+                            let v1 = Vector3::new(v[face[1]][0], v[face[1]][1], v[face[1]][2]);
+                            let v2 = Vector3::new(v[face[2]][0], v[face[2]][1], v[face[2]][2]);
                             let normal_model = (v1 - v0).cross(&(v2 - v0));
                             if normal_model.norm_squared() <= 1e-8 {
                                 continue;
@@ -201,7 +207,7 @@ impl K3dengine {
                             _ => mesh.color,
                         };
                         #[cfg(not(feature = "lighting"))]
-                        let mut color = mesh.color;
+                        let color = mesh.color;
 
                         #[cfg(feature = "lighting")]
                         if !self.point_lights.is_empty() {

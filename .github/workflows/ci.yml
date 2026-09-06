@@ -75,15 +75,22 @@ jobs:
           fi
 
   check-no-std:
-    name: Check (no_std)
+    name: Check (no_std - ${{ matrix.target }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - thumbv6m-none-eabi
+          - thumbv7em-none-eabihf
+          - riscv32imc-unknown-none-elf
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ env.NO_STD_TARGET }}
+          targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
-      - run: cargo check --lib ${{ env.NO_STD_CARGO_ARGS }} --target ${{ env.NO_STD_TARGET }}
+      - run: cargo check --lib ${{ env.NO_STD_CARGO_ARGS }} --target ${{ matrix.target }}
 
   msrv:
     name: MSRV check
@@ -176,6 +183,27 @@ jobs:
           cargo check --lib --features std,physics
       - name: Flash size budget (size-harness)
         run: ./.github/scripts/measure_feature_size.sh --check
+
+  feature-isolation:
+    name: Feature Isolation
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Verify standalone features compile in isolation
+        run: |
+          cargo check --lib --no-default-features --features row_width_240,fixed-raster
+          cargo check --lib --no-default-features --features row_width_240,dma2d
+          cargo check --lib --no-default-features --features row_width_240,triple-buffering
+          cargo check --lib --no-default-features --features row_width_240,hud
+          cargo check --lib --no-default-features --features row_width_240,painters
+          cargo check --lib --no-default-features --features row_width_240,anim-blend
+          cargo check --lib --no-default-features --features row_width_240,gizmos
+          cargo check --lib --no-default-features --features row_width_240,aabb-cull
+          cargo check --lib --no-default-features --features row_width_240,depth-u16
+          cargo check --lib --no-default-features --features row_width_240,physics
 
   profile-budget:
     name: Profile Budget (${{ matrix.caps_profile }})

@@ -342,5 +342,5 @@ jobs:
         run: |
           echo "### 📊 Code Coverage Report" >> "$GITHUB_STEP_SUMMARY"
           echo '```text' >> "$GITHUB_STEP_SUMMARY"
-          cargo llvm-cov --all-features --summary-only >> "$GITHUB_STEP_SUMMARY"
+          cargo llvm-cov --all-features --summary-only | tee -a "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"

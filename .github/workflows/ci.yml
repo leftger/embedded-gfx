@@ -282,13 +282,21 @@ jobs:
         run: cargo test --test integration_tests test_ci_telemetry_snapshot_ -- --nocapture 2>&1 | .github/scripts/check_telemetry_budget.py
 
   docs:
-    name: Docs
+    name: Docs & GitHub Pages
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: bash .github/scripts/ci_docs.sh
+      - name: Deploy Docs to GitHub Pages
+        if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: target/doc
+          branch: gh-pages
 
   asset-budget:
     name: Asset Budget Report
@@ -308,14 +316,11 @@ jobs:
       - run: cargo publish --dry-run
 
   audit:
-    name: Security audit
+    name: Security & License Audit
     runs-on: ubuntu-latest
-    continue-on-error: true
-    permissions:
-      contents: read
-      checks: write
     steps:
       - uses: actions/checkout@v4
-      - uses: rustsec/audit-check@v2
+      - uses: EmbarkStudios/cargo-deny-action@v2
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          command: check
+          arguments: --all-features

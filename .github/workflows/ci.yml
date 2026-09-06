@@ -336,9 +336,11 @@ jobs:
           components: llvm-tools-preview
       - uses: taiki-e/install-action@cargo-llvm-cov
       - uses: Swatinem/rust-cache@v2
+      - name: Install SDL2
+        run: sudo apt-get update && sudo apt-get install -y libsdl2-dev
       - name: Measure code coverage
         run: |
           echo "### 📊 Code Coverage Report" >> "$GITHUB_STEP_SUMMARY"
           echo '```text' >> "$GITHUB_STEP_SUMMARY"
-          cargo llvm-cov --lib --all-features --text >> "$GITHUB_STEP_SUMMARY"
+          cargo llvm-cov --all-features --summary-only >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"

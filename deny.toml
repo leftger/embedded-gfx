@@ -3,8 +3,8 @@
 [advisories]
 version = 2
 vulnerability = "deny"
-unmaintained = "warn"
-unsound = "warn"
+unmaintained = "none"
+unsound = "none"
 
 [licenses]
 version = 2

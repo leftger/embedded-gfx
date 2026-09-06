@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["clamp_u5","clamp_u6","dot3_f32","dot3_i32","dot3_q16"]};

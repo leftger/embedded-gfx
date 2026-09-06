@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["SCENE_MAGIC","SCENE_VERSION"],"enum":["ChunkKind"],"fn":["encode_scene"],"struct":["ChunkCursor","EncodedChunk","SceneChunkRef"]};

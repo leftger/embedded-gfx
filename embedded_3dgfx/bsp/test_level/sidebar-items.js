@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["world"],"static":["FACES","LEAVES","MARKSURFACES","NODES","PLANES","UVS","VERTICES","VIS","VIS_OFFSETS"]};

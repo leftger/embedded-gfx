@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["dither_rgb565","dither_rgb888_to_rgb332","dither_rgb888_to_rgb565"],"struct":["Bayer4x4","Bayer8x8"]};

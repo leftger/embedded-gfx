@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["draw_zbuffered","draw_zbuffered_with_effects","draw_zbuffered_with_options"]};

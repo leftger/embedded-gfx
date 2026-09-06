@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["execute_commands","execute_commands_2xssaa","execute_commands_tiled","execute_commands_tiled_effects","execute_commands_with_dirty_region","execute_commands_with_dirty_region_effects","execute_commands_with_dirty_region_effects_textured","execute_commands_with_picking"],"struct":["DirtyRegion","FrameCtx","PickQuery","PickResult"]};

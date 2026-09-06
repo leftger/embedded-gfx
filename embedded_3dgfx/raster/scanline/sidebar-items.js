@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["FP_SHIFT","MAX_ROW_WIDTH"],"fn":["fixed_to_i32"],"struct":["EdgeStepper"]};

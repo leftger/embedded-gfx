@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["BodyType","Collider","Constraint"],"fn":["sync_body_to_mesh"],"struct":["BodyId","ConstraintId","Contact","PhysicsWorld","Ray","RayCastHit","RigidBody"]};

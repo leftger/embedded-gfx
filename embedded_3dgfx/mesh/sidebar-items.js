@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["LodPick","RenderMode"],"fn":["compute_vertex_normals"],"struct":["Geometry","K3dMesh","LODLevels"]};

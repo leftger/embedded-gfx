@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["LightEffectKind"],"fn":["light_level_at","light_level_u8_at"],"struct":["SectorLight"]};

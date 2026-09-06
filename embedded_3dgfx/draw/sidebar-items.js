@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"mod":["aa","blend","effects","fill","fixed","textured","zbuffered"]};

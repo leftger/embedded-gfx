@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["MAX_BONE_INFLUENCES"],"fn":["apply_skinning","apply_skinning_to_normals","blend_clips_onto_skeleton","compute_joint_aabbs","skinned_model_aabb"],"struct":["AnimClip","Bone","BoneId","BonePose","JointAabb","Skeleton","SkeletonKeyframe","SkinningData","VertexSkinning"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"mod":["blend","dither","fog","retro","water_reflect"],"struct":["FlatColorShader","GouraudShader"],"trait":["FragmentShader"]};

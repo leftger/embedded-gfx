@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["emit_aabb_wireframe","emit_aabb_wireframe_projected","emit_frustum_wireframe","emit_ground_grid","emit_stroke_text_2d","emit_stroke_text_projected","emit_transform_axes"]};

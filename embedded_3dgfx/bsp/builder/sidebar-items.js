@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["BuildError"],"fn":["build_room_strip"],"struct":["OwnedBspWorld","RoomSpec"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["rational_exposure_tonemap","reinhard_extended_tonemap","reinhard_tonemap","tonemap_reinhard_rgb565","windowed_distance_attenuation"],"struct":["PointLight","PointLightSet","SpotLight","SpotLightSet"]};

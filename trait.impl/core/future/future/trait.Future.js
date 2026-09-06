@@ -1,0 +1,9 @@
+(function() {
+    const implementors = Object.fromEntries([["embedded_3dgfx",[["impl&lt;FB&gt; <a class=\"trait\" href=\"https://doc.rust-lang.org/1.98.1/core/future/future/trait.Future.html\" title=\"trait core::future::future::Future\">Future</a> for <a class=\"struct\" href=\"embedded_3dgfx/display_backend/struct.CompletedTransfer.html\" title=\"struct embedded_3dgfx::display_backend::CompletedTransfer\">CompletedTransfer</a>&lt;FB&gt;<div class=\"where\">where\n    FB: DMACapableFrameBufferBackend&lt;Color = Rgb565&gt;,</div>",0],["impl&lt;FB&gt; <a class=\"trait\" href=\"https://doc.rust-lang.org/1.98.1/core/future/future/trait.Future.html\" title=\"trait core::future::future::Future\">Future</a> for <a class=\"struct\" href=\"embedded_3dgfx/embassy/struct.EmbassyWaitTransferFuture.html\" title=\"struct embedded_3dgfx::embassy::EmbassyWaitTransferFuture\">EmbassyWaitTransferFuture</a>&lt;FB&gt;<div class=\"where\">where\n    FB: DMACapableFrameBufferBackend&lt;Color = Rgb565&gt;,</div>",0],["impl&lt;FB&gt; <a class=\"trait\" href=\"https://doc.rust-lang.org/1.98.1/core/future/future/trait.Future.html\" title=\"trait core::future::future::Future\">Future</a> for <a class=\"struct\" href=\"embedded_3dgfx/completion/struct.WaitTransferFuture.html\" title=\"struct embedded_3dgfx::completion::WaitTransferFuture\">WaitTransferFuture</a>&lt;FB&gt;<div class=\"where\">where\n    FB: DMACapableFrameBufferBackend&lt;Color = Rgb565&gt;,</div>",0]]]]);
+    if (window.register_implementors) {
+        window.register_implementors(implementors);
+    } else {
+        window.pending_implementors = implementors;
+    }
+})()
+//{"start":59,"fragment_lengths":[1407]}

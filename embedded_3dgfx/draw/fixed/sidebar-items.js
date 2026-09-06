@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["fill_triangle_fixed","fill_triangle_zbuffered_fixed"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["GamepadButton"],"struct":["ButtonInput","DebounceFilter","InputState","VirtualAxis2D","VirtualGamepad"]};

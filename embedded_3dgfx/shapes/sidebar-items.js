@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["UNIT_CUBE","UNIT_PLANE"],"fn":["compute_cylinder","compute_uv_sphere","cube","cylinder_12","cylinder_16","cylinder_8","plane","uv_sphere_12x8","uv_sphere_16x12","uv_sphere_8x6"],"struct":["ProceduralMesh"],"type":["CubeMesh","Cylinder12","Cylinder16","Cylinder8","QuadMesh","Sphere12x8","Sphere16x12","Sphere8x6"]};

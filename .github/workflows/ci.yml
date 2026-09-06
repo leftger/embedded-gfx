@@ -344,3 +344,11 @@ jobs:
           echo '```text' >> "$GITHUB_STEP_SUMMARY"
           cargo llvm-cov --all-features --summary-only | tee -a "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cargo llvm-cov --all-features --lcov --output-path lcov.info
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: lcov.info
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: leftger/embedded-3dgfx

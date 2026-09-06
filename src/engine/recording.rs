@@ -645,7 +645,7 @@ pub(crate) fn record_frustum_gizmo<const MAX: usize>(
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "gizmos"))]
 mod tests {
     use super::*;
     use crate::bounds::Aabb;

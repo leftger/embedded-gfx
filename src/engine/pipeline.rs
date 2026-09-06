@@ -955,6 +955,7 @@ mod tests {
     use crate::mesh::K3dMesh;
     use crate::primitive::DrawPrimitive;
 
+    #[cfg(feature = "lighting")]
     #[test]
     fn test_add_tint_saturates_channels() {
         let base = Rgb565::new(20, 40, 20);
@@ -966,6 +967,7 @@ mod tests {
         assert_eq!(out.b(), 31);
     }
 
+    #[cfg(feature = "lighting")]
     #[test]
     fn test_face_world_center_calculation() {
         let vertices = [[0.0, 0.0, 0.0], [3.0, 0.0, 0.0], [0.0, 3.0, 0.0]];
@@ -974,6 +976,7 @@ mod tests {
         assert_eq!(center, Point3::new(1.0, 1.0, 0.0));
     }
 
+    #[cfg(feature = "lighting")]
     #[test]
     fn test_sector_shaded_color_modes() {
         let mut engine = K3dengine::new(240, 240);

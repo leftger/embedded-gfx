@@ -7,6 +7,7 @@
 [![crates.io](https://img.shields.io/crates/v/embedded-3dgfx.svg)](https://crates.io/crates/embedded-3dgfx)
 [![docs.rs](https://img.shields.io/docsrs/embedded-3dgfx)](https://docs.rs/embedded-3dgfx)
 [![CI](https://github.com/leftger/embedded-3dgfx/actions/workflows/ci.yml/badge.svg)](https://github.com/leftger/embedded-3dgfx/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/leftger/embedded-3dgfx/branch/master/graph/badge.svg)](https://codecov.io/gh/leftger/embedded-3dgfx)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE-MIT)
 
 A `no_std` 3D graphics and physics engine for embedded systems: software rasterization, rigid/soft-body physics, skeletal animation, and effects tuned for MCUs.

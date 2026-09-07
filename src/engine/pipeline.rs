@@ -1022,4 +1022,144 @@ mod tests {
 
         assert!(emitted_count > 0);
     }
+
+    #[test]
+    fn test_pipeline_apply_draw_alpha_and_empty_vertices() {
+        #[cfg(feature = "lod-crossfade")]
+        {
+            let prim = apply_draw_alpha(
+                DrawPrimitive::ColoredTriangleWithDepth {
+                    points: [nalgebra::Point2::new(0, 0); 3],
+                    depths: [1.0; 3],
+                    color: Rgb565::WHITE,
+                },
+                128,
+            );
+            assert!(matches!(
+                prim,
+                DrawPrimitive::TranslucentTriangleWithDepth { .. }
+            ));
+
+            let already = DrawPrimitive::TranslucentTriangleWithDepth {
+                points: [nalgebra::Point2::new(0, 0); 3],
+                depths: [1.0; 3],
+                color: Rgb565::WHITE,
+                alpha: 255,
+            };
+            let multiplied = apply_draw_alpha(already, 128);
+            assert!(matches!(
+                multiplied,
+                DrawPrimitive::TranslucentTriangleWithDepth { alpha: 128, .. }
+            ));
+
+            let line = DrawPrimitive::Line(
+                [nalgebra::Point2::new(0, 0), nalgebra::Point2::new(1, 1)],
+                Rgb565::WHITE,
+            );
+            let unchanged = apply_draw_alpha(line, 128);
+            assert!(matches!(unchanged, DrawPrimitive::Line(_, _)));
+        }
+
+        let engine = K3dengine::new(240, 240);
+        let mut emitted_count = 0;
+        render(&engine, [] as [&K3dMesh<'_>; 0], |_prim: DrawPrimitive| {
+            emitted_count += 1;
+        });
+        assert_eq!(emitted_count, 0);
+    }
+
+    #[test]
+    fn test_pipeline_points_solid_and_lighting_modes() {
+        let mut engine = K3dengine::new(320, 240);
+        engine.camera.set_position(Point3::new(0.0, 0.0, -10.0));
+        engine.camera.set_target(Point3::origin());
+
+        let vertices = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
+        let faces = [[0, 1, 2]];
+        let normals = [[0.0, 0.0, -1.0]];
+        let vertex_normals = [[0.0, 0.0, -1.0]; 3];
+
+        // Points mode emits ColoredPoint.
+        let point_geometry = crate::mesh::Geometry {
+            vertices: &vertices,
+            faces: &[],
+            colors: &[Rgb565::RED; 3],
+            ..Default::default()
+        };
+        let mut point_mesh = K3dMesh::new(point_geometry);
+        point_mesh.render_mode = RenderMode::Points;
+        let mut points = 0;
+        render(&engine, [&point_mesh], |prim: DrawPrimitive| {
+            if matches!(prim, DrawPrimitive::ColoredPoint(_, _)) {
+                points += 1;
+            }
+        });
+        assert_eq!(points, 3);
+
+        // Solid mode with per-vertex colors but no normals.
+        let solid_geometry = crate::mesh::Geometry {
+            vertices: &vertices,
+            faces: &faces,
+            colors: &[Rgb565::RED; 3],
+            ..Default::default()
+        };
+        let mut solid_mesh = K3dMesh::new(solid_geometry);
+        solid_mesh.render_mode = RenderMode::Solid;
+        let mut solid = 0;
+        render(&engine, [&solid_mesh], |_prim: DrawPrimitive| solid += 1);
+        assert!(solid > 0);
+
+        #[cfg(feature = "lighting")]
+        {
+            let lit_geometry = crate::mesh::Geometry {
+                vertices: &vertices,
+                faces: &faces,
+                colors: &[],
+                lines: &[],
+                normals: &normals,
+                vertex_normals: &vertex_normals,
+                uvs: &[],
+                texture_id: None,
+            };
+
+            let mut solid_light = K3dMesh::new(lit_geometry);
+            solid_light.render_mode = RenderMode::SolidLightDir(Vector3::new(0.0, 0.0, 1.0));
+            let mut solid_light_count = 0;
+            render(&engine, [&solid_light], |_prim: DrawPrimitive| {
+                solid_light_count += 1;
+            });
+            assert!(solid_light_count > 0);
+
+            let mut gouraud = K3dMesh::new(lit_geometry);
+            gouraud.render_mode = RenderMode::GouraudLightDir(Vector3::new(0.0, 0.0, 1.0));
+            let mut gouraud_count = 0;
+            render(&engine, [&gouraud], |_prim: DrawPrimitive| {
+                gouraud_count += 1;
+            });
+            assert!(gouraud_count > 0);
+
+            let mut toon = K3dMesh::new(lit_geometry);
+            toon.render_mode = RenderMode::Toon(Vector3::new(0.0, 0.0, 1.0), 4);
+            let mut toon_count = 0;
+            render(&engine, [&toon], |_prim: DrawPrimitive| toon_count += 1);
+            assert!(toon_count > 0);
+
+            let mut blinn = K3dMesh::new(lit_geometry);
+            blinn.render_mode = RenderMode::BlinnPhong {
+                light_dir: Vector3::new(0.0, 0.0, 1.0),
+                specular_intensity: 0.5,
+                shininess: 8.0,
+            };
+            let mut blinn_count = 0;
+            render(&engine, [&blinn], |_prim: DrawPrimitive| blinn_count += 1);
+            assert!(blinn_count > 0);
+
+            let mut sector = K3dMesh::new(lit_geometry);
+            sector.render_mode = RenderMode::SectorBright(180);
+            engine.light_levels = crate::retro::LightLevels::Linear;
+            let mut sector_count = 0;
+            render(&engine, [&sector], |_prim: DrawPrimitive| sector_count += 1);
+            assert!(sector_count > 0);
+        }
+    }
 }

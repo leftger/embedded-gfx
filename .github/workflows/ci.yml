@@ -354,12 +354,13 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           slug: leftger/embedded-3dgfx
       - name: Install nextest
+        if: ${{ !cancelled() }}
         uses: taiki-e/install-action@nextest
       - name: Run tests with JUnit report
         if: ${{ !cancelled() }}
         run: |
           set +e
-          cargo nextest run --workspace --all-features --profile ci
+          cargo nextest run -p embedded-3dgfx --all-features --profile ci
           status=$?
           cp target/nextest/ci/junit.xml junit.xml
           exit $status

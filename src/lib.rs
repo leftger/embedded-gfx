@@ -131,6 +131,8 @@ pub mod input;
 pub mod lens_flare;
 #[cfg(feature = "lighting")]
 pub mod lights;
+pub mod lod;
+pub mod matcap;
 pub mod mesh;
 #[cfg(feature = "painters")]
 pub mod painters;

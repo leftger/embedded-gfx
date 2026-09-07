@@ -44,7 +44,7 @@ impl ScreenAabb {
     /// Clips this AABB to the screen rectangle `[0, width) × [0, height)`.
     ///
     /// If the AABB lies entirely outside the screen the returned value will
-    /// have `x_min > x_max` or `y_min > y_max` (detectable via [`is_empty`]).
+    /// have `x_min > x_max` or `y_min > y_max` (detectable via [`Self::is_empty`]).
     #[inline]
     pub fn clamp(self, width: i32, height: i32) -> Self {
         Self {

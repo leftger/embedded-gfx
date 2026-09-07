@@ -245,4 +245,70 @@ mod tests {
         assert_eq!(negative_y[0], (0, 4));
         assert_eq!(negative_y[4], (4, 0));
     }
+
+    #[cfg(feature = "aa")]
+    #[derive(Clone)]
+    struct AaFb {
+        pixels: std::vec::Vec<Rgb565>,
+        width: i32,
+        height: i32,
+    }
+
+    #[cfg(feature = "aa")]
+    impl AaFb {
+        fn new(width: i32, height: i32) -> Self {
+            Self {
+                pixels: std::vec![Rgb565::new(0, 0, 0); (width * height) as usize],
+                width,
+                height,
+            }
+        }
+    }
+
+    #[cfg(feature = "aa")]
+    impl embedded_graphics_core::geometry::OriginDimensions for AaFb {
+        fn size(&self) -> embedded_graphics_core::geometry::Size {
+            embedded_graphics_core::geometry::Size::new(self.width as u32, self.height as u32)
+        }
+    }
+
+    #[cfg(feature = "aa")]
+    impl embedded_graphics_core::draw_target::DrawTarget for AaFb {
+        type Color = Rgb565;
+        type Error = core::convert::Infallible;
+
+        fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
+        where
+            I: IntoIterator<Item = embedded_graphics_core::Pixel<Rgb565>>,
+        {
+            for embedded_graphics_core::Pixel(pt, color) in pixels {
+                if pt.x >= 0 && pt.y >= 0 && pt.x < self.width && pt.y < self.height {
+                    self.pixels[(pt.y * self.width + pt.x) as usize] = color;
+                }
+            }
+            Ok(())
+        }
+    }
+
+    #[cfg(feature = "aa")]
+    impl embedded_draw_target::PixelRead for AaFb {
+        fn get_pixel(&self, point: embedded_graphics_core::prelude::Point) -> Rgb565 {
+            if point.x >= 0 && point.y >= 0 && point.x < self.width && point.y < self.height {
+                self.pixels[(point.y * self.width + point.x) as usize]
+            } else {
+                Rgb565::new(0, 0, 0)
+            }
+        }
+    }
+
+    #[cfg(feature = "aa")]
+    #[test]
+    fn draw_line_aa_writes_blended_pixels() {
+        let mut fb = AaFb::new(32, 32);
+        draw_line_aa(0, 0, 10, 0, Rgb565::new(31, 63, 31), &mut fb);
+        draw_line_aa(2, 2, 2, 2, Rgb565::new(31, 63, 31), &mut fb);
+        draw_line_aa(0, 0, 8, 8, Rgb565::new(31, 63, 31), &mut fb);
+        draw_line_aa(12, 4, 2, 8, Rgb565::new(31, 63, 31), &mut fb);
+        assert!(fb.pixels.iter().any(|&p| p != Rgb565::new(0, 0, 0)));
+    }
 }

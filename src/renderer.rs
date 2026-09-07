@@ -390,6 +390,148 @@ mod tests {
         assert_eq!(hit.command_index, 0);
         assert!(results[1].is_none()); // (0, 0) was outside triangle
     }
+
+    #[test]
+    fn test_execute_commands_variants() {
+        use crate::command_buffer::{CommandBuffer, RenderCommand};
+        use crate::primitive::DrawPrimitive;
+        use embedded_graphics_core::pixelcolor::{Rgb565, RgbColor};
+        use embedded_graphics_framebuf::{
+            FrameBuf,
+            backends::{EndianCorrectedBuffer, EndianCorrection},
+        };
+        use nalgebra::Point2;
+
+        let backing = std::vec![Rgb565::BLACK; 16 * 16].leak();
+        let mut fb = FrameBuf::new(
+            EndianCorrectedBuffer::new(backing, EndianCorrection::ToLittleEndian),
+            16,
+            16,
+        );
+        let mut zbuf = [crate::Z_MAX_VALUE; 16 * 16];
+        let mut frame = super::FrameCtx {
+            zbuffer: &mut zbuf,
+            width: 16,
+            height: 16,
+        };
+
+        let mut cmd = CommandBuffer::<4>::new();
+        cmd.push(RenderCommand::ClearColor(Rgb565::BLUE)).unwrap();
+        cmd.push(RenderCommand::ClearDepth(crate::Z_MAX_VALUE))
+            .unwrap();
+        cmd.push(RenderCommand::Draw(
+            DrawPrimitive::ColoredTriangleWithDepth {
+                points: [Point2::new(2, 2), Point2::new(12, 2), Point2::new(7, 12)],
+                depths: [10.0; 3],
+                color: Rgb565::RED,
+            },
+        ))
+        .unwrap();
+
+        assert!(super::execute_commands(&mut fb, &mut frame, &cmd, None).is_ok());
+
+        let dirty =
+            super::execute_commands_with_dirty_region(&mut fb, &mut frame, &cmd, None).unwrap();
+        assert!(dirty.is_some());
+        let dirty = dirty.unwrap();
+        assert!(dirty.width >= 1);
+        assert!(dirty.height >= 1);
+
+        let region = super::execute_commands_with_dirty_region_effects(
+            &mut fb,
+            &mut frame,
+            &cmd,
+            None,
+            None,
+            None,
+            crate::retro::StippleMode::Off,
+            crate::retro::PaletteMode::Off,
+            None,
+            [0.0, 0.0, -1.0],
+        )
+        .unwrap();
+        assert!(region.is_some());
+
+        // Sky path reports the full frame dirty.
+        let full_region = super::execute_commands_with_dirty_region_effects(
+            &mut fb,
+            &mut frame,
+            &cmd,
+            None,
+            None,
+            None,
+            crate::retro::StippleMode::Off,
+            crate::retro::PaletteMode::Off,
+            Some(crate::retro::SkyConfig::retro_blue()),
+            [0.0, 0.0, -1.0],
+        )
+        .unwrap();
+        let full = full_region.unwrap();
+        assert_eq!(full.x, 0);
+        assert_eq!(full.y, 0);
+        assert_eq!(full.width, 16);
+        assert_eq!(full.height, 16);
+    }
+
+    #[test]
+    fn test_execute_commands_tiled_and_frame_validation() {
+        use crate::command_buffer::{CommandBuffer, RenderCommand};
+        use crate::primitive::DrawPrimitive;
+        use embedded_graphics_core::pixelcolor::{Rgb565, RgbColor};
+        use embedded_graphics_framebuf::{
+            FrameBuf,
+            backends::{EndianCorrectedBuffer, EndianCorrection},
+        };
+        use nalgebra::Point2;
+
+        let backing = std::vec![Rgb565::BLACK; 16 * 16].leak();
+        let mut fb = FrameBuf::new(
+            EndianCorrectedBuffer::new(backing, EndianCorrection::ToLittleEndian),
+            16,
+            16,
+        );
+
+        // Validation fails on mismatched zbuffer length.
+        let mut short_zbuf = [crate::Z_MAX_VALUE; 4];
+        let mut bad_frame = super::FrameCtx {
+            zbuffer: &mut short_zbuf,
+            width: 16,
+            height: 16,
+        };
+        let empty = CommandBuffer::<1>::new();
+        assert!(super::execute_commands(&mut fb, &mut bad_frame, &empty, None).is_err());
+
+        let mut zbuf = [crate::Z_MAX_VALUE; 16 * 16];
+        let mut frame = super::FrameCtx {
+            zbuffer: &mut zbuf,
+            width: 16,
+            height: 16,
+        };
+
+        let mut cmd = CommandBuffer::<2>::new();
+        cmd.push(RenderCommand::Draw(
+            DrawPrimitive::ColoredTriangleWithDepth {
+                points: [Point2::new(3, 3), Point2::new(13, 3), Point2::new(8, 13)],
+                depths: [5.0; 3],
+                color: Rgb565::GREEN,
+            },
+        ))
+        .unwrap();
+
+        let stats = super::execute_commands_tiled::<_, 2, 16>(
+            &mut fb,
+            &mut frame,
+            &cmd,
+            crate::tilebin::TileConfig {
+                tile_width: 8,
+                tile_height: 8,
+            },
+            None,
+        )
+        .unwrap();
+        assert!(stats.draw_commands >= 1);
+        assert!(stats.bins_used >= 1);
+    }
 }
 
 pub fn execute_commands<D, const MAX: usize>(

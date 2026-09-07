@@ -228,4 +228,19 @@ mod tests {
         DONE.signal();
         assert!(matches!(Pin::new(&mut fut).poll(&mut cx), Poll::Ready(_)));
     }
+
+    #[test]
+    fn completion_slot_runtime_default_reset_and_completion_accessor() {
+        static DONE: CompletionSlot = CompletionSlot::new();
+        let local = CompletionSlot::default();
+        assert!(!local.is_signaled());
+        local.signal();
+        assert!(local.is_signaled());
+        local.reset();
+        assert!(!local.is_signaled());
+
+        let fb = make_fb();
+        let xfer = WaitTransfer::new(fb, &DONE);
+        assert!(core::ptr::eq(xfer.completion(), &DONE));
+    }
 }

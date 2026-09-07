@@ -592,4 +592,88 @@ mod tests {
         assert_eq!(target.pixels.len(), 12);
         assert!(target.pixels.iter().all(|&(_, _, c)| c != Rgb565::MAGENTA));
     }
+
+    #[test]
+    fn test_framebuf_draw_target_and_formatting() {
+        let mut buf = [Rgb565::BLACK; 12];
+        {
+            let mut target = FramebufDrawTarget::new(&mut buf, 4, 3);
+            assert_eq!(target.size(), Size::new(4, 3));
+            target
+                .draw_iter([Pixel(Point::new(1, 1), Rgb565::RED)])
+                .unwrap();
+            target
+                .draw_iter([Pixel(Point::new(99, 99), Rgb565::BLUE)])
+                .unwrap();
+        }
+        assert_eq!(buf[5], Rgb565::RED);
+        assert_eq!(buf[0], Rgb565::BLACK);
+
+        let mut text = [b' '; 6];
+        assert_eq!(format_u16_dec(42, &mut text, 3), "042");
+        assert_eq!(format_u16_dec(65535, &mut text, 5), "65535");
+    }
+
+    #[test]
+    fn test_hud_translucent_sprite_partial_bar_and_default() {
+        let sprite_data = [Rgb565::RED, Rgb565::BLUE, Rgb565::GREEN, Rgb565::YELLOW];
+        let mut hud = HudLayer::<6>::default();
+        hud.push(HudElement::TranslucentRect {
+            x: 1,
+            y: 1,
+            w: 2,
+            h: 2,
+            color: Rgb565::RED,
+            alpha: 128,
+        })
+        .unwrap();
+        hud.push(HudElement::TranslucentBorder {
+            x: 5,
+            y: 5,
+            w: 3,
+            h: 3,
+            color: Rgb565::GREEN,
+            alpha: 64,
+        })
+        .unwrap();
+        hud.push(HudElement::ProgressBar {
+            x: 0,
+            y: 0,
+            w: 10,
+            h: 1,
+            value: 0.5,
+            fg: Rgb565::WHITE,
+            bg: Rgb565::BLACK,
+        })
+        .unwrap();
+        hud.push(HudElement::Sprite(Sprite2D::new(0, 0, 2, 2, &sprite_data)))
+            .unwrap();
+
+        let mut target = MockTarget::new();
+        hud.draw(&mut target);
+        assert!(target.pixels.len() > 20);
+    }
+
+    #[test]
+    fn test_sprite_alpha_additive_normal_and_zero_scale() {
+        let data = [Rgb565::RED; 1];
+        let mut target = MockTarget::new();
+        Sprite2D::new(0, 0, 1, 1, &data)
+            .with_alpha(128)
+            .draw(&mut target)
+            .unwrap();
+        assert_eq!(target.pixels.len(), 1);
+
+        let mut target2 = MockTarget::new();
+        Sprite2D::new(0, 0, 1, 1, &data)
+            .with_scale(0)
+            .with_colorkey(Rgb565::MAGENTA)
+            .draw(&mut target2)
+            .unwrap();
+        assert_eq!(target2.pixels.len(), 1);
+
+        let mut target3 = MockTarget::new();
+        Sprite2D::new(0, 0, 1, 1, &data).draw(&mut target3).unwrap();
+        assert_eq!(target3.pixels.len(), 1);
+    }
 }

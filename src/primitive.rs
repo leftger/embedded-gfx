@@ -122,3 +122,132 @@ impl DrawPrimitive {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use embedded_graphics_core::pixelcolor::RgbColor;
+
+    fn pts() -> [Point2<i32>; 3] {
+        [Point2::new(-2, 0), Point2::new(3, -4), Point2::new(1, 5)]
+    }
+
+    #[test]
+    fn primitive_bounds_cover_every_family() {
+        let p = pts();
+        assert_eq!(
+            DrawPrimitive::ColoredPoint(p[0], Rgb565::RED).bounds(),
+            (-2, 0, -2, 0)
+        );
+        assert_eq!(
+            DrawPrimitive::Line([p[0], p[2]], Rgb565::RED).bounds(),
+            (-2, 0, 1, 5)
+        );
+        assert_eq!(
+            DrawPrimitive::ColoredTriangle(p, Rgb565::RED).bounds(),
+            (-2, -4, 3, 5)
+        );
+        assert_eq!(
+            DrawPrimitive::ColoredTriangleWithDepth {
+                points: p,
+                depths: [1.0; 3],
+                color: Rgb565::RED,
+            }
+            .bounds(),
+            (-2, -4, 3, 5)
+        );
+        assert_eq!(
+            DrawPrimitive::TranslucentTriangleWithDepth {
+                points: p,
+                depths: [1.0; 3],
+                color: Rgb565::RED,
+                alpha: 128,
+            }
+            .bounds(),
+            (-2, -4, 3, 5)
+        );
+        assert_eq!(
+            DrawPrimitive::ScreenDoorTriangleWithDepth {
+                points: p,
+                depths: [1.0; 3],
+                color: Rgb565::RED,
+                alpha: 128,
+            }
+            .bounds(),
+            (-2, -4, 3, 5)
+        );
+
+        #[cfg(feature = "lighting")]
+        {
+            assert_eq!(
+                DrawPrimitive::GouraudTriangle {
+                    points: p,
+                    colors: [Rgb565::RED; 3],
+                }
+                .bounds(),
+                (-2, -4, 3, 5)
+            );
+            assert_eq!(
+                DrawPrimitive::GouraudTriangleWithDepth {
+                    points: p,
+                    depths: [1.0; 3],
+                    colors: [Rgb565::RED; 3],
+                }
+                .bounds(),
+                (-2, -4, 3, 5)
+            );
+        }
+
+        #[cfg(feature = "textured")]
+        {
+            let uvs = [[0.0; 2]; 3];
+            assert_eq!(
+                DrawPrimitive::TexturedTriangle {
+                    points: p,
+                    uvs,
+                    texture_id: 0,
+                }
+                .bounds(),
+                (-2, -4, 3, 5)
+            );
+            assert_eq!(
+                DrawPrimitive::TexturedTriangleWithDepth {
+                    points: p,
+                    depths: [1.0; 3],
+                    ws: [1.0; 3],
+                    uvs,
+                    texture_id: 0,
+                }
+                .bounds(),
+                (-2, -4, 3, 5)
+            );
+            assert_eq!(
+                DrawPrimitive::TexturedGouraudTriangleWithDepth {
+                    points: p,
+                    depths: [1.0; 3],
+                    ws: [1.0; 3],
+                    uvs,
+                    colors: [Rgb565::RED; 3],
+                    texture_id: 0,
+                }
+                .bounds(),
+                (-2, -4, 3, 5)
+            );
+            assert_eq!(
+                DrawPrimitive::LightmappedTriangle {
+                    points: p,
+                    depths: [1.0; 3],
+                    ws: [1.0; 3],
+                    surface_uvs: uvs,
+                    lm_uvs: uvs,
+                    texture_id: 0,
+                    lightmap_id: 0,
+                    brightness: 255,
+                    dynamic_tint: Rgb565::BLACK,
+                }
+                .bounds(),
+                (-2, -4, 3, 5)
+            );
+        }
+    }
+}

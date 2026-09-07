@@ -236,4 +236,36 @@ mod tests {
         assert_eq!(d.quality_tier, QualityTier::Quality);
         assert_eq!(d.material_profile, MaterialProfile::SimpleSpecular);
     }
+
+    #[test]
+    fn test_render_defaults_balanced_and_framebuffer_validation() {
+        let balanced = render_defaults_for_profile(PROFILE_M33_BALANCED);
+        assert_eq!(balanced.quality_tier, QualityTier::Balanced);
+        assert_eq!(balanced.material_profile, MaterialProfile::Lambert);
+
+        let caps = PROFILE_M0_BALANCED;
+        assert!(caps.validate_framebuffer(100, 100).is_ok());
+        assert!(caps.validate_framebuffer(1000, 100).is_err());
+        assert!(caps.validate_framebuffer(100, 1000).is_err());
+
+        let steps = [
+            DegradationStep::RaisePriorityFloor(16),
+            DegradationStep::MeshDecimationStride(2),
+            DegradationStep::DowngradeQuality,
+        ];
+        let policy = DegradationPolicy { steps: &steps };
+        assert_eq!(policy.steps.len(), 3);
+    }
+
+    #[test]
+    fn test_default_profile_caps_and_apply() {
+        if let Some(caps) = default_profile_caps() {
+            assert_eq!(
+                caps.max_draw_primitives,
+                DEFAULT_PROFILE_CAPS.max_draw_primitives
+            );
+            let mut engine = crate::engine::K3dengine::new(16, 16);
+            apply_default_caps(&mut engine);
+        }
+    }
 }

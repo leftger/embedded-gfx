@@ -233,4 +233,50 @@ mod tests {
         fps.move_relative(0.0, 1.0, 0.0, 1.0);
         assert!((fps.position.x - 5.0).abs() < 1e-4);
     }
+
+    #[test]
+    fn test_orbit_zoom_pan_limits_and_camera_sync() {
+        let mut orbit = OrbitCameraController::new(Point3::new(1.0, 2.0, 3.0), 5.0)
+            .with_distance_limits(1.0, 10.0)
+            .with_pitch_limits(-1.0, 1.0);
+        orbit.zoom(100.0);
+        assert_eq!(orbit.distance, 10.0);
+        orbit.zoom(-100.0);
+        assert_eq!(orbit.distance, 1.0);
+
+        orbit.orbit(0.0, 2.0);
+        assert_eq!(orbit.pitch, 1.0);
+        orbit.pan(1.0, 0.5);
+        assert!((orbit.target.x - 1.0).abs() > 1e-5);
+        assert!(orbit.target.y > 2.0);
+
+        let mut camera = Camera::new(1.0);
+        orbit.update_camera(&mut camera);
+        let eye = orbit.eye_position();
+        assert!((camera.position.x - eye.x).abs() < 1e-5);
+        assert_eq!(camera.position.z, eye.z);
+    }
+
+    #[test]
+    fn test_fps_rotate_vectors_and_camera_sync() {
+        let mut fps = FpsCameraController::new(Point3::new(0.0, 0.0, 0.0));
+        let fwd = fps.horizontal_forward();
+        assert!((fwd.z - (-1.0)).abs() < 1e-5);
+        let right = fps.horizontal_right();
+        assert!((right.x - 1.0).abs() < 1e-5);
+        let look = fps.look_direction();
+        assert!((look.z - (-1.0)).abs() < 1e-5);
+
+        fps.rotate(core::f32::consts::FRAC_PI_2, 0.0);
+        assert!((fps.horizontal_forward().x - 1.0).abs() < 1e-4);
+        fps.rotate(0.0, 5.0);
+        assert_eq!(fps.pitch, fps.max_pitch);
+
+        fps.move_relative(0.0, 0.0, 1.0, 1.0);
+        assert!((fps.position.y - 5.0).abs() < 1e-4);
+
+        let mut camera = Camera::new(1.0);
+        fps.update_camera(&mut camera);
+        assert_eq!(camera.position.x, fps.position.x);
+    }
 }

@@ -91,4 +91,15 @@ mod tests {
         assert!(layers.intersects(RenderLayers::layer(3)));
         assert!(!layers.without(3).intersects(RenderLayers::layer(3)));
     }
+
+    #[test]
+    fn out_of_range_all_bits_and_default() {
+        assert_eq!(RenderLayers::layer(64), RenderLayers::NONE);
+        let unchanged = RenderLayers::layer(1).with(99).without(99);
+        assert_eq!(unchanged, RenderLayers::layer(1));
+        assert_eq!(RenderLayers::ALL.bits(), u64::MAX);
+        assert!(RenderLayers::ALL.intersects(RenderLayers::ALL));
+        assert_eq!(RenderLayers::default(), RenderLayers::DEFAULT);
+        assert_eq!(RenderLayers::none(), RenderLayers::NONE);
+    }
 }

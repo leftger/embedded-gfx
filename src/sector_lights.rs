@@ -148,4 +148,30 @@ mod tests {
             assert!(a >= 95);
         }
     }
+
+    #[test]
+    fn fullbright_and_random_branches() {
+        let full = SectorLight::fullbright();
+        assert_eq!(full.base, 255);
+        assert_eq!(light_level_u8_at(&full, 1.0), 255);
+
+        let random = SectorLight {
+            base: 200,
+            alt: 80,
+            speed: 10.0,
+            duration: 0.4,
+            sync: 0.123,
+            effect: Some(LightEffectKind::Random),
+        };
+        let mut saw_alt = false;
+        let mut saw_base = false;
+        for t in (0..100).map(|i| i as f32 * 0.05) {
+            let v = light_level_u8_at(&random, t);
+            assert!(v == 200 || v == 80);
+            saw_alt |= v == 80;
+            saw_base |= v == 200;
+        }
+        assert!(saw_alt);
+        assert!(saw_base);
+    }
 }

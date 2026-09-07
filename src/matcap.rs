@@ -147,4 +147,25 @@ mod tests {
         assert!(center_pixel.r() > 15, "Red channel should be strong");
         assert!(center_pixel.g() > 30, "Green channel should be strong");
     }
+
+    #[test]
+    fn test_matcap_all_presets_and_64() {
+        for preset in [
+            MatCapPreset::Chrome,
+            MatCapPreset::Gold,
+            MatCapPreset::Pearl,
+            MatCapPreset::Clay,
+            MatCapPreset::RetroEmerald,
+        ] {
+            let tex32 = preset.generate_32x32();
+            assert_eq!(tex32.len(), 1024);
+            let tex64 = preset.generate_64x64();
+            assert_eq!(tex64.len(), 4096);
+            assert_ne!(tex64[32 * 64 + 32], Rgb565::BLACK);
+        }
+
+        // Pixel outside the unit disk stays black.
+        let tex = MatCapPreset::Chrome.generate_32x32();
+        assert_eq!(tex[0], Rgb565::BLACK);
+    }
 }

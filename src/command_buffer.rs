@@ -104,7 +104,7 @@ impl<const MAX: usize> Default for CommandBuffer<MAX> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use embedded_graphics_core::pixelcolor::Rgb565;
+    use embedded_graphics_core::pixelcolor::{Rgb565, RgbColor};
     use nalgebra::Point2;
 
     #[test]
@@ -143,5 +143,26 @@ mod tests {
                 max: 1
             })
         );
+    }
+
+    #[test]
+    fn bounds_helpers_clear_iter_and_default() {
+        let prim = DrawPrimitive::ColoredPoint(Point2::new(1, 2), Rgb565::new(31, 0, 0));
+        let header = PrimitiveHeader::from_primitive(&prim);
+        let bounds = prim.bounds();
+        assert_eq!(header.bounds(), bounds);
+
+        let cmd = RenderCommand::Draw(prim);
+        assert_eq!(cmd.bounds(), Some(bounds));
+        assert_eq!(RenderCommand::ClearDepth(0).bounds(), None);
+
+        let mut buf: CommandBuffer<2> = CommandBuffer::default();
+        buf.push(RenderCommand::ClearColor(Rgb565::BLACK)).unwrap();
+        buf.push(RenderCommand::ClearDepth(1)).unwrap();
+        assert_eq!(buf.len(), 2);
+        assert!(buf.get(99).is_none());
+        assert_eq!(buf.iter().count(), 2);
+        buf.clear();
+        assert!(buf.is_empty());
     }
 }

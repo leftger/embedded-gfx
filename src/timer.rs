@@ -382,4 +382,41 @@ mod tests {
         let count2 = fixed.update(step * 0.5).count();
         assert_eq!(count2, 1);
     }
+
+    #[test]
+    fn test_stopwatch_duration_controls_and_pause() {
+        let mut sw = Stopwatch::new();
+        sw.tick_duration(Duration::from_millis(250));
+        assert!((sw.elapsed_secs() - 0.25).abs() < 1e-4);
+        assert_eq!(sw.elapsed(), Duration::from_secs_f32(0.25));
+        sw.set_elapsed(3.0);
+        assert_eq!(sw.elapsed_secs(), 3.0);
+        sw.pause();
+        assert!(sw.is_paused());
+        sw.tick(1.0);
+        assert_eq!(sw.elapsed_secs(), 3.0);
+        sw.unpause();
+        assert!(!sw.is_paused());
+        sw.reset();
+        assert_eq!(sw.elapsed_secs(), 0.0);
+    }
+
+    #[test]
+    fn test_timer_pause_duration_and_reset_paths() {
+        let mut timer = Timer::new(Duration::from_millis(500), TimerMode::Repeating);
+        assert!((timer.duration_secs() - 0.5).abs() < 1e-4);
+        timer.tick(0.1);
+        assert!((timer.elapsed_secs() - 0.1).abs() < 1e-4);
+        timer.pause();
+        assert!(timer.is_paused());
+        timer.tick(0.2);
+        assert!((timer.elapsed_secs() - 0.1).abs() < 1e-4);
+        timer.unpause();
+        timer.tick_duration(Duration::from_millis(500));
+        assert!(timer.just_finished());
+        timer.reset();
+        assert!(!timer.is_finished());
+        assert_eq!(timer.elapsed_secs(), 0.0);
+        let _ = Timer::default();
+    }
 }

@@ -772,4 +772,51 @@ mod tests {
         sc.present().unwrap();
         assert_eq!(sc.frame_count(), 1);
     }
+
+    #[test]
+    fn test_front_buffer_idle_after_present_after_vsync() {
+        let mut sc = make_swap_chain(SimulatorBackend::new());
+        assert!(sc.get_front_buffer().is_some());
+        sc.present().unwrap();
+        // Present hands the front buffer to the DMA token; get_front_buffer is None.
+        assert!(sc.get_front_buffer().is_none());
+        sc.wait_for_vsync();
+        assert!(sc.get_front_buffer().is_some());
+    }
+
+    #[test]
+    fn test_try_present_region_and_big_endian_constructor() {
+        let fb0 = make_static_slice(64 * 64);
+        let fb1 = make_static_slice(64 * 64);
+        let mut sc = StandardSwapChain::<64, 64, _>::from_static_slices(
+            fb0,
+            fb1,
+            true,
+            TrackingBackend::new(),
+        );
+        assert!(
+            sc.try_present_region(DisplayRegion::new(0, 0, 8, 8))
+                .is_ok()
+        );
+        assert_eq!(sc.backend.region_present_count.get(), 1);
+        assert_eq!(sc.frame_count(), 1);
+    }
+
+    #[cfg(feature = "triple-buffering")]
+    #[test]
+    fn test_triple_swapchain_try_present_and_render_buffer() {
+        let fb0 = make_static_slice(64 * 64);
+        let fb1 = make_static_slice(64 * 64);
+        let fb2 = make_static_slice(64 * 64);
+        let mut sc = StandardTripleSwapChain::<64, 64, _>::from_static_slices(
+            fb0,
+            fb1,
+            fb2,
+            false,
+            SimulatorBackend::new(),
+        );
+        assert!(sc.try_present().is_ok());
+        assert_eq!(sc.frame_count(), 1);
+        let _render = sc.get_render_buffer();
+    }
 }

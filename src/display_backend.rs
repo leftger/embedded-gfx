@@ -463,4 +463,18 @@ mod tests {
         assert_eq!(backend.region_calls.get(), 0);
         let _ = xfer.wait();
     }
+
+    #[test]
+    fn test_cpu_accelerator_and_region_helpers() {
+        let mut accel = CpuAccelerator::default();
+        assert!(!accel.fill_rect(0, 0, 1, 1, Rgb565::BLACK));
+        assert!(!accel.blit(&[], 0, 0, 0, 0, 0));
+        let region = DisplayRegion::new(1, 2, 3, 4);
+        assert_eq!(region.x, 1);
+        assert_eq!(region.y, 2);
+        assert_eq!(region.width, 3);
+        assert_eq!(region.height, 4);
+        assert_eq!(DisplayRegion::new(1, 2, 3, 4), region);
+        assert_eq!(DisplayError::Busy, DisplayError::Busy);
+    }
 }

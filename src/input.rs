@@ -391,5 +391,64 @@ mod tests {
         assert!(!debounce.update(0, true));
         assert!(debounce.update(0, true)); // 3rd tick stabilizes
         assert!(debounce.state(0));
+
+        // Out-of-range pins are rejected.
+        assert!(!debounce.update(9, true));
+        assert!(!debounce.state(9));
+    }
+
+    #[test]
+    fn test_button_set_clear_and_gamepad_state() {
+        let mut buttons = ButtonInput::new();
+        buttons.set(GamepadButton::ActionB, true);
+        assert!(buttons.pressed(GamepadButton::ActionB));
+        assert!(!buttons.pressed(GamepadButton::ActionA));
+        buttons.update();
+        buttons.clear();
+        assert!(!buttons.pressed(GamepadButton::ActionB));
+        assert!(!buttons.just_pressed(GamepadButton::ActionB));
+
+        let mut gp = VirtualGamepad::new();
+        gp.left_stick = VirtualAxis2D::new(0.5, -0.25);
+        gp.right_stick = VirtualAxis2D::new(0.75, 0.0);
+        gp.buttons.press(GamepadButton::ActionA);
+        gp.buttons.press(GamepadButton::RightBumper);
+        let state = gp.to_input_state();
+        assert_eq!(state.forward, -0.25);
+        assert_eq!(state.strafe, 0.5);
+        assert_eq!(state.look_yaw, 0.75);
+        assert_eq!(state.look_pitch, 0.0);
+        assert!(state.jump);
+        assert!(state.sprint);
+        gp.update();
+        assert!(gp.buttons.pressed(GamepadButton::ActionA));
+    }
+
+    #[test]
+    fn test_virtual_axis_dpad_adc_and_vector() {
+        assert_eq!(
+            VirtualAxis2D::from_dpad(true, false, false, false),
+            VirtualAxis2D::new(0.0, 1.0)
+        );
+        assert_eq!(
+            VirtualAxis2D::from_dpad(false, true, true, false),
+            VirtualAxis2D::new(-1.0, -1.0)
+        );
+        assert_eq!(
+            VirtualAxis2D::from_dpad(false, false, false, false),
+            VirtualAxis2D::new(0.0, 0.0)
+        );
+
+        let adc = VirtualAxis2D::from_adc(4095, 2048, 2048, 2048, 4096);
+        assert!(adc.x > 0.99);
+        assert!((adc.y).abs() < 1e-4);
+
+        let v = VirtualAxis2D::new(0.3, -0.4).to_vector();
+        assert_eq!(v.x, 0.3);
+        assert_eq!(v.y, -0.4);
+
+        let small = VirtualAxis2D::new(0.00001, 0.0).with_radial_deadzone(0.0);
+        assert_eq!(small, VirtualAxis2D::new(0.0, 0.0));
+        let _ = VirtualAxis2D::default();
     }
 }

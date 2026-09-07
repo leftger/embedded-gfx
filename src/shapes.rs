@@ -677,4 +677,27 @@ mod tests {
         assert!(!geom16.vertices.is_empty());
         assert!(!geom16.faces.is_empty());
     }
+
+    #[test]
+    fn test_runtime_cube_plane_and_empty() {
+        // The constants evaluate const fns at compile time; calling the same
+        // functions at runtime also exercises their array construction paths.
+        let box_mesh = cube([1.0, 2.0, 3.0]);
+        let box_geom = box_mesh.geometry();
+        assert_eq!(box_geom.vertices.len(), 24);
+        assert_eq!(box_geom.faces.len(), 12);
+        assert_eq!(box_geom.vertex_normals[3], [0.0, 0.0, 1.0]);
+        assert_eq!(box_geom.normals[0], [0.0, 0.0, 1.0]);
+        assert_eq!(box_geom.vertices[0], [-1.0, -2.0, 3.0]);
+
+        let quad = plane(2.0, 4.0);
+        let quad_geom = quad.geometry();
+        assert_eq!(quad_geom.vertices.len(), 4);
+        assert_eq!(quad_geom.faces.len(), 2);
+        assert_eq!(quad_geom.vertices[0], [-1.0, 0.0, 2.0]);
+
+        let empty: CubeMesh = ProceduralMesh::empty();
+        assert_eq!(empty.vertices, [[0.0; 3]; 24]);
+        assert!(empty.faces.iter().all(|f| *f == [0; 3]));
+    }
 }

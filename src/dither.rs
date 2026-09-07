@@ -196,4 +196,21 @@ mod tests {
         assert_eq!(count_high, 32);
         assert_eq!(count_low, 32);
     }
+
+    #[test]
+    fn test_rgb332_endpoints_and_rgb565_dither() {
+        for y in 0..8 {
+            for x in 0..8 {
+                assert_eq!(dither_rgb888_to_rgb332(x, y, 0, 0, 0), 0);
+                assert_eq!(dither_rgb888_to_rgb332(x, y, 255, 255, 255), 0xFF);
+                let _ = dither_rgb565(x, y, Rgb565::new(20, 40, 20));
+            }
+        }
+
+        let changes = (0..4)
+            .flat_map(|y| (0..4).map(move |x| dither_rgb565(x, y, Rgb565::new(31, 63, 31))))
+            .filter(|c| *c != Rgb565::new(31, 63, 31))
+            .count();
+        assert!(changes > 0);
+    }
 }

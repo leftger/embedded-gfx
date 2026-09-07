@@ -130,4 +130,15 @@ mod tests {
         #[cfg(not(all(feature = "dwt-profiler", target_arch = "arm")))]
         assert_eq!(read_cycle_counter(), None);
     }
+
+    #[test]
+    fn init_and_emit_are_noops_on_host() {
+        init_dwt_cycle_counter();
+        let sample = sample_cycles("host", 10, 20);
+        emit_trace(sample);
+        assert_eq!(sample.cycles, 10);
+        assert_eq!(sample.label, "host");
+        assert_eq!(last_sample_cycles(), 10);
+        let _ = TraceTransport::None;
+    }
 }

@@ -423,4 +423,33 @@ mod tests {
         assert_eq!(pool[h1], 101);
         assert_eq!(pool[h2], 201);
     }
+
+    #[test]
+    fn test_pool_empty_invalid_handles_mut_and_clear() {
+        let mut pool: Pool<i32, 0> = Pool::new();
+        assert!(pool.is_empty());
+        assert_eq!(pool.len(), 0);
+        assert_eq!(pool.capacity(), 0);
+        assert!(pool.spawn(1).is_none());
+
+        let mut pool2: Pool<i32, 2> = Pool::new();
+        assert!(pool2.get(Handle::new(0, 1)).is_none());
+        assert!(pool2.get_mut(Handle::new(0, 1)).is_none());
+        assert!(pool2.free(Handle::new(0, 1)).is_none());
+        assert!(!pool2.is_valid_handle(Handle::new(0, 1)));
+
+        let h = pool2.spawn(42).unwrap();
+        assert!(pool2.is_valid_handle(h));
+        *pool2.get_mut(h).unwrap() = 43;
+        assert_eq!(pool2.get(h), Some(&43));
+
+        let freed = pool2.free(h).unwrap();
+        assert_eq!(freed, 43);
+        assert!(pool2.free(h).is_none());
+        assert!(pool2.get_mut(h).is_none());
+        pool2.spawn(7).unwrap();
+        pool2.clear();
+        assert!(pool2.is_empty());
+        assert_eq!(pool2.len(), 0);
+    }
 }

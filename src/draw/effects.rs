@@ -414,4 +414,41 @@ mod tests {
         // offset = -0.01 + (-0.05 * 1.0) = -0.06
         assert!((offset - (-0.06)).abs() < 1e-4);
     }
+
+    #[test]
+    fn test_fog_and_dither_configs() {
+        let fog = FogConfig::new(Rgb565::WHITE, 1.0, 3.0);
+        assert_eq!(fog.apply(Rgb565::BLACK, 0), Rgb565::BLACK);
+        assert_eq!(fog.apply(Rgb565::BLACK, fog.far), Rgb565::WHITE);
+        let mid = fog.apply(Rgb565::BLACK, (fog.near + fog.far) / 2);
+        assert!(mid.r() > 5 && mid.r() < 31);
+
+        let zero = DitherConfig::new(0);
+        let color = Rgb565::new(20, 30, 20);
+        assert_eq!(zero.apply(color, 0, 0), color);
+        let heavy = DitherConfig::new(255);
+        assert_ne!(heavy.apply(color, 3, 3), color);
+    }
+
+    #[test]
+    fn test_depth_interpolation_and_interlace() {
+        let (a, b, c) = DepthInterpolationMode::Exact.process_depths(1.0, 2.0, 3.0);
+        assert_eq!((a, b, c), (1.0, 2.0, 3.0));
+        let (a, b, c) = DepthInterpolationMode::FastAverage.process_depths(1.0, 2.0, 3.0);
+        assert!((a - 2.0).abs() < 1e-5);
+        assert_eq!(a, b);
+        assert_eq!(b, c);
+        let (a, b, c) = DepthInterpolationMode::FastMax.process_depths(1.0, 3.0, 2.0);
+        assert_eq!((a, b, c), (3.0, 3.0, 3.0));
+
+        assert!(InterlaceField::Progressive.includes_scanline(0));
+        assert!(InterlaceField::Even.includes_scanline(2));
+        assert!(!InterlaceField::Even.includes_scanline(1));
+        assert!(InterlaceField::Odd.includes_scanline(1));
+        assert_eq!(InterlaceField::Even.toggle(), InterlaceField::Odd);
+        assert_eq!(
+            InterlaceField::Progressive.toggle(),
+            InterlaceField::Progressive
+        );
+    }
 }

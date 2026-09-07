@@ -257,4 +257,35 @@ mod tests {
         assert!(mid.g() > 20 && mid.g() < 45);
         assert_eq!(mid.b(), 0);
     }
+
+    #[test]
+    fn test_empty_single_rgb888_and_clamped() {
+        let empty = ColorGradient::<Rgb565>::new(&[]);
+        assert!(empty.is_empty());
+        assert_eq!(empty.len(), 0);
+        assert_eq!(empty.sample(0.5), Rgb565::BLACK);
+        assert_eq!(empty.sample_hsv(0.5), Rgb565::new(0, 0, 0));
+
+        let single = [GradientStop::new(0.3, Rgb565::new(1, 2, 3))];
+        let one = ColorGradient::new(&single);
+        assert_eq!(one.len(), 1);
+        assert!(!one.is_empty());
+        assert_eq!(one.sample(0.0), Rgb565::new(1, 2, 3));
+        assert_eq!(one.sample_hsv(1.0), Rgb565::new(1, 2, 3));
+
+        let stops = [
+            GradientStop::new(0.2, Rgb565::new(0, 0, 0)),
+            GradientStop::new(0.8, Rgb565::new(31, 63, 31)),
+        ];
+        let grad = ColorGradient::new(&stops);
+        assert_eq!(grad.sample(-1.0), Rgb565::new(0, 0, 0));
+        assert_eq!(grad.sample(2.0), Rgb565::new(31, 63, 31));
+
+        let rgb888_stops = [
+            GradientStop::new(0.0, Rgb888::BLACK),
+            GradientStop::new(1.0, Rgb888::WHITE),
+        ];
+        let rgb888 = ColorGradient::new(&rgb888_stops);
+        assert_eq!(rgb888.sample(0.5), Rgb888::new(127, 127, 127));
+    }
 }

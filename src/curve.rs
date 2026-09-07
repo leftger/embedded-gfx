@@ -207,4 +207,38 @@ mod tests {
         // Smooth S-curve at midpoint should be 0.5
         assert!((curve.sample(0.5) - 0.5).abs() < 1e-5);
     }
+
+    #[test]
+    fn test_curve_empty_single_step_zero_dt_and_len() {
+        let empty: Curve<'_, f32> = Curve::new(&[]);
+        assert!(empty.is_empty());
+        assert_eq!(empty.len(), 0);
+        assert_eq!(empty.sample(0.5), 0.0);
+
+        let single = [CurveKey::linear(1.0, 7.0)];
+        let one = Curve::new(&single);
+        assert_eq!(one.len(), 1);
+        assert!(!one.is_empty());
+        assert_eq!(one.sample(-100.0), 7.0);
+        assert_eq!(one.sample(100.0), 7.0);
+
+        let step_keys = [CurveKey::step(0.0, 2.0), CurveKey::step(1.0, 4.0)];
+        let step_curve = Curve::new(&step_keys);
+        assert_eq!(step_curve.sample(0.5), 2.0);
+
+        let hermite_to_linear = [
+            CurveKey::new(
+                0.0,
+                3.0,
+                CurveInterpolation::Hermite {
+                    in_tangent: 0.0,
+                    out_tangent: 0.5,
+                },
+            ),
+            CurveKey::linear(1.0, 11.0),
+        ];
+        let curve = Curve::new(&hermite_to_linear);
+        let mid = curve.sample(0.5);
+        assert!(mid > 3.0 && mid < 11.0);
+    }
 }

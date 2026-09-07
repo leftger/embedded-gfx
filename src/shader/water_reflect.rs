@@ -153,4 +153,38 @@ mod tests {
         let color_below_waterline = shader.shade(0, 3, 0, ());
         assert_eq!(color_below_waterline, Rgb565::GREEN);
     }
+
+    #[test]
+    fn test_water_reflect_ripples_empty_and_alpha_edges() {
+        let buffer = [Rgb565::RED; 16];
+        let mut config = WaterReflectConfig::new(&buffer, 4, 4, 2, Rgb565::CYAN, 0);
+        config = config.with_ripples(2, 1);
+        assert_eq!(config.ripple_amplitude, 2);
+        assert_eq!(config.ripple_phase, 1);
+        let reflected = config.sample_reflection(3, 3);
+        assert_eq!(reflected, Rgb565::RED);
+
+        let empty_config = WaterReflectConfig::new(&[], 4, 4, 2, Rgb565::CYAN, 0);
+        assert_eq!(empty_config.sample_reflection(0, 0), Rgb565::CYAN);
+
+        let shader_config = WaterReflectConfig::new(&buffer, 4, 4, 2, Rgb565::CYAN, 255);
+        let opaque = WaterReflectShader {
+            inner: FlatColorShader {
+                color: Rgb565::WHITE,
+            },
+            config: &shader_config,
+        };
+        assert_eq!(opaque.shade(0, 3, 0, ()), Rgb565::WHITE);
+
+        let blend_config = WaterReflectConfig::new(&buffer, 4, 4, 2, Rgb565::CYAN, 128);
+        let blended = WaterReflectShader {
+            inner: FlatColorShader {
+                color: Rgb565::WHITE,
+            },
+            config: &blend_config,
+        };
+        let color = blended.shade(0, 3, 0, ());
+        assert_ne!(color, Rgb565::WHITE);
+        assert_ne!(color, Rgb565::RED);
+    }
 }

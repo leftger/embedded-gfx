@@ -2,6 +2,7 @@ use crate::ZDepth;
 use embedded_graphics_core::pixelcolor::Rgb565;
 
 pub mod blend;
+pub mod depth_darken;
 pub mod dither;
 pub mod fog;
 pub mod retro;
@@ -12,6 +13,7 @@ pub use blend::{
     fast_blend_rgb565, fast_blend_rgba8888, fast_blend_rgba8888_to_rgb565, reverse_color_rgb565,
     reverse_color_rgba8888,
 };
+pub use depth_darken::{DepthDarkenConfig, DepthDarkenShader};
 pub use dither::{DitherConfig, DitherShader};
 pub use fog::{FogConfig, FogShader};
 pub use retro::{PaletteShader, ScreenTintShader};

@@ -163,6 +163,7 @@ pub mod decal;
 pub mod navmesh;
 pub mod pool;
 
+pub mod occlusion;
 #[cfg(feature = "scene")]
 pub mod scene_format;
 #[cfg(feature = "scene")]

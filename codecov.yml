@@ -1,0 +1,20 @@
+ignore:
+  - "asset_cli/**"
+  - "load_stl/**"
+  - "size_harness/**"
+  - "tools/**"
+  - "benches/**"
+  - "examples/**"
+  - "assets/**"
+  - "docs/**"
+
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 1%
+    patch:
+      default:
+        target: 60%
+        threshold: 1%

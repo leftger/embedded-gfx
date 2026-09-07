@@ -209,3 +209,40 @@ impl Iterator for Bresenham {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    extern crate std;
+    use std::vec::Vec;
+
+    use super::*;
+
+    #[test]
+    fn bresenham_covers_horizontal_vertical_and_diagonal() {
+        let horizontal: Vec<_> = Bresenham::new((0, 0), (4, 0)).collect();
+        assert_eq!(
+            horizontal,
+            std::vec![(0, 0), (1, 0), (2, 0), (3, 0), (4, 0)]
+        );
+
+        let vertical: Vec<_> = Bresenham::new((0, 0), (0, 3)).collect();
+        assert_eq!(vertical, std::vec![(0, 0), (0, 1), (0, 2), (0, 3)]);
+
+        let diagonal: Vec<_> = Bresenham::new((0, 0), (3, 3)).collect();
+        assert_eq!(diagonal, std::vec![(0, 0), (1, 1), (2, 2), (3, 3)]);
+    }
+
+    #[test]
+    fn bresenham_handles_negative_and_steep_directions() {
+        let backward: Vec<_> = Bresenham::new((4, 0), (0, 0)).collect();
+        assert_eq!(backward, std::vec![(4, 0), (3, 0), (2, 0), (1, 0), (0, 0)]);
+
+        let steep: Vec<_> = Bresenham::new((0, 0), (1, 4)).collect();
+        assert_eq!(steep, std::vec![(0, 0), (0, 1), (0, 2), (0, 3), (1, 4)]);
+
+        let negative_y: Vec<_> = Bresenham::new((0, 4), (4, 0)).collect();
+        assert_eq!(negative_y.len(), 5);
+        assert_eq!(negative_y[0], (0, 4));
+        assert_eq!(negative_y[4], (4, 0));
+    }
+}

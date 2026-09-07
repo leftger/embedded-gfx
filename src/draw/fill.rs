@@ -622,4 +622,125 @@ mod tests {
         );
         assert_eq!(fb.pixels[10 * 20 + 10], Rgb565::GREEN);
     }
+
+    #[test]
+    fn test_fill_clipping_and_zero_area() {
+        // Degenerate triangle should not panic.
+        let mut fb = TestFb::<20, 20>::default();
+        fill_triangle(
+            Point::new(2, 2),
+            Point::new(4, 4),
+            Point::new(8, 8),
+            Rgb565::RED,
+            &mut fb,
+        );
+
+        // Entirely offscreen triangle should be clipped to nothing.
+        draw(
+            DrawPrimitive::ColoredTriangle(
+                [
+                    nalgebra::Point2::new(-10, 0),
+                    nalgebra::Point2::new(-8, 10),
+                    nalgebra::Point2::new(-5, 5),
+                ],
+                Rgb565::WHITE,
+            ),
+            &mut fb,
+        );
+
+        // Triangle straddling the left edge still draws the visible part.
+        let mut fb2 = TestFb::<20, 20>::default();
+        draw(
+            DrawPrimitive::ColoredTriangle(
+                [
+                    nalgebra::Point2::new(-5, 2),
+                    nalgebra::Point2::new(10, 10),
+                    nalgebra::Point2::new(10, 0),
+                ],
+                Rgb565::GREEN,
+            ),
+            &mut fb2,
+        );
+        assert_eq!(fb2.pixels[5 * 20 + 10], Rgb565::GREEN);
+    }
+
+    #[cfg(feature = "lighting")]
+    #[test]
+    fn test_fill_gouraud_triangle_shapes() {
+        // Flat-bottom (p2.y == p3.y after sorting).
+        let mut fb = TestFb::<20, 20>::default();
+        draw(
+            DrawPrimitive::GouraudTriangle {
+                points: [
+                    nalgebra::Point2::new(10, 2),
+                    nalgebra::Point2::new(5, 10),
+                    nalgebra::Point2::new(15, 10),
+                ],
+                colors: [Rgb565::RED, Rgb565::GREEN, Rgb565::BLUE],
+            },
+            &mut fb,
+        );
+        assert_ne!(fb.pixels[6 * 20 + 10], Rgb565::BLACK);
+
+        // Flat-top (p1.y == p2.y after sorting).
+        let mut fb2 = TestFb::<20, 20>::default();
+        draw(
+            DrawPrimitive::GouraudTriangle {
+                points: [
+                    nalgebra::Point2::new(5, 5),
+                    nalgebra::Point2::new(15, 5),
+                    nalgebra::Point2::new(10, 15),
+                ],
+                colors: [Rgb565::BLUE, Rgb565::RED, Rgb565::GREEN],
+            },
+            &mut fb2,
+        );
+        assert_ne!(fb2.pixels[10 * 20 + 10], Rgb565::BLACK);
+
+        // General triangle uses split path.
+        let mut fb3 = TestFb::<20, 20>::default();
+        draw(
+            DrawPrimitive::GouraudTriangle {
+                points: [
+                    nalgebra::Point2::new(10, 2),
+                    nalgebra::Point2::new(3, 8),
+                    nalgebra::Point2::new(17, 15),
+                ],
+                colors: [Rgb565::RED, Rgb565::GREEN, Rgb565::BLUE],
+            },
+            &mut fb3,
+        );
+        assert_ne!(fb3.pixels[8 * 20 + 10], Rgb565::BLACK);
+
+        // Entirely offscreen Gouraud triangle returns early.
+        let mut fb4 = TestFb::<20, 20>::default();
+        draw(
+            DrawPrimitive::GouraudTriangle {
+                points: [
+                    nalgebra::Point2::new(-20, 0),
+                    nalgebra::Point2::new(-10, 10),
+                    nalgebra::Point2::new(-5, 5),
+                ],
+                colors: [Rgb565::RED, Rgb565::GREEN, Rgb565::BLUE],
+            },
+            &mut fb4,
+        );
+        assert_eq!(fb4.pixels[0], Rgb565::BLACK);
+    }
+
+    #[test]
+    fn test_edge_stepper_and_fixed_conversion() {
+        let horizontal = EdgeStepper::new(Point::new(3, 4), Point::new(7, 4), 4);
+        assert_eq!(horizontal.step, 0);
+        assert_eq!(horizontal.current_x(), 3);
+
+        let mut stepper = EdgeStepper::new(Point::new(0, 0), Point::new(10, 5), 0);
+        assert_eq!(stepper.current_x(), 0);
+        stepper.advance();
+        assert!(stepper.current_x() >= 0);
+
+        assert_eq!(fixed_to_i32(1 << 16), 1);
+        assert_eq!(fixed_to_i32(-(1 << 16)), -1);
+        assert_eq!(fixed_to_i32(1), 0);
+    }
 }

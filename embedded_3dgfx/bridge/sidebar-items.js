@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"fn":["draw_to","eg_to_nalgebra","nalgebra_to_eg","render_drawable_to_buffer","scanout_half_width_buffer","scanout_half_width_row"],"struct":["ColorAdapter","HalfWidthDrawTargetAdapter"],"trait":["AsEgPoint","AsNalgebraPoint"]};
+window.SIDEBAR_ITEMS = {"fn":["draw_to","eg_to_nalgebra","nalgebra_to_eg","reconstruct_checkerboard_buffer","reconstruct_checkerboard_row","render_drawable_to_buffer","scanout_half_width_buffer","scanout_half_width_row"],"struct":["ColorAdapter","HalfWidthDrawTargetAdapter"],"trait":["AsEgPoint","AsNalgebraPoint"]};

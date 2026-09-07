@@ -127,8 +127,8 @@
 <a href=#127 id=127 data-nosnippet>127</a>        <span class="comment">// 4x4 buffer where row 0 is RED, row 1 is GREEN, row 2 is BLUE, row 3 is WHITE
 <a href=#128 id=128 data-nosnippet>128</a>        </span><span class="kw">let </span><span class="kw-2">mut </span>buffer = [Rgb565::BLACK; <span class="number">16</span>];
 <a href=#129 id=129 data-nosnippet>129</a>        <span class="kw">for </span>x <span class="kw">in </span><span class="number">0</span>..<span class="number">4 </span>{
-<a href=#130 id=130 data-nosnippet>130</a>            buffer[<span class="number">0 </span>* <span class="number">4 </span>+ x] = Rgb565::RED;
-<a href=#131 id=131 data-nosnippet>131</a>            buffer[<span class="number">1 </span>* <span class="number">4 </span>+ x] = Rgb565::GREEN;
+<a href=#130 id=130 data-nosnippet>130</a>            buffer[x] = Rgb565::RED;
+<a href=#131 id=131 data-nosnippet>131</a>            buffer[<span class="number">4 </span>+ x] = Rgb565::GREEN;
 <a href=#132 id=132 data-nosnippet>132</a>            buffer[<span class="number">2 </span>* <span class="number">4 </span>+ x] = Rgb565::BLUE;
 <a href=#133 id=133 data-nosnippet>133</a>            buffer[<span class="number">3 </span>* <span class="number">4 </span>+ x] = Rgb565::WHITE;
 <a href=#134 id=134 data-nosnippet>134</a>        }

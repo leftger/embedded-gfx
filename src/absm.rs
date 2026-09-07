@@ -437,4 +437,118 @@ mod tests {
         sm.sample_poses(&mut poses);
         assert_eq!(poses.len(), 2);
     }
+
+    #[test]
+    fn test_absm_immediate_less_than_bool_and_capacity() {
+        let mut sm: AnimationStateMachine<3, 1, 2> = AnimationStateMachine::new(0);
+        sm.set_state(0, StateNode::SingleClip(&CLIP_A));
+        sm.set_state(1, StateNode::SingleClip(&CLIP_B));
+        assert!(sm.add_transition(Transition {
+            from: 0,
+            to: 1,
+            fade_duration: 0.0,
+            rule: TransitionRule::Immediate,
+        }));
+        assert!(!sm.add_transition(Transition {
+            from: 1,
+            to: 0,
+            fade_duration: 0.0,
+            rule: TransitionRule::Immediate,
+        }));
+
+        sm.update(0.01);
+        assert_eq!(sm.current_state(), 1);
+
+        let mut sm2: AnimationStateMachine<3, 2, 2> = AnimationStateMachine::new(0);
+        sm2.set_state(0, StateNode::SingleClip(&CLIP_A));
+        sm2.set_state(1, StateNode::SingleClip(&CLIP_B));
+        sm2.set_state(2, StateNode::SingleClip(&CLIP_A));
+        sm2.add_transition(Transition {
+            from: 0,
+            to: 1,
+            fade_duration: 0.0,
+            rule: TransitionRule::ParamLessThan(0, 0.0),
+        });
+        sm2.set_param_float(0, -1.0);
+        sm2.update(0.01);
+        assert_eq!(sm2.current_state(), 1);
+
+        sm2.set_param_bool(0, true);
+        assert!(sm2.get_param_bool(0));
+        sm2.set_param_bool(0, false);
+        assert!(!sm2.get_param_bool(0));
+
+        sm2.set_param_float(9, 1.0);
+        sm2.set_param_bool(9, true);
+        assert_eq!(sm2.get_param_float(9), 0.0);
+        assert!(!sm2.get_param_bool(9));
+    }
+
+    #[test]
+    fn test_absm_blend1d_and_bool_transition() {
+        let mut sm: AnimationStateMachine<2, 1, 1> = AnimationStateMachine::new(0);
+        sm.set_state(
+            0,
+            StateNode::Blend1D {
+                clip_a: &CLIP_A,
+                clip_b: &CLIP_B,
+                param_index: 0,
+                min_val: 0.0,
+                max_val: 10.0,
+            },
+        );
+        sm.set_state(1, StateNode::SingleClip(&CLIP_B));
+        sm.add_transition(Transition {
+            from: 0,
+            to: 1,
+            fade_duration: 0.25,
+            rule: TransitionRule::ParamBool(0, true),
+        });
+
+        sm.set_param_float(0, 5.0);
+        let mut poses = [BonePose::identity(); 4];
+        sm.sample_poses(&mut poses);
+        assert_eq!(poses.len(), 4);
+
+        sm.set_param_bool(0, true);
+        sm.update(0.1);
+        assert!(sm.is_transitioning());
+        sm.sample_poses(&mut poses);
+
+        // Once the crossfade completes the current state changes.
+        sm.update(0.2);
+        assert!(!sm.is_transitioning());
+        assert_eq!(sm.current_state(), 1);
+        sm.sample_poses(&mut poses);
+    }
+
+    #[test]
+    fn test_absm_blend_space_edges_and_unset_state() {
+        static POINTS: [(f32, &AnimClip<'static>); 3] =
+            [(0.0, &CLIP_A), (5.0, &CLIP_B), (10.0, &CLIP_A)];
+        let mut sm: AnimationStateMachine<2, 0, 1> = AnimationStateMachine::new(0);
+        sm.set_state(
+            0,
+            StateNode::BlendSpace1D {
+                points: &POINTS,
+                param_index: 0,
+            },
+        );
+
+        sm.set_param_float(0, -1.0);
+        let mut poses = [BonePose::identity(); 2];
+        sm.sample_poses(&mut poses);
+
+        sm.set_param_float(0, 7.0);
+        sm.sample_poses(&mut poses);
+
+        sm.set_param_float(0, 100.0);
+        sm.sample_poses(&mut poses);
+
+        // Missing state falls back to unchanged identity poses.
+        let mut sm2: AnimationStateMachine<2, 0, 0> = AnimationStateMachine::new(1);
+        sm2.set_state(0, StateNode::SingleClip(&CLIP_A));
+        let mut empty_poses = [BonePose::identity(); 1];
+        sm2.sample_poses(&mut empty_poses);
+    }
 }

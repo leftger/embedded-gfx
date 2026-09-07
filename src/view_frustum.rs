@@ -201,5 +201,27 @@ mod tests {
         let outside =
             Aabb::from_min_max(Vector3::new(12.0, 0.0, 0.0), Vector3::new(15.0, 2.0, 2.0));
         assert!(!frustum.intersects_aabb(&outside));
+
+        let straddling =
+            Aabb::from_min_max(Vector3::new(9.0, -1.0, -1.0), Vector3::new(12.0, 1.0, 1.0));
+        assert!(frustum.intersects_aabb(&straddling));
+    }
+
+    #[test]
+    fn test_half_space_degenerate_contains_and_from_vp() {
+        let degenerate = HalfSpace::new(0.0, 0.0, 0.0, 0.0);
+        assert_eq!(degenerate.normal, Vector3::new(0.0, 1.0, 0.0));
+        assert_eq!(degenerate.d, 0.0);
+
+        let plane = HalfSpace::new(0.0, 1.0, 0.0, 5.0);
+        assert!(plane.contains_point(&Vector3::new(0.0, 0.0, 0.0)));
+        assert!(!plane.contains_point(&Vector3::new(0.0, -10.0, 0.0)));
+
+        let vp = nalgebra::Matrix4::new_perspective(1.0, 1.2, 0.1, 100.0);
+        let frustum = ViewFrustum::from_view_projection(&vp);
+        assert_eq!(frustum.planes.len(), 6);
+        let center = Vector3::new(0.0, 0.0, -5.0);
+        assert!(frustum.intersects_sphere(&center, 0.5));
+        assert!(!frustum.intersects_sphere(&Vector3::new(1000.0, 0.0, 0.0), 1.0));
     }
 }

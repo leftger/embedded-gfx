@@ -282,4 +282,84 @@ mod tests {
         let s = track.sample(1.5);
         assert!((s.position[0] - 0.5).abs() < 1e-5);
     }
+
+    fn mesh() -> K3dMesh<'static> {
+        static VERTICES: [[f32; 3]; 1] = [[0.0, 0.0, 0.0]];
+        let geometry = crate::mesh::Geometry {
+            vertices: &VERTICES,
+            faces: &[],
+            colors: &[],
+            lines: &[],
+            normals: &[],
+            vertex_normals: &[],
+            uvs: &[],
+            texture_id: None,
+        };
+        K3dMesh::new(geometry)
+    }
+
+    #[test]
+    fn test_track_single_keyframe_edges_and_player_controls() {
+        const ONE: &[TransformKeyframe] = &[TransformKeyframe::new(
+            0.0,
+            [1.0, 2.0, 3.0],
+            0.1,
+            0.2,
+            0.3,
+            0.5,
+        )];
+        let track = TransformTrack::new(ONE, false);
+        assert_eq!(track.keyframe_count(), 1);
+        assert_eq!(track.duration(), 0.0);
+        assert!(!track.is_looping());
+        let s = track.sample(100.0);
+        assert_eq!(s.position, [1.0, 2.0, 3.0]);
+
+        let two = TransformTrack::new(TRACK, false);
+        assert_eq!(two.keyframe_count(), 2);
+        assert!((two.duration() - 1.0).abs() < 1e-6);
+        let end = two.sample(2.0);
+        assert!((end.position[1] - 0.0).abs() < 1e-5);
+
+        let mut player = AnimationPlayer::new(two).with_speed(2.0);
+        assert!(player.is_playing());
+        player.advance(0.5);
+        assert!((player.time() - 1.0).abs() < 1e-6);
+        player.set_playing(false);
+        player.advance(0.5);
+        assert!((player.time() - 1.0).abs() < 1e-6);
+        player.set_time(0.25);
+        assert!((player.track().duration() - 1.0).abs() < 1e-6);
+        player.reset();
+        assert_eq!(player.time(), 0.0);
+        assert!(!player.is_done());
+    }
+
+    #[test]
+    fn test_sampled_transform_apply_to_mesh_and_camera() {
+        let sample = SampledTransform {
+            position: [2.0, 3.0, 4.0],
+            roll: 0.0,
+            pitch: 0.0,
+            yaw: 0.0,
+            scale: 0.5,
+        };
+        let mut m = mesh();
+        sample.apply_to(&mut m);
+        let pos = m.get_position();
+        assert!((pos.x - 2.0).abs() < 1e-5);
+        assert!((pos.y - 3.0).abs() < 1e-5);
+        assert!((pos.z - 4.0).abs() < 1e-5);
+
+        let mut camera = crate::camera::Camera::new(1.0);
+        sample.apply_position_to_camera(&mut camera);
+        let cp = camera.position;
+        assert!((cp.x - 2.0).abs() < 1e-5);
+
+        let track = TransformTrack::new(TRACK, false);
+        let player = AnimationPlayer::new(track);
+        let mut m2 = mesh();
+        player.apply_to(&mut m2);
+        assert!((m2.get_position().y - (-2.0)).abs() < 1e-5);
+    }
 }

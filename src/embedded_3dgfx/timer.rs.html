@@ -382,5 +382,42 @@
 <a href=#382 id=382 data-nosnippet>382</a>        </span><span class="kw">let </span>count2 = fixed.update(step * <span class="number">0.5</span>).count();
 <a href=#383 id=383 data-nosnippet>383</a>        <span class="macro">assert_eq!</span>(count2, <span class="number">1</span>);
 <a href=#384 id=384 data-nosnippet>384</a>    }
-<a href=#385 id=385 data-nosnippet>385</a>}
+<a href=#385 id=385 data-nosnippet>385</a>
+<a href=#386 id=386 data-nosnippet>386</a>    <span class="attr">#[test]
+<a href=#387 id=387 data-nosnippet>387</a>    </span><span class="kw">fn </span>test_stopwatch_duration_controls_and_pause() {
+<a href=#388 id=388 data-nosnippet>388</a>        <span class="kw">let </span><span class="kw-2">mut </span>sw = Stopwatch::new();
+<a href=#389 id=389 data-nosnippet>389</a>        sw.tick_duration(Duration::from_millis(<span class="number">250</span>));
+<a href=#390 id=390 data-nosnippet>390</a>        <span class="macro">assert!</span>((sw.elapsed_secs() - <span class="number">0.25</span>).abs() &lt; <span class="number">1e-4</span>);
+<a href=#391 id=391 data-nosnippet>391</a>        <span class="macro">assert_eq!</span>(sw.elapsed(), Duration::from_secs_f32(<span class="number">0.25</span>));
+<a href=#392 id=392 data-nosnippet>392</a>        sw.set_elapsed(<span class="number">3.0</span>);
+<a href=#393 id=393 data-nosnippet>393</a>        <span class="macro">assert_eq!</span>(sw.elapsed_secs(), <span class="number">3.0</span>);
+<a href=#394 id=394 data-nosnippet>394</a>        sw.pause();
+<a href=#395 id=395 data-nosnippet>395</a>        <span class="macro">assert!</span>(sw.is_paused());
+<a href=#396 id=396 data-nosnippet>396</a>        sw.tick(<span class="number">1.0</span>);
+<a href=#397 id=397 data-nosnippet>397</a>        <span class="macro">assert_eq!</span>(sw.elapsed_secs(), <span class="number">3.0</span>);
+<a href=#398 id=398 data-nosnippet>398</a>        sw.unpause();
+<a href=#399 id=399 data-nosnippet>399</a>        <span class="macro">assert!</span>(!sw.is_paused());
+<a href=#400 id=400 data-nosnippet>400</a>        sw.reset();
+<a href=#401 id=401 data-nosnippet>401</a>        <span class="macro">assert_eq!</span>(sw.elapsed_secs(), <span class="number">0.0</span>);
+<a href=#402 id=402 data-nosnippet>402</a>    }
+<a href=#403 id=403 data-nosnippet>403</a>
+<a href=#404 id=404 data-nosnippet>404</a>    <span class="attr">#[test]
+<a href=#405 id=405 data-nosnippet>405</a>    </span><span class="kw">fn </span>test_timer_pause_duration_and_reset_paths() {
+<a href=#406 id=406 data-nosnippet>406</a>        <span class="kw">let </span><span class="kw-2">mut </span>timer = Timer::new(Duration::from_millis(<span class="number">500</span>), TimerMode::Repeating);
+<a href=#407 id=407 data-nosnippet>407</a>        <span class="macro">assert!</span>((timer.duration_secs() - <span class="number">0.5</span>).abs() &lt; <span class="number">1e-4</span>);
+<a href=#408 id=408 data-nosnippet>408</a>        timer.tick(<span class="number">0.1</span>);
+<a href=#409 id=409 data-nosnippet>409</a>        <span class="macro">assert!</span>((timer.elapsed_secs() - <span class="number">0.1</span>).abs() &lt; <span class="number">1e-4</span>);
+<a href=#410 id=410 data-nosnippet>410</a>        timer.pause();
+<a href=#411 id=411 data-nosnippet>411</a>        <span class="macro">assert!</span>(timer.is_paused());
+<a href=#412 id=412 data-nosnippet>412</a>        timer.tick(<span class="number">0.2</span>);
+<a href=#413 id=413 data-nosnippet>413</a>        <span class="macro">assert!</span>((timer.elapsed_secs() - <span class="number">0.1</span>).abs() &lt; <span class="number">1e-4</span>);
+<a href=#414 id=414 data-nosnippet>414</a>        timer.unpause();
+<a href=#415 id=415 data-nosnippet>415</a>        timer.tick_duration(Duration::from_millis(<span class="number">500</span>));
+<a href=#416 id=416 data-nosnippet>416</a>        <span class="macro">assert!</span>(timer.just_finished());
+<a href=#417 id=417 data-nosnippet>417</a>        timer.reset();
+<a href=#418 id=418 data-nosnippet>418</a>        <span class="macro">assert!</span>(!timer.is_finished());
+<a href=#419 id=419 data-nosnippet>419</a>        <span class="macro">assert_eq!</span>(timer.elapsed_secs(), <span class="number">0.0</span>);
+<a href=#420 id=420 data-nosnippet>420</a>        <span class="kw">let _ </span>= Timer::default();
+<a href=#421 id=421 data-nosnippet>421</a>    }
+<a href=#422 id=422 data-nosnippet>422</a>}
 </code></pre></div></section></main></body></html>

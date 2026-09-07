@@ -228,5 +228,20 @@
 <a href=#228 id=228 data-nosnippet>228</a>        DONE.signal();
 <a href=#229 id=229 data-nosnippet>229</a>        <span class="macro">assert!</span>(<span class="macro">matches!</span>(Pin::new(<span class="kw-2">&amp;mut </span>fut).poll(<span class="kw-2">&amp;mut </span>cx), Poll::Ready(<span class="kw">_</span>)));
 <a href=#230 id=230 data-nosnippet>230</a>    }
-<a href=#231 id=231 data-nosnippet>231</a>}
+<a href=#231 id=231 data-nosnippet>231</a>
+<a href=#232 id=232 data-nosnippet>232</a>    <span class="attr">#[test]
+<a href=#233 id=233 data-nosnippet>233</a>    </span><span class="kw">fn </span>completion_slot_runtime_default_reset_and_completion_accessor() {
+<a href=#234 id=234 data-nosnippet>234</a>        <span class="kw">static </span>DONE: CompletionSlot = CompletionSlot::new();
+<a href=#235 id=235 data-nosnippet>235</a>        <span class="kw">let </span>local = CompletionSlot::default();
+<a href=#236 id=236 data-nosnippet>236</a>        <span class="macro">assert!</span>(!local.is_signaled());
+<a href=#237 id=237 data-nosnippet>237</a>        local.signal();
+<a href=#238 id=238 data-nosnippet>238</a>        <span class="macro">assert!</span>(local.is_signaled());
+<a href=#239 id=239 data-nosnippet>239</a>        local.reset();
+<a href=#240 id=240 data-nosnippet>240</a>        <span class="macro">assert!</span>(!local.is_signaled());
+<a href=#241 id=241 data-nosnippet>241</a>
+<a href=#242 id=242 data-nosnippet>242</a>        <span class="kw">let </span>fb = make_fb();
+<a href=#243 id=243 data-nosnippet>243</a>        <span class="kw">let </span>xfer = WaitTransfer::new(fb, <span class="kw-2">&amp;</span>DONE);
+<a href=#244 id=244 data-nosnippet>244</a>        <span class="macro">assert!</span>(core::ptr::eq(xfer.completion(), <span class="kw-2">&amp;</span>DONE));
+<a href=#245 id=245 data-nosnippet>245</a>    }
+<a href=#246 id=246 data-nosnippet>246</a>}
 </code></pre></div></section></main></body></html>

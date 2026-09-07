@@ -463,5 +463,19 @@
 <a href=#463 id=463 data-nosnippet>463</a>        <span class="macro">assert_eq!</span>(backend.region_calls.get(), <span class="number">0</span>);
 <a href=#464 id=464 data-nosnippet>464</a>        <span class="kw">let _ </span>= xfer.wait();
 <a href=#465 id=465 data-nosnippet>465</a>    }
-<a href=#466 id=466 data-nosnippet>466</a>}
+<a href=#466 id=466 data-nosnippet>466</a>
+<a href=#467 id=467 data-nosnippet>467</a>    <span class="attr">#[test]
+<a href=#468 id=468 data-nosnippet>468</a>    </span><span class="kw">fn </span>test_cpu_accelerator_and_region_helpers() {
+<a href=#469 id=469 data-nosnippet>469</a>        <span class="kw">let </span><span class="kw-2">mut </span>accel = CpuAccelerator::default();
+<a href=#470 id=470 data-nosnippet>470</a>        <span class="macro">assert!</span>(!accel.fill_rect(<span class="number">0</span>, <span class="number">0</span>, <span class="number">1</span>, <span class="number">1</span>, Rgb565::BLACK));
+<a href=#471 id=471 data-nosnippet>471</a>        <span class="macro">assert!</span>(!accel.blit(<span class="kw-2">&amp;</span>[], <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>));
+<a href=#472 id=472 data-nosnippet>472</a>        <span class="kw">let </span>region = DisplayRegion::new(<span class="number">1</span>, <span class="number">2</span>, <span class="number">3</span>, <span class="number">4</span>);
+<a href=#473 id=473 data-nosnippet>473</a>        <span class="macro">assert_eq!</span>(region.x, <span class="number">1</span>);
+<a href=#474 id=474 data-nosnippet>474</a>        <span class="macro">assert_eq!</span>(region.y, <span class="number">2</span>);
+<a href=#475 id=475 data-nosnippet>475</a>        <span class="macro">assert_eq!</span>(region.width, <span class="number">3</span>);
+<a href=#476 id=476 data-nosnippet>476</a>        <span class="macro">assert_eq!</span>(region.height, <span class="number">4</span>);
+<a href=#477 id=477 data-nosnippet>477</a>        <span class="macro">assert_eq!</span>(DisplayRegion::new(<span class="number">1</span>, <span class="number">2</span>, <span class="number">3</span>, <span class="number">4</span>), region);
+<a href=#478 id=478 data-nosnippet>478</a>        <span class="macro">assert_eq!</span>(DisplayError::Busy, DisplayError::Busy);
+<a href=#479 id=479 data-nosnippet>479</a>    }
+<a href=#480 id=480 data-nosnippet>480</a>}
 </code></pre></div></section></main></body></html>

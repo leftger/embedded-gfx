@@ -147,5 +147,26 @@
 <a href=#147 id=147 data-nosnippet>147</a>        <span class="macro">assert!</span>(center_pixel.r() &gt; <span class="number">15</span>, <span class="string">"Red channel should be strong"</span>);
 <a href=#148 id=148 data-nosnippet>148</a>        <span class="macro">assert!</span>(center_pixel.g() &gt; <span class="number">30</span>, <span class="string">"Green channel should be strong"</span>);
 <a href=#149 id=149 data-nosnippet>149</a>    }
-<a href=#150 id=150 data-nosnippet>150</a>}
+<a href=#150 id=150 data-nosnippet>150</a>
+<a href=#151 id=151 data-nosnippet>151</a>    <span class="attr">#[test]
+<a href=#152 id=152 data-nosnippet>152</a>    </span><span class="kw">fn </span>test_matcap_all_presets_and_64() {
+<a href=#153 id=153 data-nosnippet>153</a>        <span class="kw">for </span>preset <span class="kw">in </span>[
+<a href=#154 id=154 data-nosnippet>154</a>            MatCapPreset::Chrome,
+<a href=#155 id=155 data-nosnippet>155</a>            MatCapPreset::Gold,
+<a href=#156 id=156 data-nosnippet>156</a>            MatCapPreset::Pearl,
+<a href=#157 id=157 data-nosnippet>157</a>            MatCapPreset::Clay,
+<a href=#158 id=158 data-nosnippet>158</a>            MatCapPreset::RetroEmerald,
+<a href=#159 id=159 data-nosnippet>159</a>        ] {
+<a href=#160 id=160 data-nosnippet>160</a>            <span class="kw">let </span>tex32 = preset.generate_32x32();
+<a href=#161 id=161 data-nosnippet>161</a>            <span class="macro">assert_eq!</span>(tex32.len(), <span class="number">1024</span>);
+<a href=#162 id=162 data-nosnippet>162</a>            <span class="kw">let </span>tex64 = preset.generate_64x64();
+<a href=#163 id=163 data-nosnippet>163</a>            <span class="macro">assert_eq!</span>(tex64.len(), <span class="number">4096</span>);
+<a href=#164 id=164 data-nosnippet>164</a>            <span class="macro">assert_ne!</span>(tex64[<span class="number">32 </span>* <span class="number">64 </span>+ <span class="number">32</span>], Rgb565::BLACK);
+<a href=#165 id=165 data-nosnippet>165</a>        }
+<a href=#166 id=166 data-nosnippet>166</a>
+<a href=#167 id=167 data-nosnippet>167</a>        <span class="comment">// Pixel outside the unit disk stays black.
+<a href=#168 id=168 data-nosnippet>168</a>        </span><span class="kw">let </span>tex = MatCapPreset::Chrome.generate_32x32();
+<a href=#169 id=169 data-nosnippet>169</a>        <span class="macro">assert_eq!</span>(tex[<span class="number">0</span>], Rgb565::BLACK);
+<a href=#170 id=170 data-nosnippet>170</a>    }
+<a href=#171 id=171 data-nosnippet>171</a>}
 </code></pre></div></section></main></body></html>

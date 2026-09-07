@@ -196,5 +196,22 @@
 <a href=#196 id=196 data-nosnippet>196</a>        </span><span class="macro">assert_eq!</span>(count_high, <span class="number">32</span>);
 <a href=#197 id=197 data-nosnippet>197</a>        <span class="macro">assert_eq!</span>(count_low, <span class="number">32</span>);
 <a href=#198 id=198 data-nosnippet>198</a>    }
-<a href=#199 id=199 data-nosnippet>199</a>}
+<a href=#199 id=199 data-nosnippet>199</a>
+<a href=#200 id=200 data-nosnippet>200</a>    <span class="attr">#[test]
+<a href=#201 id=201 data-nosnippet>201</a>    </span><span class="kw">fn </span>test_rgb332_endpoints_and_rgb565_dither() {
+<a href=#202 id=202 data-nosnippet>202</a>        <span class="kw">for </span>y <span class="kw">in </span><span class="number">0</span>..<span class="number">8 </span>{
+<a href=#203 id=203 data-nosnippet>203</a>            <span class="kw">for </span>x <span class="kw">in </span><span class="number">0</span>..<span class="number">8 </span>{
+<a href=#204 id=204 data-nosnippet>204</a>                <span class="macro">assert_eq!</span>(dither_rgb888_to_rgb332(x, y, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>), <span class="number">0</span>);
+<a href=#205 id=205 data-nosnippet>205</a>                <span class="macro">assert_eq!</span>(dither_rgb888_to_rgb332(x, y, <span class="number">255</span>, <span class="number">255</span>, <span class="number">255</span>), <span class="number">0xFF</span>);
+<a href=#206 id=206 data-nosnippet>206</a>                <span class="kw">let _ </span>= dither_rgb565(x, y, Rgb565::new(<span class="number">20</span>, <span class="number">40</span>, <span class="number">20</span>));
+<a href=#207 id=207 data-nosnippet>207</a>            }
+<a href=#208 id=208 data-nosnippet>208</a>        }
+<a href=#209 id=209 data-nosnippet>209</a>
+<a href=#210 id=210 data-nosnippet>210</a>        <span class="kw">let </span>changes = (<span class="number">0</span>..<span class="number">4</span>)
+<a href=#211 id=211 data-nosnippet>211</a>            .flat_map(|y| (<span class="number">0</span>..<span class="number">4</span>).map(<span class="kw">move </span>|x| dither_rgb565(x, y, Rgb565::new(<span class="number">31</span>, <span class="number">63</span>, <span class="number">31</span>))))
+<a href=#212 id=212 data-nosnippet>212</a>            .filter(|c| <span class="kw-2">*</span>c != Rgb565::new(<span class="number">31</span>, <span class="number">63</span>, <span class="number">31</span>))
+<a href=#213 id=213 data-nosnippet>213</a>            .count();
+<a href=#214 id=214 data-nosnippet>214</a>        <span class="macro">assert!</span>(changes &gt; <span class="number">0</span>);
+<a href=#215 id=215 data-nosnippet>215</a>    }
+<a href=#216 id=216 data-nosnippet>216</a>}
 </code></pre></div></section></main></body></html>

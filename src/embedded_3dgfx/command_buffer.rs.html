@@ -104,7 +104,7 @@
 <a href=#104 id=104 data-nosnippet>104</a><span class="attr">#[cfg(test)]
 <a href=#105 id=105 data-nosnippet>105</a></span><span class="kw">mod </span>tests {
 <a href=#106 id=106 data-nosnippet>106</a>    <span class="kw">use super</span>::<span class="kw-2">*</span>;
-<a href=#107 id=107 data-nosnippet>107</a>    <span class="kw">use </span>embedded_graphics_core::pixelcolor::Rgb565;
+<a href=#107 id=107 data-nosnippet>107</a>    <span class="kw">use </span>embedded_graphics_core::pixelcolor::{Rgb565, RgbColor};
 <a href=#108 id=108 data-nosnippet>108</a>    <span class="kw">use </span>nalgebra::Point2;
 <a href=#109 id=109 data-nosnippet>109</a>
 <a href=#110 id=110 data-nosnippet>110</a>    <span class="attr">#[test]
@@ -144,5 +144,26 @@
 <a href=#144 id=144 data-nosnippet>144</a>            </span>})
 <a href=#145 id=145 data-nosnippet>145</a>        );
 <a href=#146 id=146 data-nosnippet>146</a>    }
-<a href=#147 id=147 data-nosnippet>147</a>}
+<a href=#147 id=147 data-nosnippet>147</a>
+<a href=#148 id=148 data-nosnippet>148</a>    <span class="attr">#[test]
+<a href=#149 id=149 data-nosnippet>149</a>    </span><span class="kw">fn </span>bounds_helpers_clear_iter_and_default() {
+<a href=#150 id=150 data-nosnippet>150</a>        <span class="kw">let </span>prim = DrawPrimitive::ColoredPoint(Point2::new(<span class="number">1</span>, <span class="number">2</span>), Rgb565::new(<span class="number">31</span>, <span class="number">0</span>, <span class="number">0</span>));
+<a href=#151 id=151 data-nosnippet>151</a>        <span class="kw">let </span>header = PrimitiveHeader::from_primitive(<span class="kw-2">&amp;</span>prim);
+<a href=#152 id=152 data-nosnippet>152</a>        <span class="kw">let </span>bounds = prim.bounds();
+<a href=#153 id=153 data-nosnippet>153</a>        <span class="macro">assert_eq!</span>(header.bounds(), bounds);
+<a href=#154 id=154 data-nosnippet>154</a>
+<a href=#155 id=155 data-nosnippet>155</a>        <span class="kw">let </span>cmd = RenderCommand::Draw(prim);
+<a href=#156 id=156 data-nosnippet>156</a>        <span class="macro">assert_eq!</span>(cmd.bounds(), <span class="prelude-val">Some</span>(bounds));
+<a href=#157 id=157 data-nosnippet>157</a>        <span class="macro">assert_eq!</span>(RenderCommand::ClearDepth(<span class="number">0</span>).bounds(), <span class="prelude-val">None</span>);
+<a href=#158 id=158 data-nosnippet>158</a>
+<a href=#159 id=159 data-nosnippet>159</a>        <span class="kw">let </span><span class="kw-2">mut </span>buf: CommandBuffer&lt;<span class="number">2</span>&gt; = CommandBuffer::default();
+<a href=#160 id=160 data-nosnippet>160</a>        buf.push(RenderCommand::ClearColor(Rgb565::BLACK)).unwrap();
+<a href=#161 id=161 data-nosnippet>161</a>        buf.push(RenderCommand::ClearDepth(<span class="number">1</span>)).unwrap();
+<a href=#162 id=162 data-nosnippet>162</a>        <span class="macro">assert_eq!</span>(buf.len(), <span class="number">2</span>);
+<a href=#163 id=163 data-nosnippet>163</a>        <span class="macro">assert!</span>(buf.get(<span class="number">99</span>).is_none());
+<a href=#164 id=164 data-nosnippet>164</a>        <span class="macro">assert_eq!</span>(buf.iter().count(), <span class="number">2</span>);
+<a href=#165 id=165 data-nosnippet>165</a>        buf.clear();
+<a href=#166 id=166 data-nosnippet>166</a>        <span class="macro">assert!</span>(buf.is_empty());
+<a href=#167 id=167 data-nosnippet>167</a>    }
+<a href=#168 id=168 data-nosnippet>168</a>}
 </code></pre></div></section></main></body></html>

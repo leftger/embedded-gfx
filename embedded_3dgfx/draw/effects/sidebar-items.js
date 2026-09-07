@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"enum":["CheckerboardField","DepthInterpolationMode","InterlaceField"],"struct":["DitherConfig","FogConfig","ScreenDoorConfig"]};
+window.SIDEBAR_ITEMS = {"enum":["CheckerboardField","DepthInterpolationMode","InterlaceField"],"struct":["DepthBias","DitherConfig","FogConfig","ScreenDoorConfig"]};

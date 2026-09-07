@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"enum":["LightLevels","PaletteMode","StippleMode","TextureMapping"],"struct":["AnimatedPalette","RetroStyle","ScreenTint","SkyConfig","TextureLodConfig"]};
+window.SIDEBAR_ITEMS = {"enum":["CycleDirection","LightLevels","PaletteMode","StippleMode","TextureMapping"],"struct":["AnimatedPalette","PaletteCycler","PaletteSlice","RetroStyle","ScreenTint","SkyConfig","TextureLodConfig"]};

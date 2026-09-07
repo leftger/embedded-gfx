@@ -59,6 +59,22 @@ pub enum StateNode<'a> {
         /// Maximum parameter value corresponding to 100% `clip_b`.
         max_val: f32,
     },
+    /// Additive layer blending (e.g. Aim / Recoil / Hit reaction blended onto a base locomotion pose).
+    AdditiveClip {
+        /// Base locomotion clip.
+        base_clip: &'a AnimClip<'a>,
+        /// Additive overlay clip.
+        additive_clip: &'a AnimClip<'a>,
+        /// Float parameter index controlling additive weight in 0.0..=1.0.
+        param_index: usize,
+    },
+    /// Multi-point 1D piecewise linear blend space across sorted (parameter_value, clip) pairs.
+    BlendSpace1D {
+        /// Array of parameter keys and corresponding animation clips.
+        points: &'a [(f32, &'a AnimClip<'a>)],
+        /// Float parameter index controlling sampling along the blend space.
+        param_index: usize,
+    },
 }
 
 /// A directional transition between two states.
@@ -287,6 +303,71 @@ impl<'a, const S: usize, const T: usize, const P: usize> AnimationStateMachine<'
                     *out = BonePose::blend(p_a, p_b, alpha);
                 }
             }
+            StateNode::AdditiveClip {
+                base_clip,
+                additive_clip,
+                param_index,
+            } => {
+                let weight = self.get_param_float(*param_index).clamp(0.0, 1.0);
+                for (bone_i, out) in out_poses.iter_mut().enumerate() {
+                    let base_p = base_clip
+                        .sample_bone(self.time, bone_i)
+                        .unwrap_or_else(BonePose::identity);
+                    if weight <= 0.0 {
+                        *out = base_p;
+                    } else {
+                        let add_p = additive_clip
+                            .sample_bone(self.time, bone_i)
+                            .unwrap_or_else(BonePose::identity);
+                        *out = BonePose::blend(base_p, add_p, weight);
+                    }
+                }
+            }
+            StateNode::BlendSpace1D {
+                points,
+                param_index,
+            } => {
+                if points.is_empty() {
+                    return;
+                }
+                let p = self.get_param_float(*param_index);
+                if points.len() == 1 || p <= points[0].0 {
+                    let clip = points[0].1;
+                    for (bone_i, out) in out_poses.iter_mut().enumerate() {
+                        if let Some(pose) = clip.sample_bone(self.time, bone_i) {
+                            *out = pose;
+                        }
+                    }
+                } else if p >= points[points.len() - 1].0 {
+                    let clip = points[points.len() - 1].1;
+                    for (bone_i, out) in out_poses.iter_mut().enumerate() {
+                        if let Some(pose) = clip.sample_bone(self.time, bone_i) {
+                            *out = pose;
+                        }
+                    }
+                } else {
+                    let mut idx = 0;
+                    while idx + 1 < points.len() && points[idx + 1].0 < p {
+                        idx += 1;
+                    }
+                    let (val_a, clip_a) = points[idx];
+                    let (val_b, clip_b) = points[idx + 1];
+                    let alpha = if (val_b - val_a).abs() > 1e-6 {
+                        ((p - val_a) / (val_b - val_a)).clamp(0.0, 1.0)
+                    } else {
+                        0.0
+                    };
+                    for (bone_i, out) in out_poses.iter_mut().enumerate() {
+                        let p_a = clip_a
+                            .sample_bone(self.time, bone_i)
+                            .unwrap_or_else(BonePose::identity);
+                        let p_b = clip_b
+                            .sample_bone(self.time, bone_i)
+                            .unwrap_or_else(BonePose::identity);
+                        *out = BonePose::blend(p_a, p_b, alpha);
+                    }
+                }
+            }
         }
     }
 }
@@ -329,5 +410,31 @@ mod tests {
         sm.update(0.45);
         assert!(!sm.is_transitioning());
         assert_eq!(sm.current_state(), 1);
+    }
+
+    #[test]
+    fn test_absm_additive_and_blend_space() {
+        let mut sm: AnimationStateMachine<2, 1, 2> = AnimationStateMachine::new(0);
+        sm.set_state(
+            0,
+            StateNode::AdditiveClip {
+                base_clip: &CLIP_A,
+                additive_clip: &CLIP_B,
+                param_index: 0,
+            },
+        );
+
+        static POINTS: [(f32, &AnimClip<'static>); 2] = [(0.0, &CLIP_A), (10.0, &CLIP_B)];
+        sm.set_state(
+            1,
+            StateNode::BlendSpace1D {
+                points: &POINTS,
+                param_index: 1,
+            },
+        );
+
+        let mut poses = [BonePose::identity(); 2];
+        sm.sample_poses(&mut poses);
+        assert_eq!(poses.len(), 2);
     }
 }

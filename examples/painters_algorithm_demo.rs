@@ -104,6 +104,7 @@ fn as_painter_primitive(prim: &DrawPrimitive) -> Option<DrawPrimitive> {
         | DrawPrimitive::TexturedTriangleWithDepth { .. }
         | DrawPrimitive::TexturedGouraudTriangleWithDepth { .. }
         | DrawPrimitive::TranslucentTriangleWithDepth { .. }
+        | DrawPrimitive::ScreenDoorTriangleWithDepth { .. }
         | DrawPrimitive::LightmappedTriangle { .. } => None,
     }
 }

@@ -178,3 +178,113 @@ impl InterlaceField {
         }
     }
 }
+
+/// Configuration for screen-door (dithered stipple) transparency.
+///
+/// Discards fragments deterministically against a 4x4 Bayer threshold matrix,
+/// providing order-independent, zero-allocation transparency that writes directly
+/// to the depth buffer without requiring sorting or frame readbacks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ScreenDoorConfig {
+    /// Opacity level (0 = fully transparent/discarded, 255 = fully opaque).
+    pub alpha: u8,
+}
+
+impl ScreenDoorConfig {
+    const BAYER_THRESHOLD: [[u8; 4]; 4] = [
+        [0, 128, 32, 160],
+        [192, 64, 224, 96],
+        [48, 176, 16, 144],
+        [240, 112, 208, 80],
+    ];
+
+    #[inline(always)]
+    pub const fn new(alpha: u8) -> Self {
+        Self { alpha }
+    }
+
+    /// Evaluates whether a fragment at `(x, y)` passes the screen-door threshold test.
+    #[inline(always)]
+    pub fn test(&self, x: i32, y: i32) -> bool {
+        if self.alpha == 255 {
+            return true;
+        }
+        if self.alpha == 0 {
+            return false;
+        }
+        let mx = (x & 3) as usize;
+        let my = (y & 3) as usize;
+        self.alpha > Self::BAYER_THRESHOLD[my][mx]
+    }
+}
+
+/// Checkerboard pixel parity mode for 50% fill-rate rendering.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CheckerboardField {
+    /// Draw all pixels (standard).
+    #[default]
+    Disabled,
+    /// Draw pixels where `(x ^ y) & 1 == 0`.
+    Even,
+    /// Draw pixels where `(x ^ y) & 1 == 1`.
+    Odd,
+}
+
+impl CheckerboardField {
+    /// Returns true if pixel `(x, y)` should be rendered in this field.
+    #[inline(always)]
+    pub fn includes_pixel(&self, x: i32, y: i32) -> bool {
+        match self {
+            Self::Disabled => true,
+            Self::Even => ((x ^ y) & 1) == 0,
+            Self::Odd => ((x ^ y) & 1) != 0,
+        }
+    }
+
+    /// Toggles between Even and Odd field for alternating frames.
+    #[inline]
+    pub fn toggle(&self) -> Self {
+        match self {
+            Self::Disabled => Self::Disabled,
+            Self::Even => Self::Odd,
+            Self::Odd => Self::Even,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_screen_door_alpha() {
+        let full = ScreenDoorConfig::new(255);
+        assert!(full.test(0, 0));
+        assert!(full.test(1, 2));
+
+        let none = ScreenDoorConfig::new(0);
+        assert!(!none.test(0, 0));
+        assert!(!none.test(1, 2));
+
+        let half = ScreenDoorConfig::new(128);
+        // Half of pixels should pass, half should fail across 4x4 matrix
+        let mut passed = 0;
+        for y in 0..4 {
+            for x in 0..4 {
+                if half.test(x, y) {
+                    passed += 1;
+                }
+            }
+        }
+        assert_eq!(passed, 8);
+    }
+
+    #[test]
+    fn test_checkerboard_field() {
+        let even = CheckerboardField::Even;
+        assert!(even.includes_pixel(0, 0));
+        assert!(!even.includes_pixel(1, 0));
+        assert!(even.includes_pixel(1, 1));
+        assert_eq!(even.toggle(), CheckerboardField::Odd);
+    }
+}

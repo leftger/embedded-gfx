@@ -282,6 +282,54 @@ where
     Ok(())
 }
 
+/// Reconstructs missing checkerboard pixels in a row slice.
+///
+/// For pixels where `(x ^ y) & 1 != field_parity`, interpolates between the horizontal neighbors.
+pub fn reconstruct_checkerboard_row(
+    row: &mut [Rgb565],
+    y: usize,
+    field: crate::draw::effects::CheckerboardField,
+) {
+    if field == crate::draw::effects::CheckerboardField::Disabled || row.len() < 2 {
+        return;
+    }
+    let len = row.len();
+    for x in 0..len {
+        if !field.includes_pixel(x as i32, y as i32) {
+            let left = if x > 0 {
+                row[x - 1]
+            } else {
+                row[(x + 1).min(len - 1)]
+            };
+            let right = if x + 1 < len {
+                row[x + 1]
+            } else {
+                row[x.saturating_sub(1)]
+            };
+            row[x] = crate::shader::blend::fast_blend_rgb565(left, right, 128);
+        }
+    }
+}
+
+/// Reconstructs missing checkerboard pixels for an entire framebuffer in-place.
+pub fn reconstruct_checkerboard_buffer(
+    fb: &mut [Rgb565],
+    width: usize,
+    height: usize,
+    field: crate::draw::effects::CheckerboardField,
+) {
+    if field == crate::draw::effects::CheckerboardField::Disabled || width == 0 {
+        return;
+    }
+    for y in 0..height {
+        let start = y * width;
+        let end = start + width;
+        if end <= fb.len() {
+            reconstruct_checkerboard_row(&mut fb[start..end], y, field);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     extern crate std;
@@ -373,5 +421,17 @@ mod tests {
         assert_eq!(dst[1], Rgb565::RED);
         assert_eq!(dst[2], Rgb565::GREEN);
         assert_eq!(dst[3], Rgb565::GREEN);
+    }
+
+    #[test]
+    fn test_reconstruct_checkerboard() {
+        use crate::draw::effects::CheckerboardField;
+        // Even field: (0,0) valid, (1,0) missing, (2,0) valid
+        let mut row = [Rgb565::RED, Rgb565::BLACK, Rgb565::RED];
+        reconstruct_checkerboard_row(&mut row, 0, CheckerboardField::Even);
+        assert_eq!(row[0], Rgb565::RED);
+        assert_eq!(row[2], Rgb565::RED);
+        // Missing pixel (1,0) should be interpolated to RED
+        assert_eq!(row[1], Rgb565::RED);
     }
 }

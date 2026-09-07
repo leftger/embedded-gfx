@@ -951,6 +951,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[allow(unused_imports)]
     use crate::camera::Camera;
     use crate::mesh::K3dMesh;
     use crate::primitive::DrawPrimitive;

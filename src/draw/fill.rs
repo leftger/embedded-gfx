@@ -290,7 +290,8 @@ where
             fill_triangle_screen_clipped(p1, p2, p3, color, fb);
         }
         DrawPrimitive::ColoredTriangleWithDepth { points, color, .. }
-        | DrawPrimitive::TranslucentTriangleWithDepth { points, color, .. } => {
+        | DrawPrimitive::TranslucentTriangleWithDepth { points, color, .. }
+        | DrawPrimitive::ScreenDoorTriangleWithDepth { points, color, .. } => {
             let mut vertices = points;
             if vertices[0].y > vertices[1].y {
                 vertices.swap(0, 1);
@@ -598,7 +599,7 @@ mod tests {
             ),
             &mut fb,
         );
-        assert_eq!(fb.pixels[1 * 20 + 3], Rgb565::WHITE);
+        assert_eq!(fb.pixels[20 + 3], Rgb565::WHITE);
 
         // Point
         draw(

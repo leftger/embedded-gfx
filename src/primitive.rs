@@ -17,6 +17,13 @@ pub enum DrawPrimitive {
         color: Rgb565,
         alpha: u8,
     },
+    /// Screen-door dithered stipple triangle (zero-cost, order-independent transparency).
+    ScreenDoorTriangleWithDepth {
+        points: [Point2<i32>; 3],
+        depths: [f32; 3],
+        color: Rgb565,
+        alpha: u8,
+    },
     #[cfg(feature = "lighting")]
     GouraudTriangle {
         points: [Point2<i32>; 3],
@@ -84,7 +91,8 @@ impl DrawPrimitive {
             }
             DrawPrimitive::ColoredTriangle(points, _)
             | DrawPrimitive::ColoredTriangleWithDepth { points, .. }
-            | DrawPrimitive::TranslucentTriangleWithDepth { points, .. } => {
+            | DrawPrimitive::TranslucentTriangleWithDepth { points, .. }
+            | DrawPrimitive::ScreenDoorTriangleWithDepth { points, .. } => {
                 let min_x = points.iter().map(|p| p.x).min().unwrap_or(0);
                 let min_y = points.iter().map(|p| p.y).min().unwrap_or(0);
                 let max_x = points.iter().map(|p| p.x).max().unwrap_or(0);

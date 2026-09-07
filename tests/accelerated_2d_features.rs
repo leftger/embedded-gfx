@@ -149,6 +149,7 @@ fn test_fast_blend_rgba8888_to_rgb565_half_alpha() {
 // 2. Q16.16 AFFINE TEXTURE MAPPING
 // ─────────────────────────────────────────────────────────────────────────────
 
+#[cfg(feature = "textured")]
 static CHECKER_DATA: [Rgb565; 64] = {
     // 8x8 checkerboard: black on even rows/cols, white on odd
     let mut data = [Rgb565::CSS_BLACK; 64];
@@ -164,7 +165,9 @@ static CHECKER_DATA: [Rgb565; 64] = {
     data
 };
 
+#[cfg(feature = "textured")]
 static SOLID_RED: [Rgb565; 64] = [Rgb565::CSS_RED; 64];
+#[cfg(feature = "textured")]
 static SOLID_GREEN: [Rgb565; 64] = [Rgb565::CSS_GREEN; 64];
 
 #[cfg(feature = "textured")]
@@ -279,6 +282,7 @@ fn test_affine_scanline_q16_two_textures() {
 
 #[cfg(feature = "scene")]
 use embedded_3dgfx::billboard::{Billboard, BillboardQ16};
+#[allow(unused_imports)]
 use nalgebra::{Point3, Vector3};
 
 #[cfg(feature = "scene")]

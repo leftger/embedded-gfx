@@ -128,6 +128,7 @@ pub mod hardware_profile;
 #[cfg(feature = "hud")]
 pub mod hud;
 pub mod input;
+pub mod lens_flare;
 #[cfg(feature = "lighting")]
 pub mod lights;
 pub mod mesh;
@@ -451,32 +452,6 @@ mod dma2d_stubs {
 mod tests {
     extern crate std;
 
-    #[cfg(feature = "depth-u16")]
-    pub type ZDepth = u16;
-    #[cfg(feature = "depth-u16")]
-    pub const Z_MAX_VALUE: ZDepth = u16::MAX;
-    #[cfg(feature = "depth-u16")]
-    pub const DEPTH_EPSILON: ZDepth = 1;
-
-    #[cfg(not(feature = "depth-u16"))]
-    pub type ZDepth = u32;
-    #[cfg(not(feature = "depth-u16"))]
-    pub const Z_MAX_VALUE: ZDepth = u32::MAX;
-    #[cfg(not(feature = "depth-u16"))]
-    pub const DEPTH_EPSILON: ZDepth = 128;
-
-    #[inline(always)]
-    pub const fn to_zdepth(z: u32) -> ZDepth {
-        #[cfg(feature = "depth-u16")]
-        {
-            (z >> 16) as u16
-        }
-        #[cfg(not(feature = "depth-u16"))]
-        {
-            z
-        }
-    }
-
     use super::*;
     use crate::engine::K3dengine;
     use crate::primitive::DrawPrimitive;
@@ -646,7 +621,7 @@ mod tests {
         });
 
         // Should render points
-        assert!(primitives.len() > 0);
+        assert!(!primitives.is_empty());
         for prim in primitives {
             assert!(matches!(prim, DrawPrimitive::ColoredPoint(_, _)));
         }

@@ -5,6 +5,7 @@ pub mod blend;
 pub mod dither;
 pub mod fog;
 pub mod retro;
+pub mod screen_door;
 pub mod water_reflect;
 
 pub use blend::{
@@ -14,6 +15,7 @@ pub use blend::{
 pub use dither::{DitherConfig, DitherShader};
 pub use fog::{FogConfig, FogShader};
 pub use retro::{PaletteShader, ScreenTintShader};
+pub use screen_door::ScreenDoorShader;
 pub use water_reflect::{WaterReflectConfig, WaterReflectShader};
 
 /// Zero-cost composable fragment shader interface.

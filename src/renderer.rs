@@ -152,6 +152,17 @@ fn tint_primitive(
             color: apply_post(color, tint, palette_mode),
             alpha,
         },
+        DrawPrimitive::ScreenDoorTriangleWithDepth {
+            points,
+            depths,
+            color,
+            alpha,
+        } => DrawPrimitive::ScreenDoorTriangleWithDepth {
+            points,
+            depths,
+            color: apply_post(color, tint, palette_mode),
+            alpha,
+        },
         #[cfg(feature = "lighting")]
         DrawPrimitive::GouraudTriangle { points, colors } => DrawPrimitive::GouraudTriangle {
             points,

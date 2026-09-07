@@ -127,8 +127,8 @@ mod tests {
         // 4x4 buffer where row 0 is RED, row 1 is GREEN, row 2 is BLUE, row 3 is WHITE
         let mut buffer = [Rgb565::BLACK; 16];
         for x in 0..4 {
-            buffer[0 * 4 + x] = Rgb565::RED;
-            buffer[1 * 4 + x] = Rgb565::GREEN;
+            buffer[x] = Rgb565::RED;
+            buffer[4 + x] = Rgb565::GREEN;
             buffer[2 * 4 + x] = Rgb565::BLUE;
             buffer[3 * 4 + x] = Rgb565::WHITE;
         }

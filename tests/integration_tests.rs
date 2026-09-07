@@ -72,8 +72,8 @@ impl TestFramebuffer {
             std::fs::create_dir_all(parent).ok();
         }
         let file = std::fs::File::create(path).expect("failed to create PNG file");
-        let ref mut w = std::io::BufWriter::new(file);
-        let mut encoder = png::Encoder::new(w, self.width, self.height);
+        let mut w = std::io::BufWriter::new(file);
+        let mut encoder = png::Encoder::new(&mut w, self.width, self.height);
         encoder.set_color(png::ColorType::Rgb);
         encoder.set_depth(png::BitDepth::Eight);
         let mut writer = encoder.write_header().expect("failed to write PNG header");

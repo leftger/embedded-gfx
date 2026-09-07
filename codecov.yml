@@ -1,12 +1,20 @@
 ignore:
   - "asset_cli/**"
+  - "**/asset_cli/**"
   - "load_stl/**"
+  - "**/load_stl/**"
   - "size_harness/**"
+  - "**/size_harness/**"
   - "tools/**"
+  - "**/tools/**"
   - "benches/**"
+  - "**/benches/**"
   - "examples/**"
+  - "**/examples/**"
   - "assets/**"
+  - "**/assets/**"
   - "docs/**"
+  - "**/docs/**"
 
 coverage:
   status:

@@ -252,6 +252,114 @@ impl CheckerboardField {
     }
 }
 
+/// Depth bias (polygon offset) configuration to prevent Z-fighting on decals, shadows, and coplanar geometry.
+///
+/// In 3D rendering (similar to OpenGL `glPolygonOffset` or Vulkan depth bias), depth bias offsets
+/// fragment depths before depth comparison and writing.
+///
+/// Depth offset calculation:
+/// `offset = constant + slope_scale * max_slope`
+/// where `max_slope = max(|dz/dx|, |dz/dy|)`.
+///
+/// Negative values bring the primitive closer to the camera (ideal for decals and overlays),
+/// while positive values push it further back (ideal for shadow geometry or outlines).
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct DepthBias {
+    /// Constant depth offset applied to fragments (negative pulls closer to camera).
+    pub constant: f32,
+    /// Factor scaling with the maximum depth slope (gradient) of the primitive.
+    pub slope_scale: f32,
+}
+
+impl DepthBias {
+    /// Zero depth bias (disabled).
+    pub const ZERO: Self = Self {
+        constant: 0.0,
+        slope_scale: 0.0,
+    };
+
+    /// Create a new depth bias configuration.
+    #[inline(always)]
+    pub const fn new(constant: f32, slope_scale: f32) -> Self {
+        Self {
+            constant,
+            slope_scale,
+        }
+    }
+
+    /// Preconfigured bias for decals (bullet marks, footsteps, blood splatters)
+    /// shifting geometry slightly closer to the viewer.
+    #[inline(always)]
+    pub const fn decal() -> Self {
+        Self {
+            constant: -0.005,
+            slope_scale: -0.01,
+        }
+    }
+
+    /// Preconfigured bias for planar drop/blob shadows.
+    #[inline(always)]
+    pub const fn shadow() -> Self {
+        Self {
+            constant: -0.002,
+            slope_scale: -0.005,
+        }
+    }
+
+    /// Calculate the depth offset in world/clip depth units.
+    #[inline]
+    pub fn compute_offset(
+        &self,
+        p1: nalgebra::Point2<i32>,
+        p2: nalgebra::Point2<i32>,
+        p3: nalgebra::Point2<i32>,
+        z1: f32,
+        z2: f32,
+        z3: f32,
+    ) -> f32 {
+        if self.constant == 0.0 && self.slope_scale == 0.0 {
+            return 0.0;
+        }
+        let dx1 = (p2.x - p1.x) as f32;
+        let dy1 = (p2.y - p1.y) as f32;
+        let dz1 = z2 - z1;
+
+        let dx2 = (p3.x - p1.x) as f32;
+        let dy2 = (p3.y - p1.y) as f32;
+        let dz2 = z3 - z1;
+
+        let det = dx1 * dy2 - dx2 * dy1;
+        let slope = if det.abs() > 1e-6 {
+            let dzdx = ((dz1 * dy2 - dz2 * dy1) / det).abs();
+            let dzdy = ((dx1 * dz2 - dx2 * dz1) / det).abs();
+            if dzdx > dzdy { dzdx } else { dzdy }
+        } else {
+            0.0
+        };
+
+        self.constant + self.slope_scale * slope
+    }
+
+    /// Apply depth bias to three vertex depths.
+    #[inline]
+    pub fn apply(
+        &self,
+        p1: nalgebra::Point2<i32>,
+        p2: nalgebra::Point2<i32>,
+        p3: nalgebra::Point2<i32>,
+        z1: f32,
+        z2: f32,
+        z3: f32,
+    ) -> (f32, f32, f32) {
+        let offset = self.compute_offset(p1, p2, p3, z1, z2, z3);
+        (
+            (z1 + offset).max(0.0),
+            (z2 + offset).max(0.0),
+            (z3 + offset).max(0.0),
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -286,5 +394,24 @@ mod tests {
         assert!(!even.includes_pixel(1, 0));
         assert!(even.includes_pixel(1, 1));
         assert_eq!(even.toggle(), CheckerboardField::Odd);
+    }
+
+    #[test]
+    fn test_depth_bias() {
+        let p1 = nalgebra::Point2::new(0, 0);
+        let p2 = nalgebra::Point2::new(10, 0);
+        let p3 = nalgebra::Point2::new(0, 10);
+
+        // Coplanar flat triangle (slope = 0)
+        let bias = DepthBias::new(-0.01, -0.05);
+        let (z1, z2, z3) = bias.apply(p1, p2, p3, 5.0, 5.0, 5.0);
+        assert!((z1 - 4.99).abs() < 1e-4);
+        assert!((z2 - 4.99).abs() < 1e-4);
+        assert!((z3 - 4.99).abs() < 1e-4);
+
+        // Sloped triangle: dz/dx = (10 - 0) / 10 = 1.0
+        let offset = bias.compute_offset(p1, p2, p3, 0.0, 10.0, 0.0);
+        // offset = -0.01 + (-0.05 * 1.0) = -0.06
+        assert!((offset - (-0.06)).abs() < 1e-4);
     }
 }

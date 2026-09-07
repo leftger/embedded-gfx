@@ -6,7 +6,7 @@ use embedded_graphics_core::pixelcolor::{Rgb565, RgbColor};
 use embedded_graphics_core::prelude::Point;
 
 use super::blend::fast_blend_rgb565;
-use super::effects::{DepthInterpolationMode, DitherConfig, FogConfig};
+use super::effects::{DepthBias, DepthInterpolationMode, DitherConfig, FogConfig};
 #[cfg(feature = "lighting")]
 use super::fill::interpolate_color;
 use crate::primitive::DrawPrimitive;
@@ -56,6 +56,7 @@ pub fn draw_zbuffered_with_effects<D: DrawTarget<Color = Rgb565>>(
 }
 
 /// Render primitives with Z-buffering, effects, and configurable depth interpolation mode.
+#[inline]
 pub fn draw_zbuffered_with_options<D: DrawTarget<Color = Rgb565>>(
     primitive: DrawPrimitive,
     fb: &mut D,
@@ -64,6 +65,31 @@ pub fn draw_zbuffered_with_options<D: DrawTarget<Color = Rgb565>>(
     fog_config: Option<&FogConfig>,
     dither_config: Option<&DitherConfig>,
     depth_mode: DepthInterpolationMode,
+) where
+    <D as DrawTarget>::Error: Debug,
+{
+    draw_zbuffered_with_bias(
+        primitive,
+        fb,
+        zbuffer,
+        width,
+        fog_config,
+        dither_config,
+        depth_mode,
+        None,
+    );
+}
+
+/// Render primitives with Z-buffering, effects, configurable depth interpolation, and optional depth bias.
+pub fn draw_zbuffered_with_bias<D: DrawTarget<Color = Rgb565>>(
+    primitive: DrawPrimitive,
+    fb: &mut D,
+    zbuffer: &mut [crate::ZDepth],
+    width: usize,
+    fog_config: Option<&FogConfig>,
+    dither_config: Option<&DitherConfig>,
+    depth_mode: DepthInterpolationMode,
+    bias: Option<DepthBias>,
 ) where
     <D as DrawTarget>::Error: Debug,
 {
@@ -89,6 +115,11 @@ pub fn draw_zbuffered_with_options<D: DrawTarget<Color = Rgb565>>(
             let [p1, p2, p3] = points;
             let (z1, z2, z3) =
                 depth_mode.process_depths(raw_depths[0], raw_depths[1], raw_depths[2]);
+            let (z1, z2, z3) = if let Some(b) = bias {
+                b.apply(p1, p2, p3, z1, z2, z3)
+            } else {
+                (z1, z2, z3)
+            };
 
             let scr_w = width as i32;
             let scr_h = (zbuffer.len() / width) as i32;
@@ -143,6 +174,11 @@ pub fn draw_zbuffered_with_options<D: DrawTarget<Color = Rgb565>>(
             let [p1, p2, p3] = points;
             let (z1, z2, z3) =
                 depth_mode.process_depths(raw_depths[0], raw_depths[1], raw_depths[2]);
+            let (z1, z2, z3) = if let Some(b) = bias {
+                b.apply(p1, p2, p3, z1, z2, z3)
+            } else {
+                (z1, z2, z3)
+            };
 
             let scr_w = width as i32;
             let scr_h = (zbuffer.len() / width) as i32;
@@ -186,6 +222,11 @@ pub fn draw_zbuffered_with_options<D: DrawTarget<Color = Rgb565>>(
             let [p1, p2, p3] = points;
             let (z1, z2, z3) =
                 depth_mode.process_depths(raw_depths[0], raw_depths[1], raw_depths[2]);
+            let (z1, z2, z3) = if let Some(b) = bias {
+                b.apply(p1, p2, p3, z1, z2, z3)
+            } else {
+                (z1, z2, z3)
+            };
 
             let scr_w = width as i32;
             let scr_h = (zbuffer.len() / width) as i32;
@@ -232,6 +273,11 @@ pub fn draw_zbuffered_with_options<D: DrawTarget<Color = Rgb565>>(
             let [p1, p2, p3] = points;
             let (z1, z2, z3) =
                 depth_mode.process_depths(raw_depths[0], raw_depths[1], raw_depths[2]);
+            let (z1, z2, z3) = if let Some(b) = bias {
+                b.apply(p1, p2, p3, z1, z2, z3)
+            } else {
+                (z1, z2, z3)
+            };
             let [c1, c2, c3] = colors;
 
             let scr_w = width as i32;
@@ -1480,5 +1526,50 @@ mod tests {
             }
         }
         assert!(green_count > 0);
+    }
+
+    #[test]
+    fn test_draw_zbuffered_bias() {
+        let mut fb = TestFb::<20, 20>::default();
+        let mut zbuf = [crate::Z_MAX_VALUE; 400];
+
+        // Draw a base red triangle at depth 2.0
+        let base_tri = DrawPrimitive::ColoredTriangleWithDepth {
+            points: [
+                nalgebra::Point2::new(10, 2),
+                nalgebra::Point2::new(2, 18),
+                nalgebra::Point2::new(18, 18),
+            ],
+            depths: [2.0, 2.0, 2.0],
+            color: Rgb565::RED,
+        };
+        draw_zbuffered(base_tri, &mut fb, &mut zbuf, 20);
+
+        let center_idx = 10 * 20 + 10;
+        assert_eq!(fb.pixels[center_idx], Rgb565::RED);
+
+        // Draw a coplanar decal blue triangle with depth bias
+        let decal_tri = DrawPrimitive::ColoredTriangleWithDepth {
+            points: [
+                nalgebra::Point2::new(10, 2),
+                nalgebra::Point2::new(2, 18),
+                nalgebra::Point2::new(18, 18),
+            ],
+            depths: [2.0, 2.0, 2.0],
+            color: Rgb565::BLUE,
+        };
+        draw_zbuffered_with_bias(
+            decal_tri,
+            &mut fb,
+            &mut zbuf,
+            20,
+            None,
+            None,
+            DepthInterpolationMode::Exact,
+            Some(DepthBias::decal()),
+        );
+
+        // Decal should cleanly overwrite the base triangle due to depth bias
+        assert_eq!(fb.pixels[center_idx], Rgb565::BLUE);
     }
 }

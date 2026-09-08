@@ -295,6 +295,22 @@ harness = false
 name = "scene_extras"
 required-features = ["std", "scene-extras"]
 
+[[test]]
+name = "bsp_engine_swapchain_coverage"
+required-features = ["raycast", "textured"]
+
+[[test]]
+name = "embassy_and_config_coverage"
+required-features = ["std", "embassy", "gizmos"]
+
+[[test]]
+name = "physics_raycast_lights_coverage"
+required-features = ["anim-blend", "physics", "lighting"]
+
+[[test]]
+name = "rendering_and_shading_coverage"
+required-features = ["textured", "painters"]
+
 [profile.release]
 opt-level = "s"
 lto = true

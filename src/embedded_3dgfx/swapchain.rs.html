@@ -819,5 +819,96 @@
 <a href=#819 id=819 data-nosnippet>819</a>        <span class="macro">assert_eq!</span>(sc.frame_count(), <span class="number">1</span>);
 <a href=#820 id=820 data-nosnippet>820</a>        <span class="kw">let </span>_render = sc.get_render_buffer();
 <a href=#821 id=821 data-nosnippet>821</a>    }
-<a href=#822 id=822 data-nosnippet>822</a>}
+<a href=#822 id=822 data-nosnippet>822</a>
+<a href=#823 id=823 data-nosnippet>823</a>    <span class="comment">// ── Error backend tests ──────────────────────────────────────────────────
+<a href=#824 id=824 data-nosnippet>824</a>
+<a href=#825 id=825 data-nosnippet>825</a>    </span><span class="kw">struct </span>FailingBackend;
+<a href=#826 id=826 data-nosnippet>826</a>
+<a href=#827 id=827 data-nosnippet>827</a>    <span class="kw">struct </span>FailingTransfer&lt;FB: DMACapableFrameBufferBackend&lt;Color = Rgb565&gt;&gt; {
+<a href=#828 id=828 data-nosnippet>828</a>        fb: <span class="prelude-ty">Option</span>&lt;FrameBuf&lt;Rgb565, FB&gt;&gt;,
+<a href=#829 id=829 data-nosnippet>829</a>    }
+<a href=#830 id=830 data-nosnippet>830</a>    <span class="kw">impl</span>&lt;FB: DMACapableFrameBufferBackend&lt;Color = Rgb565&gt;&gt; DmaTransfer <span class="kw">for </span>FailingTransfer&lt;FB&gt; {
+<a href=#831 id=831 data-nosnippet>831</a>        <span class="kw">type </span>Buffer = FrameBuf&lt;Rgb565, FB&gt;;
+<a href=#832 id=832 data-nosnippet>832</a>        <span class="kw">fn </span>is_done(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; bool {
+<a href=#833 id=833 data-nosnippet>833</a>            <span class="bool-val">true
+<a href=#834 id=834 data-nosnippet>834</a>        </span>}
+<a href=#835 id=835 data-nosnippet>835</a>        <span class="kw">fn </span>wait(<span class="kw-2">mut </span><span class="self">self</span>) -&gt; FrameBuf&lt;Rgb565, FB&gt; {
+<a href=#836 id=836 data-nosnippet>836</a>            <span class="self">self</span>.fb.take().unwrap()
+<a href=#837 id=837 data-nosnippet>837</a>        }
+<a href=#838 id=838 data-nosnippet>838</a>    }
+<a href=#839 id=839 data-nosnippet>839</a>    <span class="kw">impl</span>&lt;<span class="kw">const </span>W: usize, <span class="kw">const </span>H: usize, FB&gt; DisplayBackend&lt;W, H, FB&gt; <span class="kw">for </span>FailingBackend
+<a href=#840 id=840 data-nosnippet>840</a>    <span class="kw">where
+<a href=#841 id=841 data-nosnippet>841</a>        </span>FB: DMACapableFrameBufferBackend&lt;Color = Rgb565&gt;,
+<a href=#842 id=842 data-nosnippet>842</a>    {
+<a href=#843 id=843 data-nosnippet>843</a>        <span class="kw">type </span>Transfer = FailingTransfer&lt;FB&gt;;
+<a href=#844 id=844 data-nosnippet>844</a>        <span class="kw">fn </span>start_dma_transfer(
+<a href=#845 id=845 data-nosnippet>845</a>            <span class="kw-2">&amp;mut </span><span class="self">self</span>,
+<a href=#846 id=846 data-nosnippet>846</a>            framebuffer: FrameBuf&lt;Rgb565, FB&gt;,
+<a href=#847 id=847 data-nosnippet>847</a>        ) -&gt; <span class="prelude-ty">Result</span>&lt;FailingTransfer&lt;FB&gt;, TransferError&lt;FB&gt;&gt; {
+<a href=#848 id=848 data-nosnippet>848</a>            <span class="prelude-val">Err</span>(TransferError {
+<a href=#849 id=849 data-nosnippet>849</a>                framebuffer,
+<a href=#850 id=850 data-nosnippet>850</a>                error: DisplayError::HardwareError,
+<a href=#851 id=851 data-nosnippet>851</a>            })
+<a href=#852 id=852 data-nosnippet>852</a>        }
+<a href=#853 id=853 data-nosnippet>853</a>    }
+<a href=#854 id=854 data-nosnippet>854</a>
+<a href=#855 id=855 data-nosnippet>855</a>    <span class="attr">#[test]
+<a href=#856 id=856 data-nosnippet>856</a>    </span><span class="kw">fn </span>test_swapchain_present_error_recovers_front_buffer() {
+<a href=#857 id=857 data-nosnippet>857</a>        <span class="kw">let </span>fb0 = make_static_slice(<span class="number">64 </span>* <span class="number">64</span>);
+<a href=#858 id=858 data-nosnippet>858</a>        <span class="kw">let </span>fb1 = make_static_slice(<span class="number">64 </span>* <span class="number">64</span>);
+<a href=#859 id=859 data-nosnippet>859</a>        <span class="kw">let </span><span class="kw-2">mut </span>sc =
+<a href=#860 id=860 data-nosnippet>860</a>            StandardSwapChain::&lt;<span class="number">64</span>, <span class="number">64</span>, <span class="kw">_</span>&gt;::from_static_slices(fb0, fb1, <span class="bool-val">false</span>, FailingBackend);
+<a href=#861 id=861 data-nosnippet>861</a>        <span class="comment">// present should return Err since the backend always fails
+<a href=#862 id=862 data-nosnippet>862</a>        </span><span class="macro">assert!</span>(sc.present().is_err());
+<a href=#863 id=863 data-nosnippet>863</a>        <span class="comment">// But the swap chain should still be in a valid state — back/front not lost
+<a href=#864 id=864 data-nosnippet>864</a>        </span><span class="macro">assert!</span>(sc.is_ready());
+<a href=#865 id=865 data-nosnippet>865</a>        <span class="macro">assert_eq!</span>(sc.frame_count(), <span class="number">0</span>); <span class="comment">// frame_count not incremented on failure
+<a href=#866 id=866 data-nosnippet>866</a>    </span>}
+<a href=#867 id=867 data-nosnippet>867</a>
+<a href=#868 id=868 data-nosnippet>868</a>    <span class="attr">#[test]
+<a href=#869 id=869 data-nosnippet>869</a>    </span><span class="kw">fn </span>test_swapchain_wait_for_vsync_when_already_idle() {
+<a href=#870 id=870 data-nosnippet>870</a>        <span class="kw">let </span><span class="kw-2">mut </span>sc = make_swap_chain(SimulatorBackend::new());
+<a href=#871 id=871 data-nosnippet>871</a>        <span class="comment">// Not yet presented — front is idle already
+<a href=#872 id=872 data-nosnippet>872</a>        </span>sc.wait_for_vsync();
+<a href=#873 id=873 data-nosnippet>873</a>        <span class="macro">assert!</span>(sc.is_ready());
+<a href=#874 id=874 data-nosnippet>874</a>        <span class="macro">assert_eq!</span>(sc.frame_count(), <span class="number">0</span>);
+<a href=#875 id=875 data-nosnippet>875</a>    }
+<a href=#876 id=876 data-nosnippet>876</a>
+<a href=#877 id=877 data-nosnippet>877</a>    <span class="attr">#[test]
+<a href=#878 id=878 data-nosnippet>878</a>    </span><span class="kw">fn </span>test_swapchain_try_present_region_busy() {
+<a href=#879 id=879 data-nosnippet>879</a>        <span class="comment">// SimulatorBackend always finishes immediately, so try_present_region must succeed.
+<a href=#880 id=880 data-nosnippet>880</a>        </span><span class="kw">let </span>fb0 = make_static_slice(<span class="number">64 </span>* <span class="number">64</span>);
+<a href=#881 id=881 data-nosnippet>881</a>        <span class="kw">let </span>fb1 = make_static_slice(<span class="number">64 </span>* <span class="number">64</span>);
+<a href=#882 id=882 data-nosnippet>882</a>        <span class="kw">let </span><span class="kw-2">mut </span>sc = StandardSwapChain::&lt;<span class="number">64</span>, <span class="number">64</span>, <span class="kw">_</span>&gt;::from_static_slices(
+<a href=#883 id=883 data-nosnippet>883</a>            fb0,
+<a href=#884 id=884 data-nosnippet>884</a>            fb1,
+<a href=#885 id=885 data-nosnippet>885</a>            <span class="bool-val">false</span>,
+<a href=#886 id=886 data-nosnippet>886</a>            TrackingBackend::new(),
+<a href=#887 id=887 data-nosnippet>887</a>        );
+<a href=#888 id=888 data-nosnippet>888</a>        <span class="comment">// Two consecutive try_present_region calls — TrackingTransfer is always done
+<a href=#889 id=889 data-nosnippet>889</a>        </span><span class="macro">assert!</span>(
+<a href=#890 id=890 data-nosnippet>890</a>            sc.try_present_region(DisplayRegion::new(<span class="number">0</span>, <span class="number">0</span>, <span class="number">8</span>, <span class="number">8</span>))
+<a href=#891 id=891 data-nosnippet>891</a>                .is_ok()
+<a href=#892 id=892 data-nosnippet>892</a>        );
+<a href=#893 id=893 data-nosnippet>893</a>        <span class="macro">assert!</span>(
+<a href=#894 id=894 data-nosnippet>894</a>            sc.try_present_region(DisplayRegion::new(<span class="number">0</span>, <span class="number">0</span>, <span class="number">8</span>, <span class="number">8</span>))
+<a href=#895 id=895 data-nosnippet>895</a>                .is_ok()
+<a href=#896 id=896 data-nosnippet>896</a>        );
+<a href=#897 id=897 data-nosnippet>897</a>        <span class="macro">assert_eq!</span>(sc.backend.region_present_count.get(), <span class="number">2</span>);
+<a href=#898 id=898 data-nosnippet>898</a>    }
+<a href=#899 id=899 data-nosnippet>899</a>
+<a href=#900 id=900 data-nosnippet>900</a>    <span class="attr">#[test]
+<a href=#901 id=901 data-nosnippet>901</a>    </span><span class="kw">fn </span>test_swapchain_big_endian_constructor() {
+<a href=#902 id=902 data-nosnippet>902</a>        <span class="kw">let </span>fb0 = make_static_slice(<span class="number">32 </span>* <span class="number">32</span>);
+<a href=#903 id=903 data-nosnippet>903</a>        <span class="kw">let </span>fb1 = make_static_slice(<span class="number">32 </span>* <span class="number">32</span>);
+<a href=#904 id=904 data-nosnippet>904</a>        <span class="kw">let </span>sc = StandardSwapChain::&lt;<span class="number">32</span>, <span class="number">32</span>, <span class="kw">_</span>&gt;::from_static_slices(
+<a href=#905 id=905 data-nosnippet>905</a>            fb0,
+<a href=#906 id=906 data-nosnippet>906</a>            fb1,
+<a href=#907 id=907 data-nosnippet>907</a>            <span class="bool-val">true</span>, <span class="comment">// big-endian path
+<a href=#908 id=908 data-nosnippet>908</a>            </span>SimulatorBackend::new(),
+<a href=#909 id=909 data-nosnippet>909</a>        );
+<a href=#910 id=910 data-nosnippet>910</a>        <span class="macro">assert_eq!</span>(sc.dimensions(), (<span class="number">32</span>, <span class="number">32</span>));
+<a href=#911 id=911 data-nosnippet>911</a>        <span class="macro">assert!</span>(sc.is_ready());
+<a href=#912 id=912 data-nosnippet>912</a>    }
+<a href=#913 id=913 data-nosnippet>913</a>}
 </code></pre></div></section></main></body></html>

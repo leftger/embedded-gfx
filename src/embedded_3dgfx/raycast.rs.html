@@ -869,5 +869,31 @@
 <a href=#869 id=869 data-nosnippet>869</a>        <span class="kw">let </span>packed = pack_rgb565_u32(c);
 <a href=#870 id=870 data-nosnippet>870</a>        <span class="macro">assert_eq!</span>(packed, (raw &lt;&lt; <span class="number">16</span>) | raw);
 <a href=#871 id=871 data-nosnippet>871</a>    }
-<a href=#872 id=872 data-nosnippet>872</a>}
+<a href=#872 id=872 data-nosnippet>872</a>
+<a href=#873 id=873 data-nosnippet>873</a>    <span class="attr">#[test]
+<a href=#874 id=874 data-nosnippet>874</a>    </span><span class="kw">fn </span>test_mode7_renderer_fast_and_fov_scale() {
+<a href=#875 id=875 data-nosnippet>875</a>        <span class="kw">extern crate </span>std;
+<a href=#876 id=876 data-nosnippet>876</a>        <span class="kw">let </span><span class="kw-2">mut </span>m7 = Mode7Renderer::new(<span class="number">16</span>, <span class="number">16</span>);
+<a href=#877 id=877 data-nosnippet>877</a>        m7.set_fov_scale(<span class="number">0.8</span>);
+<a href=#878 id=878 data-nosnippet>878</a>        <span class="macro">assert_eq!</span>(m7.fov_scale, <span class="number">0.8</span>);
+<a href=#879 id=879 data-nosnippet>879</a>
+<a href=#880 id=880 data-nosnippet>880</a>        <span class="kw">let </span><span class="kw-2">mut </span>fb = <span class="macro">std::vec!</span>[<span class="number">0u32</span>; <span class="number">16 </span>* <span class="number">8</span>];
+<a href=#881 id=881 data-nosnippet>881</a>        m7.render_floor_and_ceiling_fast(
+<a href=#882 id=882 data-nosnippet>882</a>            <span class="number">2.0</span>,
+<a href=#883 id=883 data-nosnippet>883</a>            <span class="number">2.0</span>,
+<a href=#884 id=884 data-nosnippet>884</a>            <span class="number">0.0</span>,
+<a href=#885 id=885 data-nosnippet>885</a>            <span class="number">0</span>,
+<a href=#886 id=886 data-nosnippet>886</a>            Rgb565::RED,
+<a href=#887 id=887 data-nosnippet>887</a>            Rgb565::BLUE,
+<a href=#888 id=888 data-nosnippet>888</a>            Rgb565::GREEN,
+<a href=#889 id=889 data-nosnippet>889</a>            Rgb565::YELLOW,
+<a href=#890 id=890 data-nosnippet>890</a>            <span class="kw-2">&amp;mut </span>fb,
+<a href=#891 id=891 data-nosnippet>891</a>        );
+<a href=#892 id=892 data-nosnippet>892</a>        <span class="macro">assert!</span>(fb.iter().any(|<span class="kw-2">&amp;</span>p| p != <span class="number">0</span>));
+<a href=#893 id=893 data-nosnippet>893</a>
+<a href=#894 id=894 data-nosnippet>894</a>        <span class="kw">let </span>tex = RaycastTexture::new([Rgb565::RED; <span class="number">256</span>]);
+<a href=#895 id=895 data-nosnippet>895</a>        <span class="macro">assert_eq!</span>(tex.sample(<span class="number">0</span>, <span class="number">0</span>), Rgb565::RED);
+<a href=#896 id=896 data-nosnippet>896</a>        <span class="macro">assert_eq!</span>(tex.sample(<span class="number">17</span>, <span class="number">33</span>), Rgb565::RED);
+<a href=#897 id=897 data-nosnippet>897</a>    }
+<a href=#898 id=898 data-nosnippet>898</a>}
 </code></pre></div></section></main></body></html>

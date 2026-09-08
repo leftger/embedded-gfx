@@ -435,4 +435,102 @@ mod tests {
                 .all(|t| (t.avg_depth - first).abs() < 1e-5)
         );
     }
+
+    #[test]
+    fn painters_calculate_lit_color_and_modes() {
+        let mut engine = K3dengine::new(320, 240);
+        engine.camera.set_position(Point3::new(0.0, 0.0, 5.0));
+        engine.camera.set_target(Point3::new(0.0, 0.0, 0.0));
+
+        let face = [0usize, 1usize, 2usize];
+        let vertices = [[0.0f32, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
+        let normals = [[0.0f32, 0.0, 1.0]];
+
+        let lit_color = engine.calculate_lit_color(
+            &face,
+            &vertices,
+            &normals,
+            Rgb565::RED,
+            nalgebra::Vector3::new(0.0, 0.0, 1.0),
+        );
+        assert!(lit_color.r() > 0);
+
+        let lit_color_no_norm = engine.calculate_lit_color(
+            &face,
+            &vertices,
+            &[],
+            Rgb565::GREEN,
+            nalgebra::Vector3::new(0.0, 0.0, 1.0),
+        );
+        assert!(lit_color_no_norm.g() > 0);
+
+        let lit_color_zero = engine.calculate_lit_color(
+            &face,
+            &[[0.0; 3]; 3],
+            &[],
+            Rgb565::BLUE,
+            nalgebra::Vector3::new(0.0, 0.0, 1.0),
+        );
+        assert!(lit_color_zero.b() > 0);
+
+        // Test SectorBright & point lights in painters
+        #[cfg(feature = "lighting")]
+        {
+            let light =
+                crate::lights::PointLight::new(Point3::new(0.0, 0.0, 1.0), Rgb565::WHITE, 10.0);
+            engine.add_point_light(light);
+
+            let geom = crate::mesh::Geometry {
+                vertices: &vertices,
+                faces: &[face],
+                normals: &normals,
+                colors: &[],
+                lines: &[],
+                vertex_normals: &[],
+                uvs: &[],
+                texture_id: None,
+            };
+            let mut mesh = crate::mesh::K3dMesh::new(geom);
+            mesh.set_render_mode(crate::mesh::RenderMode::SectorBright(200));
+
+            let mut triangles = [DepthSortedTriangle::DUMMY; 16];
+            let count =
+                engine.render_painters_algorithm(core::iter::once(&mesh), &mut triangles, |_| {});
+            assert_eq!(count, 1);
+        }
+    }
+
+    #[test]
+    fn painters_out_of_bounds_and_empty_vertices() {
+        let engine = K3dengine::new(320, 240);
+        let vertices_empty = [[0.0f32, 0.0, 0.0]];
+        let geom_empty = crate::mesh::Geometry {
+            vertices: &vertices_empty,
+            faces: &[],
+            colors: &[],
+            lines: &[],
+            normals: &[],
+            vertex_normals: &[],
+            uvs: &[],
+            texture_id: None,
+        };
+        let mesh_empty = crate::mesh::K3dMesh::new(geom_empty);
+        let mut triangles = [DepthSortedTriangle::DUMMY; 16];
+        let count =
+            engine.render_painters_algorithm(core::iter::once(&mesh_empty), &mut triangles, |_| {});
+        assert_eq!(count, 0);
+
+        let vertices = [[0.0f32, 0.0, 0.0]];
+        let geom_invalid_face = crate::mesh::Geometry {
+            vertices: &vertices,
+            faces: &[[0, 1, 2]],
+            colors: &[],
+            lines: &[],
+            normals: &[],
+            vertex_normals: &[],
+            uvs: &[],
+            texture_id: None,
+        };
+        assert!(!geom_invalid_face.check_validity());
+    }
 }

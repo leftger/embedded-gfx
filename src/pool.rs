@@ -362,7 +362,9 @@ impl<T, const CAP: usize> IndexMut<Handle<T>> for Pool<T, CAP> {
 
 #[cfg(test)]
 mod tests {
+    extern crate std;
     use super::*;
+    use std::format;
 
     #[test]
     fn test_pool_spawn_get_free() {
@@ -451,5 +453,39 @@ mod tests {
         pool2.clear();
         assert!(pool2.is_empty());
         assert_eq!(pool2.len(), 0);
+
+        let h_none: Handle<i32> = Handle::default();
+        assert!(h_none.is_none());
+        assert!(!h_none.is_some());
+        assert_eq!(format!("{:?}", h_none), "Handle::NONE");
+
+        let h_valid = Handle::new(5, 2);
+        assert!(h_valid.is_some());
+        assert_eq!(
+            format!("{:?}", h_valid),
+            "Handle { index: 5, generation: 2 }"
+        );
+        assert_eq!(h_valid.index(), 5);
+        assert_eq!(h_valid.generation(), 2);
+
+        use core::hash::{Hash, Hasher};
+        use std::collections::hash_map::DefaultHasher;
+        let mut hasher = DefaultHasher::new();
+        h_valid.hash(&mut hasher);
+        assert!(hasher.finish() > 0);
+
+        assert!(h_valid < h_none);
+        assert_eq!(
+            h_valid.partial_cmp(&h_valid),
+            Some(core::cmp::Ordering::Equal)
+        );
+
+        let mut pool3: Pool<i32, 2> = Pool::new();
+        let h_p = pool3.spawn(100).unwrap();
+        pool3[h_p] += 50;
+        assert_eq!(pool3[h_p], 150);
+
+        let oob_h = Handle::new(999, 1);
+        assert!(!pool3.is_valid_handle(oob_h));
     }
 }

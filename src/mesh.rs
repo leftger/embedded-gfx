@@ -70,7 +70,7 @@ pub struct Geometry<'a> {
 }
 
 impl Geometry<'_> {
-    fn check_validity(&self) -> bool {
+    pub(crate) fn check_validity(&self) -> bool {
         if self.vertices.is_empty() {
             error!("Vertices are empty");
             return false;

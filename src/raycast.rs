@@ -869,4 +869,30 @@ mod tests {
         let packed = pack_rgb565_u32(c);
         assert_eq!(packed, (raw << 16) | raw);
     }
+
+    #[test]
+    fn test_mode7_renderer_fast_and_fov_scale() {
+        extern crate std;
+        let mut m7 = Mode7Renderer::new(16, 16);
+        m7.set_fov_scale(0.8);
+        assert_eq!(m7.fov_scale, 0.8);
+
+        let mut fb = std::vec![0u32; 16 * 8];
+        m7.render_floor_and_ceiling_fast(
+            2.0,
+            2.0,
+            0.0,
+            0,
+            Rgb565::RED,
+            Rgb565::BLUE,
+            Rgb565::GREEN,
+            Rgb565::YELLOW,
+            &mut fb,
+        );
+        assert!(fb.iter().any(|&p| p != 0));
+
+        let tex = RaycastTexture::new([Rgb565::RED; 256]);
+        assert_eq!(tex.sample(0, 0), Rgb565::RED);
+        assert_eq!(tex.sample(17, 33), Rgb565::RED);
+    }
 }

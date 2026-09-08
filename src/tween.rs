@@ -215,4 +215,96 @@ mod tests {
         assert!((v[1] - 2.0).abs() < 1e-5);
         assert!((v[2] - 3.0).abs() < 1e-5);
     }
+
+    #[test]
+    fn test_tween3_reset_and_is_done() {
+        let mut tw = Tween3::new([0.0; 3], [1.0; 3], 1.0, Easing::Linear);
+        assert!(!tw.is_done());
+        tw.advance(1.0);
+        assert!(tw.is_done());
+        tw.reset();
+        assert!(!tw.is_done());
+    }
+
+    #[test]
+    fn test_tween3_zero_duration_snaps_to_end() {
+        let tw = Tween3::new([0.0; 3], [5.0, 10.0, 15.0], 0.0, Easing::Linear);
+        assert!(tw.is_done());
+        let v = tw.value();
+        assert!((v[0] - 5.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_tween_zero_duration() {
+        let tw = Tween::new(0.0, 42.0, 0.0, Easing::Linear);
+        assert!(tw.is_done());
+        assert!((tw.value() - 42.0).abs() < 1e-5);
+        assert!((tw.progress() - 1.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_tween_negative_advance_noop() {
+        let mut tw = Tween::new(0.0, 10.0, 1.0, Easing::Linear);
+        tw.advance(-5.0);
+        assert!((tw.elapsed - 0.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_tween3_negative_advance_noop() {
+        let mut tw = Tween3::new([0.0; 3], [1.0; 3], 1.0, Easing::Linear);
+        tw.advance(-5.0);
+        assert!((tw.elapsed - 0.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_tween_reset() {
+        let mut tw = Tween::new(0.0, 10.0, 1.0, Easing::Linear);
+        tw.advance(1.0);
+        assert!(tw.is_done());
+        tw.reset();
+        assert!(!tw.is_done());
+        assert!((tw.elapsed - 0.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_all_easing_variants() {
+        // EaseInCubic: t=0.5 → 0.125
+        let v = apply_easing(0.5, Easing::EaseInCubic);
+        assert!((v - 0.125).abs() < 1e-5);
+
+        // EaseInOutCubic: t=0.5 → 0.5
+        let v = apply_easing(0.5, Easing::EaseInOutCubic);
+        assert!((v - 0.5).abs() < 1e-4);
+
+        // EaseInOutCubic: t=0.75 (> 0.5 branch)
+        let v2 = apply_easing(0.75, Easing::EaseInOutCubic);
+        assert!(v2 > 0.5 && v2 < 1.0);
+
+        // Smoothstep: t=0.5 → 0.5
+        let v = apply_easing(0.5, Easing::Smoothstep);
+        assert!((v - 0.5).abs() < 1e-5);
+
+        // Clamp below 0
+        assert!((apply_easing(-1.0, Easing::Linear) - 0.0).abs() < 1e-5);
+        // Clamp above 1
+        assert!((apply_easing(2.0, Easing::Linear) - 1.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_lerp_and_lerp3() {
+        assert!((lerp(0.0, 10.0, 0.3) - 3.0).abs() < 1e-5);
+        let v = lerp3([0.0, 2.0, 4.0], [10.0, 12.0, 14.0], 0.5);
+        assert!((v[0] - 5.0).abs() < 1e-5);
+        assert!((v[1] - 7.0).abs() < 1e-5);
+        assert!((v[2] - 9.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_scale_rgb565_half() {
+        use embedded_graphics_core::pixelcolor::RgbColor;
+        let c = embedded_graphics_core::pixelcolor::Rgb565::new(20, 40, 20);
+        let half = scale_rgb565(c, 0.5);
+        assert!(half.r() < c.r());
+        assert!(half.g() < c.g());
+    }
 }

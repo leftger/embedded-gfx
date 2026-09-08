@@ -55,3 +55,23 @@ impl FragmentShader for GouraudShader {
         color
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use embedded_graphics_core::pixelcolor::{Rgb565, RgbColor};
+
+    #[test]
+    fn flat_color_shader_returns_constant_color() {
+        let shader = FlatColorShader { color: Rgb565::RED };
+        let out = shader.shade(5, 10, 0, ());
+        assert_eq!(out, Rgb565::RED);
+    }
+
+    #[test]
+    fn gouraud_shader_returns_interpolant() {
+        let shader = GouraudShader;
+        let out = shader.shade(0, 0, 0, Rgb565::BLUE);
+        assert_eq!(out, Rgb565::BLUE);
+    }
+}

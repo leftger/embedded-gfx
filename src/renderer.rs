@@ -532,6 +532,401 @@ mod tests {
         assert!(stats.draw_commands >= 1);
         assert!(stats.bins_used >= 1);
     }
+
+    #[test]
+    fn test_tint_primitive_and_primitives_coverage() {
+        use crate::primitive::DrawPrimitive;
+        use embedded_graphics_core::pixelcolor::{Rgb565, RgbColor};
+        use nalgebra::Point2;
+
+        let tint = Some(crate::retro::ScreenTint {
+            color: Rgb565::RED,
+            strength: 128,
+        });
+        let pal = crate::retro::PaletteMode::Off;
+
+        let p1 = DrawPrimitive::ColoredPoint(Point2::new(1, 1), Rgb565::WHITE);
+        let p1_t = super::tint_primitive(&p1, tint, pal);
+        assert!(matches!(p1_t, DrawPrimitive::ColoredPoint(..)));
+
+        let l = DrawPrimitive::Line([Point2::new(1, 1), Point2::new(2, 2)], Rgb565::WHITE);
+        let l_t = super::tint_primitive(&l, tint, pal);
+        assert!(matches!(l_t, DrawPrimitive::Line(..)));
+
+        let t = DrawPrimitive::ColoredTriangle(
+            [Point2::new(1, 1), Point2::new(2, 2), Point2::new(3, 3)],
+            Rgb565::WHITE,
+        );
+        let t_t = super::tint_primitive(&t, tint, pal);
+        assert!(matches!(t_t, DrawPrimitive::ColoredTriangle(..)));
+
+        let td = DrawPrimitive::TranslucentTriangleWithDepth {
+            points: [Point2::new(1, 1), Point2::new(2, 2), Point2::new(3, 3)],
+            depths: [1.0; 3],
+            color: Rgb565::WHITE,
+            alpha: 128,
+        };
+        let td_t = super::tint_primitive(&td, tint, pal);
+        assert!(matches!(
+            td_t,
+            DrawPrimitive::TranslucentTriangleWithDepth { .. }
+        ));
+
+        let sd = DrawPrimitive::ScreenDoorTriangleWithDepth {
+            points: [Point2::new(1, 1), Point2::new(2, 2), Point2::new(3, 3)],
+            depths: [1.0; 3],
+            color: Rgb565::WHITE,
+            alpha: 128,
+        };
+        let sd_t = super::tint_primitive(&sd, tint, pal);
+        assert!(matches!(
+            sd_t,
+            DrawPrimitive::ScreenDoorTriangleWithDepth { .. }
+        ));
+
+        #[cfg(feature = "lighting")]
+        {
+            let g = DrawPrimitive::GouraudTriangle {
+                points: [Point2::new(1, 1), Point2::new(2, 2), Point2::new(3, 3)],
+                colors: [Rgb565::WHITE; 3],
+            };
+            let g_t = super::tint_primitive(&g, tint, pal);
+            assert!(matches!(g_t, DrawPrimitive::GouraudTriangle { .. }));
+
+            let gd = DrawPrimitive::GouraudTriangleWithDepth {
+                points: [Point2::new(1, 1), Point2::new(2, 2), Point2::new(3, 3)],
+                depths: [1.0; 3],
+                colors: [Rgb565::WHITE; 3],
+            };
+            let gd_t = super::tint_primitive(&gd, tint, pal);
+            assert!(matches!(
+                gd_t,
+                DrawPrimitive::GouraudTriangleWithDepth { .. }
+            ));
+        }
+
+        #[cfg(feature = "textured")]
+        {
+            let lm = DrawPrimitive::LightmappedTriangle {
+                points: [Point2::new(1, 1), Point2::new(2, 2), Point2::new(3, 3)],
+                depths: [1.0; 3],
+                ws: [1.0; 3],
+                surface_uvs: [[0.0; 2]; 3],
+                lm_uvs: [[0.0; 2]; 3],
+                texture_id: 0,
+                lightmap_id: 0,
+                brightness: 255,
+                dynamic_tint: Rgb565::WHITE,
+            };
+            let lm_t = super::tint_primitive(&lm, tint, pal);
+            assert!(matches!(lm_t, DrawPrimitive::LightmappedTriangle { .. }));
+
+            let tg = DrawPrimitive::TexturedGouraudTriangleWithDepth {
+                points: [Point2::new(1, 1), Point2::new(2, 2), Point2::new(3, 3)],
+                depths: [1.0; 3],
+                ws: [1.0; 3],
+                uvs: [[0.0; 2]; 3],
+                colors: [Rgb565::WHITE; 3],
+                texture_id: 0,
+            };
+            let tg_t = super::tint_primitive(&tg, tint, pal);
+            assert!(matches!(
+                tg_t,
+                DrawPrimitive::TexturedGouraudTriangleWithDepth { .. }
+            ));
+        }
+    }
+
+    #[test]
+    fn test_colored_triangle_with_depth_tint() {
+        use crate::primitive::DrawPrimitive;
+        use embedded_graphics_core::pixelcolor::{Rgb565, RgbColor};
+        use nalgebra::Point2;
+
+        let tint = Some(crate::retro::ScreenTint {
+            color: Rgb565::GREEN,
+            strength: 64,
+        });
+        let pal = crate::retro::PaletteMode::Off;
+
+        // ColoredTriangleWithDepth variant in tint_primitive
+        let ctd = DrawPrimitive::ColoredTriangleWithDepth {
+            points: [Point2::new(1, 1), Point2::new(5, 1), Point2::new(3, 5)],
+            depths: [1.0, 2.0, 3.0],
+            color: Rgb565::WHITE,
+        };
+        let ctd_t = super::tint_primitive(&ctd, tint, pal);
+        assert!(matches!(
+            ctd_t,
+            DrawPrimitive::ColoredTriangleWithDepth { .. }
+        ));
+        // No tint
+        let ctd_none = super::tint_primitive(&ctd, None, pal);
+        assert!(matches!(
+            ctd_none,
+            DrawPrimitive::ColoredTriangleWithDepth { .. }
+        ));
+    }
+
+    #[test]
+    fn test_dirty_region_from_bounds_edge_cases() {
+        // max < min → None
+        assert!(super::DirtyRegion::from_bounds(10, 10, 5, 5).is_none());
+        // equal → 1x1
+        let r = super::DirtyRegion::from_bounds(4, 4, 4, 4).unwrap();
+        assert_eq!(r.width, 1);
+        assert_eq!(r.height, 1);
+    }
+
+    #[test]
+    fn test_execute_commands_tiled_effects_with_sky() {
+        use crate::command_buffer::{CommandBuffer, RenderCommand};
+        use crate::primitive::DrawPrimitive;
+        use embedded_graphics_core::pixelcolor::{Rgb565, RgbColor};
+        use embedded_graphics_framebuf::{
+            FrameBuf,
+            backends::{EndianCorrectedBuffer, EndianCorrection},
+        };
+        use nalgebra::Point2;
+
+        let backing = std::vec![Rgb565::BLACK; 16 * 16].leak();
+        let mut fb = FrameBuf::new(
+            EndianCorrectedBuffer::new(backing, EndianCorrection::ToLittleEndian),
+            16,
+            16,
+        );
+        let mut zbuf = [crate::Z_MAX_VALUE; 16 * 16];
+        let mut frame = super::FrameCtx {
+            zbuffer: &mut zbuf,
+            width: 16,
+            height: 16,
+        };
+
+        let mut cmd = CommandBuffer::<4>::new();
+        cmd.push(RenderCommand::ClearDepth(crate::Z_MAX_VALUE))
+            .unwrap();
+        cmd.push(RenderCommand::Draw(
+            DrawPrimitive::ColoredTriangleWithDepth {
+                points: [Point2::new(2, 2), Point2::new(14, 2), Point2::new(8, 14)],
+                depths: [5.0; 3],
+                color: Rgb565::RED,
+            },
+        ))
+        .unwrap();
+
+        // Tiled effects with sky path
+        let stats = super::execute_commands_tiled_effects::<_, 4, 8>(
+            &mut fb,
+            &mut frame,
+            &cmd,
+            crate::tilebin::TileConfig {
+                tile_width: 8,
+                tile_height: 8,
+            },
+            None,
+            None,
+            None,
+            crate::retro::StippleMode::Off,
+            crate::retro::PaletteMode::Off,
+            Some(crate::retro::SkyConfig::retro_blue()),
+            [0.1, 0.0, -1.0],
+        )
+        .unwrap();
+        assert!(stats.draw_commands >= 1);
+    }
+
+    #[test]
+    fn test_frame_ctx_validate() {
+        // Wrong zbuffer size → Err
+        let mut short_zbuf = [crate::Z_MAX_VALUE; 4];
+        let ctx = super::FrameCtx {
+            zbuffer: &mut short_zbuf,
+            width: 8,
+            height: 8,
+        };
+        assert!(ctx.validate().is_err());
+
+        // Correct size → Ok
+        let mut zbuf = [crate::Z_MAX_VALUE; 64];
+        let ctx2 = super::FrameCtx {
+            zbuffer: &mut zbuf,
+            width: 8,
+            height: 8,
+        };
+        assert!(ctx2.validate().is_ok());
+    }
+
+    #[test]
+    fn test_pick_query_new_and_eq() {
+        let q = super::PickQuery::new(3, 7);
+        assert_eq!(q.x, 3);
+        assert_eq!(q.y, 7);
+        assert_eq!(q, super::PickQuery { x: 3, y: 7 });
+    }
+
+    #[test]
+    fn test_execute_commands_tiled_effects_with_clearcolor() {
+        use crate::command_buffer::{CommandBuffer, RenderCommand};
+        use crate::primitive::DrawPrimitive;
+        use embedded_graphics_core::pixelcolor::{Rgb565, RgbColor};
+        use embedded_graphics_framebuf::{
+            FrameBuf,
+            backends::{EndianCorrectedBuffer, EndianCorrection},
+        };
+        use nalgebra::Point2;
+
+        let backing = std::vec![Rgb565::BLACK; 16 * 16].leak();
+        let mut fb = FrameBuf::new(
+            EndianCorrectedBuffer::new(backing, EndianCorrection::ToLittleEndian),
+            16,
+            16,
+        );
+        let mut zbuf = [crate::Z_MAX_VALUE; 16 * 16];
+        let mut frame = super::FrameCtx {
+            zbuffer: &mut zbuf,
+            width: 16,
+            height: 16,
+        };
+
+        let mut cmd = CommandBuffer::<4>::new();
+        // ClearColor goes through the non-tiled pass
+        cmd.push(RenderCommand::ClearColor(Rgb565::BLUE)).unwrap();
+        cmd.push(RenderCommand::ClearDepth(crate::Z_MAX_VALUE))
+            .unwrap();
+        cmd.push(RenderCommand::Draw(
+            DrawPrimitive::ColoredTriangleWithDepth {
+                points: [Point2::new(2, 2), Point2::new(14, 2), Point2::new(8, 14)],
+                depths: [5.0; 3],
+                color: Rgb565::RED,
+            },
+        ))
+        .unwrap();
+
+        let stats = super::execute_commands_tiled_effects::<_, 4, 8>(
+            &mut fb,
+            &mut frame,
+            &cmd,
+            crate::tilebin::TileConfig {
+                tile_width: 8,
+                tile_height: 8,
+            },
+            None,
+            None,
+            None,
+            crate::retro::StippleMode::Off,
+            crate::retro::PaletteMode::Off,
+            None,
+            [0.0, 0.0, -1.0],
+        )
+        .unwrap();
+        assert!(stats.draw_commands >= 1);
+    }
+
+    #[test]
+    fn test_execute_commands_with_picking_clearcolor_and_oob_query() {
+        use crate::command_buffer::{CommandBuffer, RenderCommand};
+        use crate::primitive::DrawPrimitive;
+        use embedded_graphics_core::pixelcolor::{Rgb565, RgbColor};
+        use embedded_graphics_framebuf::{
+            FrameBuf,
+            backends::{EndianCorrectedBuffer, EndianCorrection},
+        };
+        use nalgebra::Point2;
+
+        let backing = std::vec![Rgb565::BLACK; 16 * 16].leak();
+        let mut fb = FrameBuf::new(
+            EndianCorrectedBuffer::new(backing, EndianCorrection::ToLittleEndian),
+            16,
+            16,
+        );
+        let mut zbuf = [crate::Z_MAX_VALUE; 16 * 16];
+        let mut frame = super::FrameCtx {
+            zbuffer: &mut zbuf,
+            width: 16,
+            height: 16,
+        };
+
+        let mut cmd = CommandBuffer::<4>::new();
+        cmd.push(RenderCommand::ClearColor(Rgb565::GREEN)).unwrap();
+        cmd.push(RenderCommand::ClearDepth(crate::Z_MAX_VALUE))
+            .unwrap();
+        cmd.push(RenderCommand::Draw(
+            DrawPrimitive::ColoredTriangleWithDepth {
+                points: [Point2::new(2, 2), Point2::new(14, 2), Point2::new(8, 14)],
+                depths: [5.0; 3],
+                color: Rgb565::RED,
+            },
+        ))
+        .unwrap();
+
+        // Out-of-bounds queries (negative x/y should be skipped)
+        let queries = [
+            super::PickQuery::new(-1, -1), // negative — out of bounds
+            super::PickQuery::new(8, 8),   // inside triangle
+        ];
+        let mut results = [None, None];
+        let region =
+            super::execute_commands_with_picking(&mut fb, &mut frame, &cmd, &queries, &mut results)
+                .unwrap();
+        assert!(region.is_some());
+        assert!(results[0].is_none()); // oob query never gets a hit
+        assert!(results[1].is_some()); // (8,8) is inside the triangle
+    }
+
+    #[test]
+    fn test_execute_commands_with_effects_tint_and_dither() {
+        use crate::command_buffer::{CommandBuffer, RenderCommand};
+        use crate::primitive::DrawPrimitive;
+        use embedded_graphics_core::pixelcolor::{Rgb565, RgbColor};
+        use embedded_graphics_framebuf::{
+            FrameBuf,
+            backends::{EndianCorrectedBuffer, EndianCorrection},
+        };
+        use nalgebra::Point2;
+
+        let backing = std::vec![Rgb565::BLACK; 16 * 16].leak();
+        let mut fb = FrameBuf::new(
+            EndianCorrectedBuffer::new(backing, EndianCorrection::ToLittleEndian),
+            16,
+            16,
+        );
+        let mut zbuf = [crate::Z_MAX_VALUE; 16 * 16];
+        let mut frame = super::FrameCtx {
+            zbuffer: &mut zbuf,
+            width: 16,
+            height: 16,
+        };
+
+        let mut cmd = CommandBuffer::<4>::new();
+        cmd.push(RenderCommand::Draw(
+            DrawPrimitive::ColoredTriangleWithDepth {
+                points: [Point2::new(1, 1), Point2::new(14, 1), Point2::new(7, 14)],
+                depths: [3.0; 3],
+                color: Rgb565::WHITE,
+            },
+        ))
+        .unwrap();
+
+        let tint = Some(crate::retro::ScreenTint {
+            color: Rgb565::RED,
+            strength: 80,
+        });
+        let dither_cfg = crate::draw::DitherConfig { intensity: 128 };
+        let region = super::execute_commands_with_dirty_region_effects(
+            &mut fb,
+            &mut frame,
+            &cmd,
+            None,
+            Some(&dither_cfg),
+            tint,
+            crate::retro::StippleMode::Off,
+            crate::retro::PaletteMode::Off,
+            None,
+            [0.0, 0.0, -1.0],
+        )
+        .unwrap();
+        assert!(region.is_some());
+    }
 }
 
 pub fn execute_commands<D, const MAX: usize>(

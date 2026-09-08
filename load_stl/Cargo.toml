@@ -3,12 +3,13 @@ name = "load_stl"
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
+publish = false
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "Proc macro STL loader for embedded-3dgfx"
 
 [lib]
 proc-macro = true
 
 [dependencies]
 stl_io = "0.8.6"
-embedded-3dgfx = {path = ".."}
+embedded-3dgfx = { path = "..", version = "0.6.2" }

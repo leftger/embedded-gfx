@@ -118,27 +118,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn sample_cycles_wraps_and_updates_last_value() {
-        let sample = sample_cycles("frame", u32::MAX - 3, 5);
-        assert_eq!(sample.label, "frame");
-        assert_eq!(sample.cycles, 9);
-        assert_eq!(last_sample_cycles(), 9);
-    }
-
-    #[test]
-    fn read_cycle_counter_is_none_on_host_builds() {
+    fn test_hardware_profile_host() {
+        init_dwt_cycle_counter();
         #[cfg(not(all(feature = "dwt-profiler", target_arch = "arm")))]
         assert_eq!(read_cycle_counter(), None);
-    }
 
-    #[test]
-    fn init_and_emit_are_noops_on_host() {
-        init_dwt_cycle_counter();
         let sample = sample_cycles("host", 10, 20);
         emit_trace(sample);
         assert_eq!(sample.cycles, 10);
         assert_eq!(sample.label, "host");
         assert_eq!(last_sample_cycles(), 10);
+
+        let sample_wrap = sample_cycles("frame", u32::MAX - 3, 5);
+        assert_eq!(sample_wrap.label, "frame");
+        assert_eq!(sample_wrap.cycles, 9);
+        assert_eq!(last_sample_cycles(), 9);
+
         let _ = TraceTransport::None;
     }
 }

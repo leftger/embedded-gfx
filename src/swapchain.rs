@@ -819,4 +819,95 @@ mod tests {
         assert_eq!(sc.frame_count(), 1);
         let _render = sc.get_render_buffer();
     }
+
+    // ── Error backend tests ──────────────────────────────────────────────────
+
+    struct FailingBackend;
+
+    struct FailingTransfer<FB: DMACapableFrameBufferBackend<Color = Rgb565>> {
+        fb: Option<FrameBuf<Rgb565, FB>>,
+    }
+    impl<FB: DMACapableFrameBufferBackend<Color = Rgb565>> DmaTransfer for FailingTransfer<FB> {
+        type Buffer = FrameBuf<Rgb565, FB>;
+        fn is_done(&self) -> bool {
+            true
+        }
+        fn wait(mut self) -> FrameBuf<Rgb565, FB> {
+            self.fb.take().unwrap()
+        }
+    }
+    impl<const W: usize, const H: usize, FB> DisplayBackend<W, H, FB> for FailingBackend
+    where
+        FB: DMACapableFrameBufferBackend<Color = Rgb565>,
+    {
+        type Transfer = FailingTransfer<FB>;
+        fn start_dma_transfer(
+            &mut self,
+            framebuffer: FrameBuf<Rgb565, FB>,
+        ) -> Result<FailingTransfer<FB>, TransferError<FB>> {
+            Err(TransferError {
+                framebuffer,
+                error: DisplayError::HardwareError,
+            })
+        }
+    }
+
+    #[test]
+    fn test_swapchain_present_error_recovers_front_buffer() {
+        let fb0 = make_static_slice(64 * 64);
+        let fb1 = make_static_slice(64 * 64);
+        let mut sc =
+            StandardSwapChain::<64, 64, _>::from_static_slices(fb0, fb1, false, FailingBackend);
+        // present should return Err since the backend always fails
+        assert!(sc.present().is_err());
+        // But the swap chain should still be in a valid state — back/front not lost
+        assert!(sc.is_ready());
+        assert_eq!(sc.frame_count(), 0); // frame_count not incremented on failure
+    }
+
+    #[test]
+    fn test_swapchain_wait_for_vsync_when_already_idle() {
+        let mut sc = make_swap_chain(SimulatorBackend::new());
+        // Not yet presented — front is idle already
+        sc.wait_for_vsync();
+        assert!(sc.is_ready());
+        assert_eq!(sc.frame_count(), 0);
+    }
+
+    #[test]
+    fn test_swapchain_try_present_region_busy() {
+        // SimulatorBackend always finishes immediately, so try_present_region must succeed.
+        let fb0 = make_static_slice(64 * 64);
+        let fb1 = make_static_slice(64 * 64);
+        let mut sc = StandardSwapChain::<64, 64, _>::from_static_slices(
+            fb0,
+            fb1,
+            false,
+            TrackingBackend::new(),
+        );
+        // Two consecutive try_present_region calls — TrackingTransfer is always done
+        assert!(
+            sc.try_present_region(DisplayRegion::new(0, 0, 8, 8))
+                .is_ok()
+        );
+        assert!(
+            sc.try_present_region(DisplayRegion::new(0, 0, 8, 8))
+                .is_ok()
+        );
+        assert_eq!(sc.backend.region_present_count.get(), 2);
+    }
+
+    #[test]
+    fn test_swapchain_big_endian_constructor() {
+        let fb0 = make_static_slice(32 * 32);
+        let fb1 = make_static_slice(32 * 32);
+        let sc = StandardSwapChain::<32, 32, _>::from_static_slices(
+            fb0,
+            fb1,
+            true, // big-endian path
+            SimulatorBackend::new(),
+        );
+        assert_eq!(sc.dimensions(), (32, 32));
+        assert!(sc.is_ready());
+    }
 }
